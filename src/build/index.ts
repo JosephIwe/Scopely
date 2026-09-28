@@ -7,7 +7,18 @@
 // A builder never sees page HTML or uncited facts. Its input is the opportunity's cited evidence
 // (issue, URL, verbatim quote, capture time, confidence, claim state), what could not be observed,
 // and the catalog item being sold. Evidence that a re-check found changed or gone is excluded.
+//
+// The Build Workspace (migration 009) adds projects, versions, agent runs and provider
+// connections: see context.ts (BuildContext), agents.ts (FixBuilder / BuildAgent / ModelProvider
+// roles), runs.ts (projects and runs) and providers.ts (provider connections).
 import type pg from 'pg';
+import type { BuildInstructions } from './agents.js';
+import type { BuildContext } from './context.js';
+
+export * from './agents.js';
+export * from './context.js';
+export * from './runs.js';
+export * from './providers.js';
 
 type Db = pg.Client | pg.PoolClient;
 
@@ -36,15 +47,24 @@ export interface BuildInput {
 export interface BuildArtifact {
   title: string;
   summary: string;
-  artifactRef: string;
+  /** The built thing a person reviews: a preview or file reference. Required before approval. */
+  artifactRef?: string | null;
   artifactSha256?: string;
+  /** The version's project manifest, inside the project's own storage prefix. */
+  manifestRef?: string | null;
+  manifestSha256?: string;
 }
 
+/**
+ * WHAT to build for one build kind. `build` is the single-artifact operator path from Slice 2;
+ * `instruct` turns a BuildContext into instructions a BuildAgent executes. A builder may offer either.
+ */
 export interface FixBuilder {
   kind: string;
   /** Recorded on the build as `<kind>:<version>` so every artifact traces to the builder that made it. */
   version: string;
-  build(input: BuildInput): Promise<BuildArtifact>;
+  build?(input: BuildInput): Promise<BuildArtifact>;
+  instruct?(context: BuildContext): Promise<BuildInstructions>;
 }
 
 export class BuilderRegistry {
@@ -103,15 +123,22 @@ export async function loadBuildInput(db: Db, opportunityId: string): Promise<Bui
   };
 }
 
-/** Records a build and the evidence it addresses. `generator` is 'operator' for hand-made builds. */
-export async function recordBuild(db: Db, input: BuildInput, artifact: BuildArtifact,
-  opts: { purpose: 'DEMO' | 'DELIVERY'; generator: string; supersedesBuildId?: string }): Promise<string> {
+/**
+ * Records a build version and the evidence it addresses. `generator` is 'operator' for hand-made
+ * builds. With no project the version continues the project of what it supersedes or delivers,
+ * or opens a new one; the database numbers it.
+ */
+export async function recordBuild(db: Db, input: Pick<BuildInput, 'opportunityId' | 'catalogItem' | 'buildKind'> & { evidence: { id: string }[] },
+  artifact: BuildArtifact,
+  opts: { purpose: 'DEMO' | 'DELIVERY'; generator: string; supersedesBuildId?: string | null; projectId?: string | null;
+          deliveryOfBuildId?: string | null }): Promise<string> {
   const b = await db.query(
     `INSERT INTO scopely.builds (opportunity_id, catalog_item_id, build_kind, purpose, title, summary, artifact_ref,
-       artifact_sha256, generator, supersedes_build_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+       artifact_sha256, generator, supersedes_build_id, project_id, delivery_of_build_id, manifest_ref, manifest_sha256)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
     [input.opportunityId, input.catalogItem.id, input.buildKind, opts.purpose, artifact.title, artifact.summary,
-     artifact.artifactRef, artifact.artifactSha256 ?? null, opts.generator, opts.supersedesBuildId ?? null]);
+     artifact.artifactRef ?? null, artifact.artifactSha256 ?? null, opts.generator, opts.supersedesBuildId ?? null,
+     opts.projectId ?? null, opts.deliveryOfBuildId ?? null, artifact.manifestRef ?? null, artifact.manifestSha256 ?? null]);
   const id = String(b.rows[0].id);
   for (const e of input.evidence) {
     await db.query('INSERT INTO scopely.build_evidence (build_id, evidence_id) VALUES ($1,$2)', [id, e.id]);
@@ -124,6 +151,7 @@ export async function runBuilder(db: Db, registry: BuilderRegistry, opportunityI
   purpose: 'DEMO' | 'DELIVERY'): Promise<string> {
   const input = await loadBuildInput(db, opportunityId);
   const builder = registry.get(input.buildKind);
+  if (!builder.build) throw new Error(`the ${builder.kind} builder only instructs agents; start a build run instead`);
   const artifact = await builder.build(input);
   return recordBuild(db, input, artifact, { purpose, generator: `${builder.kind}:${builder.version}` });
 }

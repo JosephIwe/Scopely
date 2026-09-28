@@ -24,7 +24,9 @@ Status labels: **Built** (schema, guards and tests exist), **Manual** (recorded 
 USER ─ membership ─ WORKSPACE ─┬─ MAILBOX CONNECTIONS
                                ├─ SEARCHES ─ SEARCH RUNS ─ run businesses
                                ├─ BUSINESSES ─ sources, snapshots, observations, evidence, contacts
-                               ├─ OPPORTUNITIES ─ builds, messages, outcomes, verifications
+                               ├─ OPPORTUNITIES ─ build projects ─ versions, runs, requirements, assets
+                               │                ─ messages, outcomes, verifications
+                               ├─ PROVIDER CONNECTIONS
                                ├─ SUPPRESSION
                                ├─ COST EVENTS
                                └─ own MARKETS and CATALOG ITEMS (plus shared starters)
@@ -141,14 +143,112 @@ Effort, margin and close rate are NULL on every item. All are commercially UNPRO
 
 ## BUILD/FIX
 
-BUILD is an optional layer. Every stage before and after it works without it.
+BUILD is an optional layer. Every stage before and after it works without it. Slice 4 adds the
+Build Workspace foundation: data, guards, interfaces and read contracts. **No agent, model
+provider or secret store is implemented, nothing calls a model, and nothing generates, hosts or
+deploys a website.**
 
-- A build belongs to one `MAPPED` opportunity, uses its catalog item and cites at least one of its
-  evidence rows. An item with no build kind cannot be built.
-- **A `DEMO` is never delivery and never revenue.** A `DELIVERY` build needs a won opportunity.
-- A demo is shown only after approval, and only if its evidence passes the same re-check gate as a
-  sent message.
-- Builders get `loadBuildInput` (cited evidence only, never page HTML).
+```
+OPPORTUNITY ─ BUILD PROJECT ─ BUILD VERSION (builds) ─ BUILD RUN ─ BUILD AGENT ─ MODEL PROVIDER
+ (mapped)      one effort      numbered 1..n, human     one agent   how the     which model API,
+               for one kind    lifecycle and gates      attempt     work runs   via a connection
+```
+
+The six concepts stay separate: a project is not a version, a version is not a run, a run is not
+an agent, and an agent is not a model provider.
+
+- **Build project** (`build_projects`, Built). One build effort for one `MAPPED` opportunity, of
+  the build kind its catalog item names. An opportunity may have several projects (a second
+  effort). The opportunity and kind never change. Requirements (`build_requirements`) and assets
+  (`build_assets`) belong to the project; they are withdrawn, never edited.
+- **Build version** (`builds`, Built). Every build has a `project_id` and a `version_no`, unique
+  per project and assigned by the database. A version recorded without a project opens one.
+  A version `supersedes_build_id` at most one earlier version of the same project and purpose,
+  and a version has at most one successor. Superseding marks the parent `SUPERSEDED`
+  automatically (even after it was shown: the shown record stays), and a superseded version is
+  final. Project, number, purpose and what a version supersedes or continues never change.
+  Migration 009 turned each existing supersede chain into one project numbered 1..n and refuses
+  to upgrade a chain that branches.
+- **A `DEMO` is never delivery and never revenue.** A `DELIVERY` build needs a won opportunity. It
+  may name the demo it continues (`delivery_of_build_id`, a `DEMO` of the same opportunity and
+  project); the demo stays as the record of what was pitched. A `DELIVERY` never supersedes a
+  `DEMO`, and a `DELIVERY` is delivered, not shown as a pitch. A demo is shown only after approval,
+  and only if its evidence passes the same re-check gate as a sent message. Content, preview and
+  manifest are frozen once approved or shown.
+- **Build run** (`build_runs`, Boundary). One attempt by a build agent to produce a version, or a
+  modification of `base_build_id`. Status `QUEUED → RUNNING → SUCCEEDED | FAILED | CANCELLED`
+  (`QUEUED → CANCELLED` too); a finished run is frozen. It records the agent key and version, the
+  provider connection it used (nullable), times, an error code (never the error text, which may
+  quote model output), the version it produced and safe metadata. **Run state is never a
+  version's state.** The feed shows both, apart: `buildState` (human lifecycle) and
+  `buildRunState` (latest run).
+- **A run can never pass a human gate.** A run has no approval, show or delivery columns. The
+  version it produces must be a `DRAFT` with no approval, in the same project and purpose, and must
+  supersede the run's base. While the executor records it, the request acts as a build agent
+  (`scopely.actor_kind = 'build_agent'`) and the database refuses approving, showing or discarding
+  a build and writing any outcome (won, delivered), verification, evidence re-check or message.
+  Approval and showing stay with `approveBuild` / `markBuildShown`, called for a person, and the
+  show still waits for the evidence re-check.
+
+### Three roles
+
+| Role | Answers | Keyed by | Today |
+|---|---|---|---|
+| `FixBuilder` | WHAT to build: turns a BuildContext into structured instructions (`instruct`) and owns the kind's rules | build kind | Interface; registry empty |
+| `BuildAgent` | HOW the work is executed: a Scopely-managed agent, Claude Code, Codex, another coding agent or an external build tool | agent key, chosen per run | Interface; registry empty |
+| `ModelProvider` | WHICH model API powers a call: Scopely-managed, Anthropic, OpenAI, Google or another | provider, opened from a provider connection | Interface; registry empty |
+
+A build kind never implies an agent, and an agent never implies a provider. An agent declares its
+model use: `NONE`, `OWN_MODEL` (it brings its own model and billing, so Scopely records no provider
+cost for it) or `PROVIDER_CONNECTION` (it is handed a model opened from the run's connection). An
+agent receives the BuildContext, the instructions and a project storage handle, never a database
+handle. `executeBuildRun` is the only code that turns an agent's result into a row.
+
+### BuildContext
+
+`loadBuildContext(db, projectId, { purpose, baseBuildId })` is what an agent may see: the business
+identity (name, domain and website as recorded, with the sources that found them), sourced facts (employees, revenue,
+reviews, website status, coordinates) each with `basis` (`VERIFIED` / `REPORTED` / `ESTIMATED`),
+source and date, the opportunity, only the evidence that still holds (a HIGH finding carries its
+latest re-check), the catalog item, the build kind and path, active requirements and assets, and
+`NOT_OBSERVABLE` observations as structured items that stay `NOT_OBSERVABLE`. An estimate stays
+labelled `ESTIMATED`. Attributes with no recorded basis or source (address, city, region, country, phone,
+company register fields, structure, industry, niche, specialty) are listed as withheld, not
+passed as fact; that is how B12 reaches the build layer. No page HTML, no contact
+details, no credentials; the context is checked for secret-shaped values before an agent gets it.
+
+### Project storage
+
+Each project has a key prefix `workspaces/<workspace>/projects/<project>/`: versions under
+`versions/`, assets under `assets/`. A version's `manifest_ref` (and an asset's `storage_ref`) must
+be a key under its own project's prefix; another project, another workspace, `..`, a URL or a
+scheme is refused. No files are stored in Postgres and no storage exists yet: this is the seam.
+
+### Provider connections
+
+`provider_connections` (Boundary): a workspace's link to a model provider, with `mode`
+`SCOPELY_MANAGED` (Scopely's key; no `credential_ref`) or `CUSTOMER_KEY` (the workspace's own key),
+`state` `PENDING` / `ACTIVE` / `REVOKED` / `ERROR`, `scopes` (`build`, `analysis`) and a
+`credential_ref`. The ref names a future secret, `secretref:ws/<workspace>/<name>`, inside the
+owning workspace's namespace; anything that looks like a key is refused. No raw secret column
+exists on any table (a schema test enforces it) and run, build, cost and requirement metadata is
+checked for secret-shaped values. A run may use only an `ACTIVE`, `build`-scoped connection of
+its workspace. Ownership is the workspace; whether a user may own one too is open decision B14.
+
+**Build-time credentials are not runtime website secrets.** A provider connection's key powers
+Scopely's build agents while a version is made. It is never put in a BuildContext, instructions,
+an agent result, a manifest or a generated project, and it never shares a namespace with the
+secrets a delivered website needs at runtime (its own API keys, form endpoints, analytics ids),
+which are the client's and are out of scope until a slice covers deployment.
+
+### Who pays for build AI
+
+`cost_events.billed_to` is `SCOPELY` or `WORKSPACE`, or NULL when no payer was recorded. A cost
+through a `CUSTOMER_KEY` connection is billed to the `WORKSPACE` and carries no Scopely credits
+(credits 0 or NULL); a `SCOPELY_MANAGED` connection is billed to `SCOPELY`. The connection decides
+it: a contradicting payer or provider is refused, and a provider cost with no payer is refused.
+Payer, connection and run never change on a recorded cost. No price is assumed: an unknown amount
+stays NULL. How Scopely-managed build AI is charged to a workspace is open decision B15.
 
 ## Selling from the seller's own mailbox
 
@@ -170,7 +270,7 @@ BUILD is an optional layer. Every stage before and after it works without it.
 - Selection past the analysis cap, queueing past the credit budget, queueing with an unknown
   estimate under a budget, and metered cost past the budget are all refused in the database.
 - `cost_events` attributes cost (money and credits) to a workspace, search run, business,
-  opportunity or build. An unknown amount stays NULL, and `estimateRunAnalysis` reports unknown
+  opportunity, build or build run, and says who pays (`billed_to`, see BUILD/FIX). An unknown amount stays NULL, and `estimateRunAnalysis` reports unknown
   rather than guessing.
 
 ## Evidence integrity
@@ -185,6 +285,7 @@ BUILD is an optional layer. Every stage before and after it works without it.
 ## What a UI can rely on
 
 Screens read through `src/api/queries.ts` (see `API_CONTRACT.md`): the unified opportunity feed
-with filters, map points, business detail, run summary and stage funnel, and search performance.
+with filters, map points, business detail, run summary and stage funnel, search performance and
+saved searches, and the Build Workspace (projects, versions with server-computed gates, runs).
 Money and credits are decimal strings with their currency. NULL means "not known" and must never
 read as 0.

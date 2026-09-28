@@ -2,7 +2,7 @@
 
 What the backend gives a screen today. The shapes are TypeScript types in `src/api/types.ts`; the
 functions that produce them are in `src/api/queries.ts` (read side) and in `src/discovery`,
-`src/record`, `src/sell/mailbox.ts` and `src/tenancy` (write side). There is no HTTP layer yet: a
+`src/record`, `src/sell/mailbox.ts`, `src/build` and `src/tenancy` (write side). There is no HTTP layer yet: a
 route is a thin wrapper that authenticates, checks membership and calls one of these inside
 `withWorkspace`.
 
@@ -33,6 +33,13 @@ route is a thin wrapper that authenticates, checks membership and calls one of t
 | `getSearchPerformance(db, searchId?)` | `SearchPerformance[]` | Which searches make money |
 | `estimateRunAnalysis(db, runId)` | `AnalysisEstimate` | Before queueing: known credits, unknown count, budget left |
 | `listMailboxes(db)` | `Mailbox[]` | Sender picker |
+| `listSearches(db, { includeArchived? })` | `SearchListItem[]` | Saved searches |
+| `getSearch(db, searchId)` | `SearchDefinition \| null` | A saved search's actual criteria, grouped as the form shows them, and its runs |
+| `listBuildProjects(db, { opportunityId? })` | `BuildProjectListItem[]` | Build projects, newest first, with version count, latest version status and run state |
+| `getBuildProject(db, projectId, { asOf? })` | `BuildProjectView \| null` | Build Workspace: project, opportunity, build kind, current version, version history, runs, requirements, assets, cost by payer, storage prefix |
+| `listBuildVersions(db, { projectId } \| { opportunityId }, { asOf? })` | `BuildVersionView[]` | Version history, oldest first |
+| `getBuildRun(db, runId)` | `BuildRunView \| null` | One agent run: agent, connection, state, times, error code, produced version, cost |
+| `listProviderConnections(db)` | `ProviderConnection[]` | Provider settings: provider, mode, state, scopes, payer; never the credential reference |
 
 ### Feed filters (`OpportunityFeedFilters`)
 
@@ -54,6 +61,35 @@ route is a thin wrapper that authenticates, checks membership and calls one of t
 - `deliveryState`: `NONE`, `AWAITING_DELIVERY`, `DELIVERED`, or `VERIFIED_` + `PASSED` /
   `FAILED` / `NOT_OBSERVABLE` / `CLIENT_REQUIRED_UNCONFIRMED`.
 - A shown `DEMO` never changes `sellState` to `WON` or `dealValue`. Only a `won` outcome does.
+
+- `buildRunState`: the latest agent run of the opportunity's projects (`NONE`, `QUEUED`,
+  `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`). It is execution state, never approval: a
+  `SUCCEEDED` run's version is still a `DRAFT` until a person approves it. Show it apart from
+  `buildState`.
+
+### Build Workspace
+
+- **Version status** (`BuildVersionStatus`: `DRAFT`, `APPROVED`, `SHOWN`, `DISCARDED`,
+  `SUPERSEDED`) is the human lifecycle. **Run status** (`BuildRunStatus`) is an agent's
+  execution. They are separate fields on separate objects.
+- **Each version** carries `projectId`, `versionNo`, `purpose` (`DEMO` / `DELIVERY`),
+  `supersedesBuildId`, `successorBuildId`, `deliveryOfBuildId`, `previewRef`, `manifestRef`, the
+  cited `evidence` (each with its latest re-check result), `approval`, `shown`, `producedByRun`
+  and `cost`.
+- **Gates are computed by the server.** `gate.canApprove` / `approveBlocker` and `gate.canShow` /
+  `showBlocker` come from the same database functions the write guards use, evaluated at
+  `gate.asOf` (default now; pass `asOf` to ask about a planned show time). Whenever `canShow` is
+  false, `showBlocker` says why: a DELIVERY is delivered not shown, already shown, superseded by
+  build N, discarded, needs a recorded human approval, cannot be shown before it was approved,
+  cites no evidence, or the evidence re-check reason. A screen never recomputes a gate.
+- **`approval.approvedByIsAuthenticated` is always `false`** today: `approvedBy` is a free-text
+  label, not a signed-in user (B10).
+- **`currentVersion`** is the newest version that is not `SUPERSEDED` or `DISCARDED`, or `null`.
+- **Cost by payer** (`CostByPayer[]`): one row per `SCOPELY`, `WORKSPACE` and `UNATTRIBUTED`
+  (payer not recorded) with events, amount and currency (`null` when unknown or when currencies
+  are mixed), credits and operator minutes. `WORKSPACE` rows never carry Scopely credits.
+- **Refs are storage keys, not URLs.** `previewRef`, `manifestRef` and asset `storageRef` are keys
+  under the project's `storagePrefix`. Nothing serves them yet.
 
 ### Map query (`MapQuery`)
 
@@ -77,6 +113,11 @@ styling.
 | `queueForAnalysis(db, runId, ids, at)` | Queues selected businesses | past the credit budget; unknown estimate under a budget |
 | `markAnalyzed` / `concludeAnalysis` | Closes analysis; concludes `OPPORTUNITY_FOUND` or `NO_OPPORTUNITY` | out of order |
 | `recordWebsiteStatus(db, businessId, …)` | Sets website status with basis and source | "not observed" with a known address; unsupported basis |
+| `createBuildProject(db, { opportunityId, title, createdByUserId? })` | Opens a build project; the kind comes from the opportunity's service | opportunity unmapped, in another workspace, or its service has no build kind; creator not a member |
+| `recordRequirement` / `recordAsset` | Adds a requirement or asset to a project | text that looks like a secret; an asset key outside the project's `assets/` prefix |
+| `registerProviderConnection` / `activateProviderConnection` / `revokeProviderConnection` | Records a provider connection; no key is stored or checked | a ref outside `secretref:ws/<this workspace>/…`, a secret-looking ref, a managed connection with a ref, changing provider or mode, reviving a revoked one |
+| `queueBuildRun(db, BuildRunInput)` / `cancelBuildRun` | Queues or cancels an agent run | a connection that is not ACTIVE with `build` scope; a base version from another project or purpose |
+| `executeBuildRun(db, deps, runId)` | Runs one queued run with a registered agent and records a DRAFT version, or FAILED with an error code | the run is not QUEUED; nothing is registered by default, so today every run fails `AGENT_NOT_AVAILABLE` |
 | `recordOpportunity`, `recordMessage`, `approveMessage`, `markMessageSent(…, mailboxConnectionId)`, `recordOutcome`, `recordCost`, `recordBuild` | The existing manual loop, now per workspace | the Truth Rule guards, lawful basis, suppression, re-check, budget |
 
 Every refusal is a database error whose message names the rule. Show it; do not retry.
@@ -86,4 +127,6 @@ Every refusal is a database error whose message names the rule. Show it; do not 
 Each backs a filter above: businesses by workspace + geography, + industry, + website status,
 + size range, + revenue currency and range, + coordinates, + domain; opportunities by workspace +
 kind + status and by run; run businesses by run + state and by business; cost by run and by
-opportunity; searches by workspace; runs by search.
+opportunity; searches by workspace; runs by search. Slice 4: build projects by opportunity;
+builds by project + version (unique) and one successor per build; build runs by project + queue
+time; cost by build run and by build; provider connections by workspace.
