@@ -24,7 +24,7 @@ import { type BuildBasis, type ReadinessItem, type SiteDocument, describeBasis, 
 import { EXT, type ImageAsset, MAX_IMAGE_BYTES, imageType, loadPlacedImages } from './images.js';
 import { type EditInterpreter, RuleBasedEditInterpreter } from './interpret.js';
 import { applyEdits, assertValidDocument, describeOperation } from './operations.js';
-import { type PreviewClaims, signPreview } from './preview.js';
+import { DEFAULT_SHOW_LINK_TTL_SECONDS, type PreviewClaims, signPreview } from './preview.js';
 import { renderSite } from './render.js';
 import { MERIDIAN, type SiteTemplate, getTemplate, listTemplates } from './template.js';
 
@@ -326,27 +326,91 @@ export async function approveVersion(db: Db, projectId: string, buildId: string,
   await approveBuild(db, buildId, approvedBy.slice(0, 120), opts.at ?? new Date().toISOString());
 }
 
-export async function showVersion(db: Db, projectId: string, buildId: string, opts: { at?: string } = {}): Promise<void> {
+/** The seller can approve a site whose button has no destination, but not show it (A14). */
+export const NO_BUTTON_DESTINATION = 'Add where the main button goes (a phone number, WhatsApp, email or link) before you show this site. Editing makes a new version, which you approve again.';
+
+/** Why this version cannot be shown yet, in words for the seller: approval first, then the button, then the database's gate. */
+function siteShowBlocker(dbBlocker: string | null, doc: SiteDocument | null): string | null {
+  const plain = plainBlocker(dbBlocker);
+  if (plain && /Approve this version first|already been shown|newer version/.test(plain)) return plain;
+  if (doc && doc.cta.action.kind === 'unset') return NO_BUTTON_DESTINATION;
+  return plain;
+}
+
+export async function showVersion(db: Db, store: ObjectStore, projectId: string, buildId: string, opts: { at?: string } = {}): Promise<void> {
   const p = await projectRow(db, projectId);
   const at = opts.at ?? new Date().toISOString();
-  const b = (await db.query(`SELECT scopely.build_show_blocker(id, $3::timestamptz) AS blocker FROM scopely.builds WHERE id = $1 AND project_id = $2 AND workspace_id = scopely.current_workspace_id()`,
-    [buildId, p.id, at])).rows[0];
-  if (!b) throw new SiteError(404, 'That version does not exist.');
-  if (b.blocker) throw new SiteError(409, plainBlocker(b.blocker)!);
+  const v = (await db.query(`SELECT *, scopely.build_show_blocker(id, $3::timestamptz) AS blocker FROM scopely.builds WHERE id = $1 AND project_id = $2 AND workspace_id = scopely.current_workspace_id()`,
+    [buildId, p.id, at])).rows[0] as (VersionRow & { blocker: string | null }) | undefined;
+  if (!v) throw new SiteError(404, 'That version does not exist.');
+  const { doc } = await readDocument(store, p.workspace_id, p.id, v);
+  const why = siteShowBlocker(v.blocker, doc);
+  if (why) throw new SiteError(409, why);
   await markBuildShown(db, buildId, at);
 }
 
-/** A signed, expiring link to one version's stored preview. `show` links open only a shown version. */
+/** A signed, expiring link to one version's stored preview. A `show` link opens only a shown version, through a revocable link row. */
 export async function previewLink(db: Db, projectId: string, buildId: string,
-  opts: { kind: 'edit' | 'show'; signingKey: string; ttlSeconds: number; nowSeconds?: number }): Promise<{ token: string; expiresAt: string }> {
+  opts: { kind: 'edit' | 'show'; signingKey: string; ttlSeconds?: number; nowSeconds?: number }): Promise<{ token: string; expiresAt: string; linkId: string | null }> {
   const p = await projectRow(db, projectId);
   const b = (await db.query(`SELECT id, shown_at, artifact_ref FROM scopely.builds WHERE id = $1 AND project_id = $2 AND workspace_id = scopely.current_workspace_id()`,
     [buildId, p.id])).rows[0];
   if (!b || !b.artifact_ref) throw new SiteError(404, 'That version has no preview.');
   if (opts.kind === 'show' && !b.shown_at) throw new SiteError(409, 'Only a version you have approved and shown can be shared.');
-  const e = (opts.nowSeconds ?? Math.floor(Date.now() / 1000)) + opts.ttlSeconds;
+  const ttl = opts.ttlSeconds ?? (opts.kind === 'show' ? DEFAULT_SHOW_LINK_TTL_SECONDS : 15 * 60);
+  const now = opts.nowSeconds ?? Math.floor(Date.now() / 1000);
+  const e = now + ttl;
   const claims: PreviewClaims = { w: String(await requireWorkspace(db)), p: String(p.id), b: String(b.id), k: opts.kind, e };
-  return { token: signPreview(opts.signingKey, claims), expiresAt: new Date(e * 1000).toISOString() };
+  let linkId: string | null = null;
+  if (opts.kind === 'show') {
+    linkId = String((await db.query(
+      `INSERT INTO scopely.preview_links (project_id, build_id, created_at, expires_at) VALUES ($1, $2, to_timestamp($3), to_timestamp($4)) RETURNING id`,
+      [p.id, b.id, now, e])).rows[0]!.id);
+    claims.l = linkId;
+  }
+  return { token: signPreview(opts.signingKey, claims), expiresAt: new Date(e * 1000).toISOString(), linkId };
+}
+
+export type LinkState = 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+export interface ProspectLink {
+  linkId: string; buildId: string; versionNo: number; createdAt: string; expiresAt: string;
+  revokedAt: string | null; revokedBy: string | null; state: LinkState;
+  /** The link's token, only while it still opens. */
+  token: string | null;
+}
+
+/** The project's prospect links, newest first, with their state now (or at `at`). */
+export async function listProspectLinks(db: Db, projectId: string, opts: { signingKey: string; at?: string }): Promise<ProspectLink[]> {
+  const p = await projectRow(db, projectId);
+  const at = new Date(opts.at ?? Date.now());
+  const ws = String(await requireWorkspace(db));
+  const rows = (await db.query(
+    `SELECT l.id, l.build_id, b.version_no, l.created_at, l.expires_at, l.revoked_at, l.revoked_by FROM scopely.preview_links l
+       JOIN scopely.builds b ON b.id = l.build_id
+      WHERE l.project_id = $1 AND l.workspace_id = scopely.current_workspace_id() ORDER BY l.id DESC`, [p.id])).rows;
+  return rows.map((r) => {
+    const state: LinkState = r.revoked_at ? 'REVOKED' : r.expires_at <= at ? 'EXPIRED' : 'ACTIVE';
+    const e = Math.floor(r.expires_at.getTime() / 1000);
+    return {
+      linkId: String(r.id), buildId: String(r.build_id), versionNo: r.version_no, createdAt: r.created_at.toISOString(),
+      expiresAt: r.expires_at.toISOString(), revokedAt: r.revoked_at?.toISOString() ?? null, revokedBy: r.revoked_by, state,
+      // The token is deterministic, so an active link can be copied again without storing it.
+      token: state === 'ACTIVE' ? signPreview(opts.signingKey, { w: ws, p: String(p.id), b: String(r.build_id), k: 'show', e, l: String(r.id) }) : null,
+    };
+  });
+}
+
+/** Stops a prospect link at once. The version, its approval and its shown state do not change. */
+export async function revokeProspectLink(db: Db, projectId: string, linkId: string, opts: { revokedBy: string; at?: string }): Promise<void> {
+  const p = await projectRow(db, projectId);
+  const by = String(opts.revokedBy ?? '').trim();
+  if (!by) throw new SiteError(400, 'Say who is revoking the link.');
+  const l = (await db.query(`SELECT id, revoked_at FROM scopely.preview_links WHERE id = $1 AND project_id = $2 AND workspace_id = scopely.current_workspace_id()`,
+    [linkId, p.id])).rows[0];
+  if (!l) throw new SiteError(404, 'That link does not exist.');
+  if (l.revoked_at) return;
+  await db.query(`UPDATE scopely.preview_links SET revoked_at = GREATEST($2::timestamptz, created_at), revoked_by = $3 WHERE id = $1`,
+    [linkId, opts.at ?? new Date().toISOString(), by.slice(0, 120)]);
 }
 
 // ------------------------------------------------------------------ the workspace screen
@@ -384,7 +448,7 @@ export async function getSiteWorkspace(db: Db, store: ObjectStore, projectId: st
   return {
     project,
     current: { buildId: String(cur.id), versionNo: cur.version_no, status: cur.status, document: doc, readiness: readiness(doc, template), html,
-      approveBlocker: v.gate.approveBlocker, showBlocker: plainBlocker(v.gate.showBlocker), artifactSha256: cur.artifact_sha256 },
+      approveBlocker: v.gate.approveBlocker, showBlocker: siteShowBlocker(v.gate.showBlocker, doc), artifactSha256: cur.artifact_sha256 },
     template, images,
   };
 }

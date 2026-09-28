@@ -108,8 +108,11 @@ refused operation and why.
 | `requestAiEdit(db, deps, projectId, { baseBuildId, request })` | A build run: request → operations → validation → new version; `lastEdit.needsInput` lists what it asks for |
 | `restoreVersion(db, store, projectId, { baseBuildId, fromBuildId })` | An earlier version's document as a new version |
 | `uploadImage(db, store, projectId, { bytes, description, recordedBy })` | PNG, JPEG, WebP or GIF up to 5 MB, checked by content; SVG refused; stored as a project asset |
-| `approveVersion` / `showVersion` | Slice 4's approve and show, with their blockers |
-| `previewLink(db, projectId, buildId, { kind, signingKey, ttlSeconds })` | A signed link; `show` only for a shown version |
+| `approveVersion(db, projectId, buildId, { approvedBy })` | Slice 4's approve, with its blocker; allowed without a button destination |
+| `showVersion(db, store, projectId, buildId)` | Slice 4's show, and refused (`NO_BUTTON_DESTINATION`) while the button has no destination |
+| `previewLink(db, projectId, buildId, { kind, signingKey, ttlSeconds? })` | A signed link; `show` only for a shown version, stored as a revocable link (72 hours by default) |
+| `listProspectLinks(db, projectId, { signingKey })` | `ProspectLink[]`: version, created, expires, revoked, `state` (`ACTIVE` / `EXPIRED` / `REVOKED`) and the token while active |
+| `revokeProspectLink(db, projectId, linkId, { revokedBy })` | Stops a link at once; the version does not change |
 | `getSiteWorkspace(db, store, projectId, { selected })` | `SiteWorkspace`: project, current version (document, editor HTML, readiness, blockers), history, template, images |
 
 ### Build Workspace HTTP (`pnpm serve`, `src/server/app.ts`)
@@ -125,7 +128,7 @@ or hashes.
 | `GET /api/opportunities` | Opportunities with their first plain-language issue, `buildable` and `projectId` |
 | `POST /api/opportunities/:id/website` | → `{ projectId }` |
 | `GET /api/projects/:id/setup` | `BuildSetup` |
-| `GET /api/projects/:id/workspace?selected=` | The workspace screen |
+| `GET /api/projects/:id/workspace?selected=` | The workspace screen, with `links` (state and, while active, url) |
 | `POST /api/projects/:id/generate` | `{ templateKey }` → `RunOutcome` |
 | `POST /api/projects/:id/render` | `{ baseBuildId, operations, selected }` → `{ html, readiness }` |
 | `POST /api/projects/:id/save` | `{ baseBuildId, operations }` → the new version |
@@ -135,6 +138,7 @@ or hashes.
 | `POST /api/projects/:id/versions/:bid/approve` | `{ approvedBy }` |
 | `POST /api/projects/:id/versions/:bid/show` | → `{ url, expiresAt }`, the prospect's link |
 | `POST /api/projects/:id/versions/:bid/link` | `{ kind: 'edit' \| 'show' }` → `{ url, expiresAt }` |
+| `POST /api/projects/:id/links/:lid/revoke` | `{ revokedBy }` → `{ ok }` |
 | `GET /p/:token` | The artifact, with a sandboxing content security policy |
 | `GET /s/:token` | The prospect's page: a "design preview, not a live website" bar around the artifact in a sandboxed frame |
 

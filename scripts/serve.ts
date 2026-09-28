@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import pg from 'pg';
 import { databaseUrl } from '../src/db/client.js';
+import { DEFAULT_SHOW_LINK_TTL_SECONDS } from '../src/build/site/index.js';
 import { createHandler } from '../src/server/app.js';
 import { FileObjectStore } from '../src/storage/index.js';
 
@@ -23,7 +24,7 @@ if (signingKey.length < 32) {
   signingKey = randomBytes(32).toString('base64url');
   console.warn('PREVIEW_SIGNING_KEY is not set; using a random key for this process. Preview links end when the server stops.');
 }
-const showHours = Number(process.env.SHOW_LINK_TTL_HOURS ?? 72);
+const showHours = Number(process.env.SHOW_LINK_TTL_HOURS ?? DEFAULT_SHOW_LINK_TTL_SECONDS / 3600);
 if (!Number.isFinite(showHours) || showHours <= 0 || showHours > 24 * 30) {
   console.error('SHOW_LINK_TTL_HOURS must be a number of hours between 0 and 720.');
   process.exit(1);

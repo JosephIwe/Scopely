@@ -266,3 +266,9 @@ body.share { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
   .aside { position: static; }
 }
 .ver strong { white-space: nowrap; }
+.badge.active { background: var(--good-soft); color: var(--good); }
+.badge.expired { background: #eef0f3; color: #4a5160; }
+.badge.revoked { background: var(--bad-soft); color: var(--bad); }
+.link-row { border: 1px solid var(--line, #e6e6e1); border-radius: 10px; padding: 10px 12px; }
+.link-row .share-link { margin-top: 8px; }
+.btn.danger { color: var(--bad); border-color: var(--bad-soft); } .btn.danger:hover { background: var(--bad-soft); }

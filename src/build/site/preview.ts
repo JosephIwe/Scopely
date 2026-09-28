@@ -2,7 +2,8 @@
 // preview link is a signed, expiring token naming one workspace, project and version; serving it
 // re-checks all three against the database inside that workspace, and serves the bytes only if
 // they match the hash recorded on the version. A `show` link only opens a version that a person
-// approved and marked shown.
+// approved and marked shown, through a link row (preview_links) that has not expired or been
+// revoked; revoking the row stops the link on its next request.
 //
 // The signing key is a platform secret held by the server process (PREVIEW_SIGNING_KEY). It is not
 // a model credential, never stored in a row and never sent to a browser.
@@ -17,7 +18,12 @@ export interface PreviewClaims {
   k: 'edit' | 'show';
   /** expiry, unix seconds */
   e: number;
+  /** show links only: the preview_links row that can be revoked */
+  l?: string;
 }
+
+/** How long a prospect's link lasts unless the seller revokes it first (A15). */
+export const DEFAULT_SHOW_LINK_TTL_SECONDS = 72 * 3600;
 
 const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64url');
 
@@ -37,6 +43,7 @@ export function verifyPreview(key: string, token: string, nowSeconds: number): P
   let c: PreviewClaims;
   try { c = JSON.parse(Buffer.from(m[1]!, 'base64url').toString('utf8')); } catch { return null; }
   if (![c.w, c.p, c.b].every((x) => typeof x === 'string' && /^\d+$/.test(x)) || (c.k !== 'edit' && c.k !== 'show') || typeof c.e !== 'number') return null;
+  if (c.k === 'show' ? typeof c.l !== 'string' || !/^\d+$/.test(c.l) : c.l !== undefined) return null;
   if (c.e < nowSeconds) return null;
   return c;
 }
@@ -53,7 +60,13 @@ export async function loadPreviewArtifact(db: Db, store: ObjectStore, c: Preview
       `SELECT b.artifact_ref, b.artifact_sha256, b.status, b.shown_at, b.title FROM scopely.builds b
         WHERE b.id = $1 AND b.project_id = $2 AND b.workspace_id = scopely.current_workspace_id()`, [c.b, c.p])).rows[0];
     if (!b || !b.artifact_ref || !b.artifact_sha256) return null;
-    if (c.k === 'show' && b.shown_at === null) return null;
+    if (c.k === 'show') {
+      if (b.shown_at === null) return null;
+      const link = (await db.query(
+        `SELECT 1 FROM scopely.preview_links WHERE id = $1 AND build_id = $2 AND project_id = $3
+            AND workspace_id = scopely.current_workspace_id() AND revoked_at IS NULL AND expires_at > now()`, [c.l, c.b, c.p])).rows[0];
+      if (!link) return null;
+    }
     const prefix = projectPrefix(c.w, c.p);
     if (!String(b.artifact_ref).startsWith(`${prefix}versions/`)) return null;
     try {

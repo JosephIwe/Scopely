@@ -5,7 +5,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type pg from 'pg';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ARTIFACT_HEADERS, signPreview } from '../src/build/site/index.js';
+import { ARTIFACT_HEADERS, DEFAULT_SHOW_LINK_TTL_SECONDS, NO_BUTTON_DESTINATION, signPreview } from '../src/build/site/index.js';
 import { createHandler } from '../src/server/app.js';
 import { MemoryObjectStore } from '../src/storage/index.js';
 import { enterNewWorkspace, one, useDb, useWorkspace } from './helpers.js';
@@ -30,7 +30,7 @@ afterEach(() => { server?.close(); server = null; });
 
 async function start(workspaceId: string, store = new MemoryObjectStore()) {
   const handler = createHandler({ pool: poolOver(db()), store, workspaceId, signingKey: SIGNING_KEY,
-    editLinkTtlSeconds: 900, showLinkTtlSeconds: 3600, log: () => undefined });
+    editLinkTtlSeconds: 900, showLinkTtlSeconds: DEFAULT_SHOW_LINK_TTL_SECONDS, log: () => undefined });
   server = http.createServer((req, res) => { void handler(req, res); });
   await new Promise<void>((r) => server!.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -95,21 +95,53 @@ describe('Build Workspace server', () => {
     expect((await call('GET', `/p/${forged}`)).status).toBe(404);
   });
 
-  it('shows an approved version and hands back a share page that frames the artifact in a sandbox', async () => {
+  it('shows an approved version only once its button has a destination, and hands back a sandboxed share page', async () => {
     const { seed, projectId, buildId, call } = await generated();
     expect((await call('POST', `/api/projects/${projectId}/versions/${buildId}/approve`, { approvedBy: 'Operator' })).status).toBe(200);
+    // A14: approved, but the button goes nowhere, so it cannot be shown.
+    const noButton = await call('POST', `/api/projects/${projectId}/versions/${buildId}/show`);
+    expect(noButton.status).toBe(409);
+    expect(noButton.json().error).toBe(NO_BUTTON_DESTINATION);
+    const v2 = String((await call('POST', `/api/projects/${projectId}/save`, { baseBuildId: buildId,
+      operations: [{ op: 'update_cta', action: { kind: 'whatsapp', value: '447700900123' } }] })).json().buildId);
+    expect((await call('POST', `/api/projects/${projectId}/versions/${v2}/approve`, { approvedBy: 'Operator' })).status).toBe(200);
     // PR4's gate still holds over HTTP: HIGH evidence needs a confirmed re-check first.
-    const early = await call('POST', `/api/projects/${projectId}/versions/${buildId}/show`);
+    const early = await call('POST', `/api/projects/${projectId}/versions/${v2}/show`);
     expect(early.status).toBe(409);
     expect(early.json().error).toMatch(/re-?check/i);
     await confirmRecheck(db(), seed, new Date(Date.now() - 60_000).toISOString());
-    const shown = await call('POST', `/api/projects/${projectId}/versions/${buildId}/show`);
+    const shown = await call('POST', `/api/projects/${projectId}/versions/${v2}/show`);
     expect(shown.status).toBe(200);
     const share = await call('GET', shown.json().url);
     expect(share.status).toBe(200);
     expect(share.text).toContain('not a live website');
     expect(share.text).toMatch(/<iframe[^>]+sandbox="allow-popups allow-popups-to-escape-sandbox"/);
     expect(share.text).not.toMatch(/allow-scripts|allow-same-origin/);
+    expect((await call('GET', shown.json().url.replace('/s/', '/p/'))).text).toContain('https://wa.me/447700900123');
+  });
+
+  it('revokes a prospect link at once, without touching the version (A15)', async () => {
+    const { seed, projectId, buildId, call } = await generated();
+    const v2 = String((await call('POST', `/api/projects/${projectId}/save`, { baseBuildId: buildId,
+      operations: [{ op: 'update_cta', action: { kind: 'phone', value: '+442079460000' } }] })).json().buildId);
+    await call('POST', `/api/projects/${projectId}/versions/${v2}/approve`, { approvedBy: 'Operator' });
+    await confirmRecheck(db(), seed, new Date(Date.now() - 60_000).toISOString());
+    const shown = (await call('POST', `/api/projects/${projectId}/versions/${v2}/show`)).json();
+    expect(Date.parse(shown.expiresAt) - Date.now()).toBeGreaterThan(72 * 3600_000 - 60_000);
+    const [link] = (await call('GET', `/api/projects/${projectId}/workspace`)).json().links;
+    expect(link).toMatchObject({ state: 'ACTIVE', versionNo: 2, url: shown.url });
+    const path = `/api/projects/${projectId}/links/${link.linkId}/revoke`;
+    expect((await call('POST', path, { revokedBy: 'Operator' }, { 'x-scopely-request': '1', origin: 'https://evil.test' })).status).toBe(403);
+    expect((await call('POST', path, { revokedBy: 'Operator' })).status).toBe(200);
+    expect((await call('GET', shown.url)).status).toBe(404);
+    expect((await call('GET', shown.url.replace('/s/', '/p/'))).status).toBe(404);
+    const view = (await call('GET', `/api/projects/${projectId}/workspace`)).json();
+    expect(view.links[0]).toMatchObject({ state: 'REVOKED', url: null, revokedBy: 'Operator' });
+    expect(view.current).toMatchObject({ buildId: v2, status: 'SHOWN' });
+    // A new link for the same version works; the revoked one stays revoked.
+    const fresh = (await call('POST', `/api/projects/${projectId}/versions/${v2}/link`, { kind: 'show' })).json();
+    expect((await call('GET', fresh.url)).status).toBe(200);
+    expect((await call('GET', shown.url)).status).toBe(404);
   });
 
   it('answers an unexpected failure without detail', async () => {

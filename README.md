@@ -34,7 +34,8 @@ says which stages are built, manual, a boundary only, or deferred.
   versions; a person edits it with validated operations (text, lists, images, button, colours,
   type, layout, sections) and a live preview; an AI edit turns a request into the same operations
   and makes a new version; approved and shown versions are immutable, hash-checked, write-once
-  files; and a prospect sees a shown version through a short-lived signed link. `pnpm serve` runs
+  files; a version is shown only once its button has a destination; and a prospect sees a shown
+  version through a signed link that lasts 72 hours unless the seller revokes it. `pnpm serve` runs
   the Build Workspace locally. See `docs/PRODUCT_MODEL.md` (Template-first website builds) and
   `docs/API_CONTRACT.md`.
 
@@ -126,7 +127,7 @@ SCOPELY_WORKSPACE_ID=<id> pnpm serve  # the Build Workspace on http://127.0.0.1:
 `pnpm serve` acts in one workspace, named by `SCOPELY_WORKSPACE_ID`, because nothing authenticates a
 person yet (B10); it listens on 127.0.0.1 only. It reads `PREVIEW_SIGNING_KEY` (at least 32
 characters; a random one is used, with a warning, when unset, so links stop working on restart),
-`SCOPELY_STORAGE_DIR` (default `.scopely/storage`) and `SHOW_LINK_TTL_HOURS` (default 72, B17).
+`SCOPELY_STORAGE_DIR` (default `.scopely/storage`) and `SHOW_LINK_TTL_HOURS` (default 72, A15).
 No model credential is read or needed.
 
 Tests read `TEST_DATABASE_ADMIN_URL` (default `postgres://scopely:scopely@localhost:5432/postgres`)

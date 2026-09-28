@@ -36,10 +36,25 @@ const SECTION_WORDS: [RegExp, string][] = [
   [/\bcontact\b/, 'contact'],
 ];
 
-const quoted = (s: string, after: RegExp): string | null => {
-  const m = s.match(new RegExp(`${after.source}[^"“”']{0,40}["“']([^"“”']{1,120})["”']`, 'i'));
-  return m ? m[1]!.trim() : null;
+// Copy is taken from double quotes, so an apostrophe inside it ("we're") is kept.
+const quoted = (s: string, after: RegExp, max = 900): string | null => {
+  const m = s.match(new RegExp(`${after.source}[^"“”]{0,40}["“]([^"“”]{1,${max}})["”]`, 'i'));
+  return m ? m[m.length - 1]!.trim() : null;
 };
+
+// Where copy in a request goes. The first match wins, so more specific names come first.
+const COPY_TARGETS: [RegExp, string, string][] = [
+  [/\b(supporting line|sub-?headline|sub-?heading|subtitle|hero text)\b/, 'hero', 'subheadline'],
+  [/\bheadline\b/, 'hero', 'headline'],
+  [/\b(tagline|eyebrow)\b/, 'hero', 'eyebrow'],
+  [/\bservices? (intro|introduction|text|copy)\b/, 'services', 'intro'],
+  [/\bservices? heading\b/, 'services', 'heading'],
+  [/\babout (heading|title)\b/, 'about', 'heading'],
+  [/\babout( us)? (text|copy|section|paragraph|body)\b/, 'about', 'body'],
+  [/\bcontact (heading|title)\b/, 'contact', 'heading'],
+  [/\bcontact (text|copy|section|body)\b/, 'contact', 'body'],
+  [/\bfooter( note| line| text)?\b/, 'footer', 'note'],
+];
 
 const numberIn = (s: string): string | null => {
   const m = s.match(/\+?[0-9][0-9\s().-]{6,}[0-9]/);
@@ -47,9 +62,10 @@ const numberIn = (s: string): string | null => {
 };
 
 /**
- * A deterministic interpreter: a fixed vocabulary of style, layout, section and button requests.
- * It never writes copy of its own beyond button labels, and never supplies a contact detail the
- * person did not write in the request.
+ * A deterministic interpreter: a fixed vocabulary of style, layout, section, button and copy
+ * requests. Copy comes from the request's quotes and lands in the slot the request names; a
+ * model-backed interpreter would draft it instead, through the same checks. It never supplies a
+ * contact detail the person did not write in the request.
  */
 export class RuleBasedEditInterpreter implements EditInterpreter {
   readonly key = 'rules';
@@ -84,7 +100,7 @@ export class RuleBasedEditInterpreter implements EditInterpreter {
 
     // The main button.
     const aboutButton = /\b(cta|button|call to action)\b/.test(r);
-    const label = quoted(request, /(?:cta|button|call to action)/);
+    const label = quoted(request, /(?:cta|button|call to action)/, 60);
     const num = numberIn(request);
     const current = document.cta.action;
     if (/\bwhats ?app\b/.test(r) && (aboutButton || /\bchange|switch|use|make\b/.test(r))) {
@@ -107,11 +123,24 @@ export class RuleBasedEditInterpreter implements EditInterpreter {
       ops.push({ op: 'update_cta', label });
     }
 
-    // Headline copy the person wrote.
-    const headline = quoted(request, /\bheadline\b/);
-    if (headline) ops.push({ op: 'update_text', section: 'hero', slot: 'headline', value: headline });
-    const tagline = quoted(request, /\b(tagline|eyebrow)\b/);
-    if (tagline) ops.push({ op: 'update_text', section: 'hero', slot: 'eyebrow', value: tagline });
+    // Copy. An AI edit may rewrite any text slot and service description (A16); what it writes goes
+    // through the claim check in operations.ts like any other AI text.
+    for (const [re, section, slot] of COPY_TARGETS) {
+      const text = quoted(request, re);
+      if (text && !ops.some((o) => (o as { section?: string; slot?: string }).section === section && (o as { slot?: string }).slot === slot)) {
+        ops.push({ op: 'update_text', section, slot, value: text });
+      }
+    }
+    // A service description: describe "Sports rehab" as "…"
+    const services = document.sections.find((x) => x.type === 'services');
+    const items = ((services?.content.items ?? []) as { title: string; text: string }[]).map((i) => ({ ...i }));
+    let described = false;
+    for (const m of request.matchAll(/describe\s+(?:the\s+)?["“]([^"“”]{1,80})["”]\s+(?:service\s+)?as\s+["“]([^"“”]{1,200})["”]/gi)) {
+      const item = items.find((i) => i.title.trim().toLowerCase() === m[1]!.trim().toLowerCase());
+      if (item) { item.text = m[2]!.trim(); described = true; }
+      else needsInput.push(`There is no service called "${m[1]!.trim()}". Add it in the editor first; an AI edit cannot add services.`);
+    }
+    if (described) ops.push({ op: 'update_items', section: 'services', slot: 'items', items });
 
     // Sections on and off, and order, one clause at a time ("hide the gallery and move services down").
     for (const clause of r.split(/\band\b|\bthen\b|[,;.]/)) {

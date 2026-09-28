@@ -258,6 +258,7 @@ async function setupView(pid) {
 
 const DEVICE_WIDTH = { desktop: 'desktop', tablet: 'tablet', mobile: 'mobile' };
 const SECTION_LETTER = { hero: 'H', services: 'S', about: 'A', proof: 'R', gallery: 'G', contact: 'C', footer: 'F' };
+const LINK_STATE = { ACTIVE: 'Active', EXPIRED: 'Expired', REVOKED: 'Revoked' };
 const CTA_KINDS = [['unset', 'Not set yet'], ['phone', 'Phone call'], ['whatsapp', 'WhatsApp'], ['email', 'Email'], ['link', 'Web link']];
 const CTA_PLACEHOLDER = { phone: '+44 20 7946 0000', whatsapp: '447700900123 (with country code)', email: 'enquiries@business.example', link: 'https://…' };
 
@@ -693,7 +694,7 @@ async function workspaceView(pid) {
         h('div', { class: 'ai-box' }, box, h('div', { class: 'suggest' }, SUGGEST.map((s) => h('button', { onclick: () => { box.value = s; box.focus(); } }, s)))),
         h('div', { class: 'row' }, go_, S.ops.length ? h('span', { class: 'muted small', text: 'Your unsaved changes are saved first.' }) : null),
         result,
-        h('div', { class: 'note info', text: 'AI edits change design, layout, sections and button labels. They never invent prices, reviews, credentials or contact details; if one is needed, you are asked for it.' }))];
+        h('div', { class: 'note info', text: 'AI edits change design, layout, sections and copy. Copy is checked like everything Scopely writes: no invented prices, reviews, credentials, locations, history, guarantees, services or contact details. If one is needed, you are asked for it.' }))];
   }
 
   // ---------------------------------------------------------------- Versions, approval and showing
@@ -719,19 +720,32 @@ async function workspaceView(pid) {
     } else if (cur.status === 'APPROVED') {
       gate = h('div', { class: 'stack' },
         h('p', { text: `Version ${cur.versionNo} is approved. Showing it records that the prospect saw it and gives you a private link to send. It is a preview, not a live website.` }),
-        cur.showBlocker ? h('div', { class: 'note warn', text: cur.showBlocker }) : null,
+        cur.showBlocker ? h('div', { class: 'note warn' }, cur.showBlocker,
+          cur.document.cta.action.kind === 'unset' ? h('div', { style: 'margin-top:8px' }, h('button', { class: 'btn sm', onclick: () => select('hero') }, 'Add the destination')) : null) : null,
         h('button', { class: 'btn good', disabled: Boolean(cur.showBlocker) || pending > 0 || S.busy, onclick: async () => {
-          try { S.share = await api('POST', `/projects/${pid}/versions/${cur.buildId}/show`); await reload(`Version ${cur.versionNo} marked shown`); }
+          try { await api('POST', `/projects/${pid}/versions/${cur.buildId}/show`); await reload(`Version ${cur.versionNo} marked shown`); }
           catch (err) { toast(err.message, 'bad'); }
         } }, 'Show to prospect'),
         h('p', { class: 'hint', text: 'Editing after approval makes a new version; this one stays exactly as approved.' }));
     } else {
+      const who = () => { try { return localStorage.getItem('scopely.approver') || ''; } catch { return ''; } };
+      const links = S.view.links.filter((l) => l.versionNo === cur.versionNo);
+      const linkRow = (l) => h('div', { class: 'link-row' },
+        h('div', { class: 'row' }, h('span', { class: `badge ${l.state.toLowerCase()}`, text: LINK_STATE[l.state] }),
+          h('span', { class: 'muted small grow', text: l.state === 'REVOKED' ? `Revoked ${date(l.revokedAt)} by ${l.revokedBy}` : `${l.state === 'ACTIVE' ? 'Works until' : 'Ended'} ${date(l.expiresAt)}` }),
+          l.state === 'ACTIVE' ? h('button', { class: 'btn sm danger', onclick: async () => {
+            if (!confirm('Revoke this link? Anyone who has it will no longer be able to open the preview. The version itself does not change.')) return;
+            try { await api('POST', `/projects/${pid}/links/${l.linkId}/revoke`, { revokedBy: who() || 'seller' }); await reload('Link revoked'); }
+            catch (err) { toast(err.message, 'bad'); }
+          } }, 'Revoke') : null),
+        l.url ? h('div', { class: 'share-link' }, h('input', { type: 'text', readonly: true, value: new URL(l.url, location.href).href, 'aria-label': 'Prospect link', onfocus: (e) => e.target.select() }),
+          h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(new URL(l.url, location.href).href); toast('Link copied'); } catch { toast('Select the link and copy it'); } } }, 'Copy')) : null);
       gate = h('div', { class: 'stack' },
         h('p', { text: `Version ${cur.versionNo} was shown on ${date(S.view.versions.find((v) => v.buildId === cur.buildId)?.shownAt)}. It can no longer change; edits make a new version.` }),
-        S.share ? h('div', {}, h('div', { class: 'share-link' }, h('input', { type: 'text', readonly: true, value: new URL(S.share.url, location.href).href, onfocus: (e) => e.target.select() }),
-          h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(new URL(S.share.url, location.href).href); toast('Link copied'); } catch { toast('Select the link and copy it'); } } }, 'Copy')),
-          h('p', { class: 'hint', text: `Private link. It expires on ${date(S.share.expiresAt)}. Nothing is published.` }))
-          : h('button', { class: 'btn', onclick: async () => { try { S.share = await api('POST', `/projects/${pid}/versions/${cur.buildId}/link`, { kind: 'show' }); drawPanel(); } catch (err) { toast(err.message, 'bad'); } } }, 'Get share link'));
+        h('div', { class: 'stack-sm' }, links.length ? links.map(linkRow) : h('p', { class: 'muted small', text: 'No prospect links yet.' })),
+        h('div', { class: 'row' },
+          h('button', { class: 'btn', onclick: async () => { try { await api('POST', `/projects/${pid}/versions/${cur.buildId}/link`, { kind: 'show' }); await reload('New link ready'); } catch (err) { toast(err.message, 'bad'); } } }, 'New prospect link')),
+        h('p', { class: 'hint', text: 'Private links. Each one works for 72 hours unless you revoke it sooner. Nothing is published.' }));
     }
     return [panelHead('Versions', 'Every save and AI edit is a new version. Approved and shown versions never change.'),
       h('div', { class: 'panel-body' },

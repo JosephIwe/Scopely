@@ -276,12 +276,18 @@ template names a business, place, seller or price.
   variants, palettes, image ids, contact formats). One bad operation refuses the whole batch. The
   browser sends operations and receives rendered HTML; it never sends HTML.
 - **AI edits propose; they do not apply.** An `EditInterpreter` turns a request into operations,
-  which go through the same validator with origin `ai`. An AI operation may not add a claim
-  (numbers, prices, reviews, credentials, history, superlatives, "now you can book online") and may
-  not supply a phone, WhatsApp number, email or link the person did not write in the request; when
-  one is needed it asks. The interpreter in this slice is deterministic (`modelUse = NONE`), so no
-  model is called and no cost is recorded. A model-backed interpreter would receive a
-  `ModelProvider` from the run's provider connection; it never sees a key.
+  which go through the same validator with origin `ai`. Since A16 an AI edit may rewrite copy
+  (headline, supporting text, section text, service descriptions, button labels), but every word
+  passes the claim check: no numbers or statistics, prices, reviews, awards, credentials or
+  expertise, history or years of experience, guarantees, memberships, locations, "we offer …"
+  service claims, "now you can book online", contact details, markup or code. It may reword a
+  service's description but not add or rename a service (or a contact detail such as hours), and
+  it may not supply a phone, WhatsApp number, email or link the person did not write in the
+  request; when one is needed it asks. A sourced fact such as the review rating is rendered from
+  the fact, never written as copy. A refused edit makes no version. The interpreter in this slice
+  is deterministic (`modelUse = NONE`): it places the copy a request quotes into the slot the
+  request names. A model-backed interpreter would draft copy instead, through the same checks,
+  receiving a `ModelProvider` from the run's provider connection; it never sees a key.
 - **Versions.** Generation and AI edits are build runs (Slice 4's `executeBuildRun`), so they
   produce a DRAFT or nothing. The executor checks that the agent's files are inside its own run
   prefix and match their hashes, and removes them if the run fails. A person's saved edits and a
@@ -289,13 +295,18 @@ template names a business, place, seller or price.
   evidence. Edits apply only to the newest version; approved and shown versions never change, and
   migration 010 refuses a stored artifact outside the project's `versions/` prefix or without a
   hash.
-- **Approve and show are Slice 4's gates.** A person approves; an agent cannot. Showing needs the
-  approval and, for HIGH evidence, a confirmed re-check.
-- **Preview links** are HMAC-signed tokens naming workspace, project, version, kind (`edit` for 15
-  minutes, `show` for 72 hours by default) and expiry. Opening one re-reads the version inside the
-  token's workspace and checks the artifact's hash. The artifact is served with a sandboxing
-  content security policy; a `show` link opens a page that says it is a design preview, not a live
-  website.
+- **Approve and show are Slice 4's gates,** plus one for websites (A14): a version whose main
+  button has no destination can be approved but not shown, and the artifact never renders a
+  button that goes nowhere. A person approves; an agent cannot. Showing needs the approval and,
+  for HIGH evidence, a confirmed re-check.
+- **Preview links** are HMAC-signed tokens naming workspace, project, version, kind and expiry.
+  An `edit` link (the Build Workspace's own, 15 minutes) is stateless. A `show` link, for a
+  prospect, also names a `preview_links` row (A15): it lasts 72 hours by default, and the seller
+  can revoke it, which stops it on the next request. Its state is ACTIVE, EXPIRED or REVOKED;
+  revoking never changes the version. Opening a link re-reads the version (and the link row)
+  inside the token's workspace and checks the artifact's hash. The artifact is served with a
+  sandboxing content security policy; a `show` link opens a page that says it is a design
+  preview, not a live website.
 
 ## Selling from the seller's own mailbox
 

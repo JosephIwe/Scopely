@@ -16,7 +16,7 @@ import type pg from 'pg';
 import { listOpportunities } from '../api/queries.js';
 import {
   ARTIFACT_HEADERS, type EditInterpreter, EditRejected, SiteError, approveVersion, generateSite, getBuildSetup, getSiteWorkspace,
-  loadPreviewArtifact, openWebsiteProject, previewLink, renderDraft, requestAiEdit, restoreVersion, saveEdits, showVersion, uploadImage,
+  listProspectLinks, loadPreviewArtifact, openWebsiteProject, previewLink, renderDraft, requestAiEdit, restoreVersion, revokeProspectLink, saveEdits, showVersion, uploadImage,
   verifyPreview,
 } from '../build/site/index.js';
 import type { ObjectStore } from '../storage/index.js';
@@ -133,6 +133,10 @@ export function createHandler(cfg: ServerConfig) {
       },
       template: w.template,
       images: w.images,
+      links: (await listProspectLinks(db, projectId, { signingKey: cfg.signingKey })).map((l) => ({
+        linkId: l.linkId, versionNo: l.versionNo, state: l.state, createdAt: l.createdAt, expiresAt: l.expiresAt,
+        revokedAt: l.revokedAt, revokedBy: l.revokedBy, url: l.token ? `/s/${l.token}` : null,
+      })),
     };
   }
 
@@ -205,6 +209,13 @@ export function createHandler(cfg: ServerConfig) {
       const description = decodeURIComponent(String(req.headers['x-description'] ?? '')).slice(0, 400);
       return json(res, 200, await tx((db) => uploadImage(db, cfg.store, pid, { bytes, description, recordedBy: 'seller' })));
     }
+    if (c === 'links' && m === 'POST' && e === 'revoke') {
+      const lid = id(d);
+      const bd = await jsonBody(req);
+      await tx((db) => revokeProspectLink(db, pid, lid, { revokedBy: String(bd.revokedBy ?? '') }));
+      log(`link ${lid} revoked`);
+      return json(res, 200, { ok: true });
+    }
     if (c === 'versions' && m === 'POST') {
       const bid = id(d);
       if (e === 'approve') {
@@ -215,10 +226,10 @@ export function createHandler(cfg: ServerConfig) {
       }
       if (e === 'show') {
         const link = await tx(async (db) => {
-          await showVersion(db, pid, bid);
+          await showVersion(db, cfg.store, pid, bid);
           return previewLink(db, pid, bid, { kind: 'show', signingKey: cfg.signingKey, ttlSeconds: cfg.showLinkTtlSeconds });
         });
-        log(`version ${bid} shown`);
+        log(`version ${bid} shown, link ${link.linkId}`);
         return json(res, 200, { url: `/s/${link.token}`, expiresAt: link.expiresAt });
       }
       if (e === 'link') {
@@ -226,6 +237,7 @@ export function createHandler(cfg: ServerConfig) {
         const kind = bd.kind === 'show' ? 'show' : 'edit';
         const link = await tx((db) => previewLink(db, pid, bid, { kind, signingKey: cfg.signingKey,
           ttlSeconds: kind === 'show' ? cfg.showLinkTtlSeconds : cfg.editLinkTtlSeconds }));
+        if (link.linkId) log(`link ${link.linkId} created for version ${bid}`);
         return json(res, 200, { url: kind === 'show' ? `/s/${link.token}` : `/p/${link.token}`, expiresAt: link.expiresAt });
       }
     }

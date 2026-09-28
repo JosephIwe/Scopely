@@ -213,6 +213,13 @@ function applyOne(doc: SiteDocument, op: EditOperation, env: EditEnv): void {
       const slot = spec.slots[op.slot];
       if (!slot || slot.kind !== 'items') throw new Error(`${spec.name} has no list ${op.slot.slice(0, 30)}`);
       if (op.items.length > slot.max) throw new Error(`${slot.label} holds at most ${slot.max}`);
+      // An AI edit may reword what an entry says, but not add or rename one: a new service, hour or
+      // area would be a claim about the business (A16). Only a person lists them.
+      if (env.origin === 'ai') {
+        const known = new Set((s.content[op.slot] as { title: string }[]).map((i) => i.title.trim().toLowerCase()));
+        const unknown = op.items.find((i) => !known.has(cleanText(i.title, false).toLowerCase()));
+        if (unknown) throw new Error(`an AI edit cannot add or rename ${slot.label.toLowerCase()}; a person must list them`);
+      }
       const items = op.items.map((i) => {
         const title = cleanText(i.title, false);
         const text = cleanText(i.text, false);
