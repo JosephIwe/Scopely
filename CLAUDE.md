@@ -32,6 +32,15 @@ open item in code.
 13. **BUILD/FIX is a boundary, not a generator.** A builder receives `loadBuildInput` (cited
     evidence only, never page HTML) and returns an artifact reference. A demo build is never
     delivery or revenue.
+14. **Scopely is multi-user.** Every commercial row has a `workspace_id` and a new owned table
+    gets one too, with the `a00_workspace_guard` trigger and a `workspace_isolation` RLS policy.
+    Never add a default workspace, user, sender, niche, country, currency or price. Never name the
+    first operator (their mailbox, company or campaign) outside `docs/MANUAL_VALIDATION.md`; a
+    test scans `src`, `scripts` and migrations from 007 on for it. Queries in `src/api` filter by
+    `current_workspace_id()` explicitly as well as relying on RLS.
+15. **Unknown stays unknown.** Firmographics carry basis, source and date; an estimate is never
+    shown as verified. Pre-qualification sends unknown data to review. Revenue is never converted
+    between currencies.
 
 ## Tests
 

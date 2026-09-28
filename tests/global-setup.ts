@@ -7,7 +7,7 @@ import type { TestProject } from 'vitest/node';
 import { migrate } from '../src/db/migrate.js';
 
 declare module 'vitest' {
-  export interface ProvidedContext { dbUrl: string }
+  export interface ProvidedContext { dbUrl: string; appRole: string }
 }
 
 const ADMIN_URL = process.env.TEST_DATABASE_ADMIN_URL ?? 'postgres://scopely:scopely@localhost:5432/postgres';
@@ -23,12 +23,20 @@ export default async function setup(project: TestProject) {
   await client.connect();
   const first = await migrate(client);
   const second = await migrate(client); // idempotency: a re-run applies nothing
+  // A non-owner role, as the application would connect, so row-level security applies to it.
+  const appRole = `${name}_app`;
+  await client.query(`CREATE ROLE ${appRole} NOLOGIN`);
+  await client.query(`GRANT USAGE ON SCHEMA scopely TO ${appRole}`);
+  await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA scopely TO ${appRole}`);
+  await client.query(`GRANT USAGE ON ALL SEQUENCES IN SCHEMA scopely TO ${appRole}`);
   await client.end();
   if (second.applied.length !== 0) throw new Error('migrations re-applied on second run');
   if (first.applied.length === 0) throw new Error('no migrations applied');
   project.provide('dbUrl', url.toString());
+  project.provide('appRole', appRole);
   return async () => {
     await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+    await admin.query(`DROP ROLE IF EXISTS ${appRole}`);
     await admin.end();
   };
 }

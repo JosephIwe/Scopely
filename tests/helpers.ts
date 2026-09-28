@@ -11,9 +11,30 @@ export function useDb(): { db: () => pg.Client } {
     await client.query('SET search_path = scopely, public');
   });
   afterAll(async () => { await client.end(); });
-  beforeEach(async () => { await client.query('BEGIN'); });
+  beforeEach(async () => {
+    await client.query('BEGIN');
+    await enterNewWorkspace(client, 'test');
+  });
   afterEach(async () => { await client.query('ROLLBACK'); });
   return { db: () => client };
+}
+
+/** Creates a workspace and makes it the transaction's request context (scopely.workspace_id). */
+export async function enterNewWorkspace(db: pg.Client, label: string): Promise<string> {
+  const slug = `${label}-${Math.random().toString(36).slice(2, 10)}`;
+  const ws = await one<{ id: string }>(db, 'INSERT INTO workspaces (slug, name) VALUES ($1, $2) RETURNING id', [slug, label]);
+  await useWorkspace(db, ws.id);
+  return ws.id;
+}
+
+export async function useWorkspace(db: pg.Client, workspaceId: string): Promise<void> {
+  await db.query(`SELECT set_config('scopely.workspace_id', $1, true)`, [workspaceId]);
+}
+
+/** A mailbox of the current workspace, registered for recording manual sends. */
+export async function manualMailbox(db: pg.Client, email = 'seller@seller.test'): Promise<string> {
+  return (await one<{ id: string }>(db,
+    `INSERT INTO mailbox_connections (provider, email) VALUES ('google_workspace', $1) RETURNING id`, [email])).id;
 }
 
 /** Runs `sql` in a savepoint and returns the error message, or null if it succeeded. */
@@ -75,4 +96,34 @@ export async function seedOpportunity(db: pg.Client, chain: Awaited<ReturnType<t
     [chain.businessId, chain.marketId, cat, price]);
   await db.query('INSERT INTO opportunity_evidence (opportunity_id, evidence_id) VALUES ($1, $2)', [opp.id, chain.evidenceId]);
   return opp.id;
+}
+
+/**
+ * Runs `fn` as the application role (not the table owner) acting in `workspaceId`, so row-level
+ * security applies exactly as it would to a request. Restores the owner and workspace afterwards.
+ */
+export async function asApp<T>(db: pg.Client, workspaceId: string | null, fn: () => Promise<T>): Promise<T> {
+  const prior = (await db.query<{ ws: string | null }>(`SELECT current_setting('scopely.workspace_id', true) AS ws`)).rows[0]!.ws;
+  await db.query(`SET LOCAL ROLE ${inject('appRole')}`);
+  await db.query(`SELECT set_config('scopely.workspace_id', $1, true)`, [workspaceId ?? '']);
+  try {
+    return await fn();
+  } finally {
+    await db.query('RESET ROLE');
+    await db.query(`SELECT set_config('scopely.workspace_id', $1, true)`, [prior ?? '']);
+  }
+}
+
+/** Runs `fn` in a savepoint and returns its error message, or null if it succeeded. */
+export async function refused(db: pg.Client, fn: () => Promise<unknown>): Promise<string | null> {
+  await db.query('SAVEPOINT r');
+  try {
+    await fn();
+    await db.query('SET CONSTRAINTS ALL IMMEDIATE');
+    await db.query('RELEASE SAVEPOINT r');
+    return null;
+  } catch (err) {
+    await db.query('ROLLBACK TO SAVEPOINT r');
+    return (err as Error).message;
+  }
 }

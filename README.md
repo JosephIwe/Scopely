@@ -1,13 +1,14 @@
 # Scopely
 
-Scopely is an opportunity-to-revenue platform for sellers of digital services. It is not an
-auditor. It finds a business, observes a real, fixable problem on the business's own site,
-attaches the evidence, maps that problem to a service Joseph can sell at a known price, can build
+Scopely is a multi-user opportunity-to-revenue platform for sellers of digital services. Each
+seller works in their own workspace. It is not an auditor. It finds a business the seller is
+looking for, observes a real, fixable problem on the business's own site,
+attaches the evidence, maps that problem to a service the seller can sell at a known price, can build
 the fix before the pitch, records what happened commercially, and later verifies the fix against a
 fresh snapshot.
 
 ```
-FIND → evidence → opportunity → service → BUILD/FIX → SELL → DELIVER → VERIFY → GET PAID
+DISCOVER → PRE-QUALIFY → ANALYZE → evidence → opportunity → service → BUILD/FIX → SELL → DELIVER → VERIFY → GET PAID
 ```
 
 The metric that matters is **revenue and gross profit per 100 prospects**. It is not the number
@@ -22,6 +23,12 @@ says which stages are built, manual, a boundary only, or deferred.
   gates (lawful recipient, suppression, re-checked evidence), pitch traceability, the per-
   opportunity ledger view, a `pnpm record` operator CLI, and the BUILD/FIX data model and builder
   interface with no builder implemented. See `docs/MANUAL_VALIDATION.md` and `docs/DECISIONS.md`.
+- **Slice 3 (multi-user discovery):** workspaces, users and memberships; workspace ownership,
+  guards and row-level security on every commercial row; per-workspace mailboxes and suppression;
+  searches (ICP with employee and revenue ranges in their own currency), search runs,
+  pre-qualification, analysis caps and credit budgets; website status; Website and Fix
+  opportunities in one feed; and the read contract for the frontend. No discovery provider is
+  implemented. See `docs/PRODUCT_MODEL.md` and `docs/API_CONTRACT.md`.
 
 There is **no crawler, no AI, no sending and no cloud resource**. Nothing here contacts a business:
 `messages.sent_at` records a send made by hand.
@@ -49,7 +56,12 @@ not zero. The database enforces this, not the application:
 | CLIENT_REQUIRED work is never recorded as delivered by us | `outcome_guard` |
 | A verification uses a snapshot taken after the evidence | `verification_guard` |
 | A re-check uses a later snapshot and re-runs the same check and rule version; re-checks are append-only | `evidence_recheck_guard`, `evidence_rechecks_append_only` |
-| A message is approved only for a contact of the same business with a lawful basis (UK: active Ltd/LLP), not suppressed | `message_gate`, `contact_outreach_blocker` |
+| A message is approved only for a contact of the same business with a lawful basis (UK: active Ltd/LLP), not suppressed by that workspace's email, domain or business suppression | `message_gate`, `contact_outreach_blocker`, `outreach_basis_rules` |
+| A message is sent from a mailbox of its own workspace; there is no global sender | `a10_message_addresses`, `messages_sender_check` |
+| Every commercial row belongs to one workspace and never references another's | `a00_workspace_guard`, row-level security |
+| Unknown employee count and revenue stay NULL; an estimate carries its basis, source and date | `businesses_employees_check`, `businesses_revenue_check` |
+| A failed fetch is never "no website"; a no-website finding needs `WEBSITE_NOT_OBSERVED` | `businesses_website_*` checks, `evidence_website_status_guard` |
+| A rejected or unselected business is never analysed; a run never passes its analysis cap or credit budget | `search_run_business_guard`, `cost_event_run_guard` |
 | A message is marked sent only after approval, with HIGH evidence re-checked and confirmed and no evidence changed or gone | `message_gate`, `evidence_send_blocker` |
 | Approved message or build content cannot change without a new approval; sent or shown content cannot change | `message_gate`, `build_guard` |
 | A build fixes cited evidence of its own mapped opportunity; a DELIVERY build needs a win; a demo is shown only when approved and re-checked | `build_guard`, `build_evidence_guard`, `build_has_evidence` |
@@ -96,7 +108,8 @@ cp .env.example .env                  # DATABASE_URL for your dev database
 pnpm migrate                          # apply migrations/ in order (sha256 ledger)
 pnpm test                             # creates a throwaway database, migrates twice, runs, drops it
 pnpm check                            # typecheck + test
-pnpm record <command> <file.json|->   # manual recording, see docs/MANUAL_VALIDATION.md
+pnpm record workspace <file.json>     # provision a workspace
+SCOPELY_WORKSPACE_ID=<id> pnpm record <command> <file.json|->   # see docs/MANUAL_VALIDATION.md
 ```
 
 Tests read `TEST_DATABASE_ADMIN_URL` (default `postgres://scopely:scopely@localhost:5432/postgres`)
