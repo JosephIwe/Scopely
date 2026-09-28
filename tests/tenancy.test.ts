@@ -231,6 +231,42 @@ describe('every owned table keeps its references and rows inside one workspace',
   });
 });
 
+describe('builds and their costs stay inside one workspace', () => {
+  const insertBuild = `INSERT INTO builds (opportunity_id, catalog_item_id, build_kind, purpose, title, summary, generator, supersedes_build_id)
+    VALUES ($1, $2, 'website_fix', 'DEMO', 't', 's', 'operator', $3) RETURNING id`;
+  const cross = /WORKSPACE: .* belongs to workspace/;
+
+  it('refuses a build, revision, citation or cost in one workspace that points at another workspace\'s build, item, evidence or run', async () => {
+    const A = await populate(db(), 'alpha');
+    const aBuild = (await one<{ id: string }>(db(), insertBuild, [A.opp, await catalogId(db(), 'website_fix_sprint'), null])).id;
+    const aItem = (await one<{ id: string }>(db(), `INSERT INTO catalog_items (key, service, description, build_kind) VALUES ('own_fix', 'Own fix', 'o', 'website_fix') RETURNING id`)).id;
+    await enterNewWorkspace(db(), 'beta');
+    const B = await seedChain(db());
+    const bOpp = await seedOpportunity(db(), B);
+    const bBuild = (await one<{ id: string }>(db(), insertBuild, [bOpp, await catalogId(db(), 'website_fix_sprint'), null])).id;
+
+    // A revision (the supersedes chain that carries versions) cannot continue another workspace's build.
+    expect(await failure(db(), insertBuild, [bOpp, await catalogId(db(), 'website_fix_sprint'), aBuild])).toMatch(cross);
+    // A build cannot use another workspace's own catalog item, even on its own opportunity.
+    expect(await failure(db(), insertBuild, [bOpp, aItem, null])).toMatch(cross);
+    // A build cannot cite another workspace's evidence.
+    expect(await failure(db(), 'INSERT INTO build_evidence (build_id, evidence_id) VALUES ($1, $2)', [bBuild, A.evidenceId])).toMatch(cross);
+    // Cost cannot be attributed to another workspace's build or search run.
+    expect(await failure(db(), `INSERT INTO cost_events (business_id, opportunity_id, build_id, kind) VALUES ($1, $2, $3, 'llm_call')`, [B.businessId, bOpp, aBuild])).toMatch(cross);
+    expect(await failure(db(), `INSERT INTO cost_events (business_id, search_run_id, kind, credits) VALUES ($1, $2, 'enrichment', 1)`, [B.businessId, A.runId]))
+      .toMatch(cross);
+    // Nor can an existing build or cost be pointed across, or moved.
+    expect(await failure(db(), 'UPDATE builds SET supersedes_build_id = $2 WHERE id = $1', [bBuild, aBuild])).toMatch(cross);
+    const bCost = (await one<{ id: string }>(db(), `INSERT INTO cost_events (business_id, opportunity_id, build_id, kind) VALUES ($1, $2, $3, 'llm_call') RETURNING id`,
+      [B.businessId, bOpp, bBuild])).id;
+    expect(await failure(db(), 'UPDATE cost_events SET build_id = $2 WHERE id = $1', [bCost, aBuild])).toMatch(cross);
+    await useWorkspace(db(), await one<{ ws: string }>(db(), 'SELECT workspace_id::text AS ws FROM builds WHERE id = $1', [aBuild]).then((r) => r.ws));
+    const b = (await one<{ ws: string }>(db(), 'SELECT workspace_id::text AS ws FROM builds WHERE id = $1', [bBuild])).ws;
+    expect(await failure(db(), 'UPDATE builds SET workspace_id = $2 WHERE id = $1', [aBuild, b])).toMatch(/cannot move/);
+    expect(await failure(db(), 'UPDATE cost_events SET workspace_id = $2 WHERE build_id IS NULL AND business_id = $1', [A.businessId, b])).toMatch(/cannot move/);
+  });
+});
+
 describe('suppression respects workspace boundaries', () => {
   async function lawful(d: pg.Client, domain: string) {
     const c = await seedChain(d);
