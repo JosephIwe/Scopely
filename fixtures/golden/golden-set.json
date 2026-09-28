@@ -1,0 +1,4133 @@
+{
+  "schema_version": 1,
+  "generated_from": {
+    "repository": "JosephIwe/OutboundOS",
+    "files": [
+      {
+        "file": "round1-qualification-50.csv",
+        "branch": "claude/project-thread-21rutk",
+        "commit": "32d97c0d8cd0b42683f10012a70caf4c05c1a43e",
+        "path": "research/qualification-50.csv",
+        "sha256": "078616dc638491046776d10d0b84c8557875cb2e4bbe87b7f4a1e0a5103a734d"
+      },
+      {
+        "file": "round1-qualification-evidence.json",
+        "branch": "claude/project-thread-21rutk",
+        "commit": "32d97c0d8cd0b42683f10012a70caf4c05c1a43e",
+        "path": "research/qualification-evidence.json",
+        "sha256": "33c20db332ccffa83187f4628e5000d2f064299c4fd941dba74032d61bbb6e53"
+      },
+      {
+        "file": "round2-prospects.csv",
+        "branch": "claude/project-thread-zi9g6y",
+        "commit": "f2c7ab1c43f2316217a29891f6a4f48c00a5a74b",
+        "path": "research/round2/round2-prospects.csv",
+        "sha256": "33b96aceef933c3e26dc066832032684af963d641c47ddb3993ace7b508f51c2"
+      },
+      {
+        "file": "round2-report.md",
+        "branch": "claude/project-thread-zi9g6y",
+        "commit": "f2c7ab1c43f2316217a29891f6a4f48c00a5a74b",
+        "path": "research/round2/round2-report.md",
+        "sha256": "a74ce52a56d2808a72fa4f10d2703ed325bd5343946ddf22c1cb59706e117660"
+      }
+    ]
+  },
+  "counts": {
+    "cases": 103,
+    "current_cases": 91,
+    "superseded_cases": 12,
+    "round1": 50,
+    "round2": 53,
+    "current_qualified": 17,
+    "current_rejected": 56,
+    "current_needs_browser_check": 18,
+    "findings_observed": 31,
+    "observations_booking_platform": 31,
+    "findings_needs_browser_check": 15,
+    "findings_must_not_claim": 4
+  },
+  "cases": [
+    {
+      "id": "r1-the-mw-clinic-london",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "The MW Clinic London",
+        "website_as_recorded": "mwcliniclondon.com",
+        "domain": "mwcliniclondon.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Independent single-site W1 clinic (29 Weymouth St), founder Dr Meg Minasian",
+      "historical_offer": "$150 (fix WhatsApp + booking path), upsell $300",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-LINK-TARGET-MISMATCH",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Header link \"WhatsApp: 0800 772 0300\" is coded as href \"tel:WhatsApp:  0800 772 0300\"",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 2,
+            "field": "main_problem"
+          },
+          "url": "https://mwcliniclondon.com/",
+          "url_basis": "business_website"
+        },
+        {
+          "issue_code": "E-TEL-BROKEN",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "is coded as href \"tel:WhatsApp:  0800 772 0300\"",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 2,
+            "field": "main_problem"
+          },
+          "url": "https://mwcliniclondon.com/",
+          "url_basis": "business_website"
+        },
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "\"BOOK CONSULTATION\" goes to a general contact form with no date/time choice",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 2,
+            "field": "main_problem"
+          },
+          "url": "https://mwcliniclondon.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 2
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 802
+        }
+      ]
+    },
+    {
+      "id": "r1-phi-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "PHI Clinic",
+        "website_as_recorded": "phiclinic.com",
+        "domain": "phiclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Owner-led single Harley St clinic (102 Harley St W1G 7JB), 11-50 staff",
+      "historical_offer": "$300 (self-booking + instant auto-reply / WhatsApp)",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Every \"Book Consultation\" CTA goes to a callback form (\"Best time to call: Morning/Afternoon/Evening\")",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 3,
+            "field": "main_problem"
+          },
+          "url": "https://phiclinic.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 3
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 431
+        }
+      ]
+    },
+    {
+      "id": "r1-wimpole-aesthetics",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Wimpole Aesthetics",
+        "website_as_recorded": "wimpoleaesthetics.co.uk",
+        "domain": "wimpoleaesthetics.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Independent single-site Marylebone clinic (48 Wimpole St W1G 8SF), doctors named",
+      "historical_offer": "$300 (online booking or instant confirm + WhatsApp)",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "\"Book a consultation\" is a request form (\"an expert will be in touch to arrange your booking\")",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 4,
+            "field": "main_problem"
+          },
+          "url": "https://wimpoleaesthetics.co.uk/",
+          "url_basis": "business_website"
+        },
+        {
+          "issue_code": "E-CONTENT-ERROR",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "label typo \"consulation\"",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 4,
+            "field": "main_problem"
+          },
+          "url": "https://wimpoleaesthetics.co.uk/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 4
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 1008
+        }
+      ]
+    },
+    {
+      "id": "r1-dr-haus-dermatology-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Dr Haus Dermatology Clinic",
+        "website_as_recorded": "drhausdermatology.com",
+        "domain": "drhausdermatology.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Independent single Harley St dermatology + laser clinic since 2010 (75 Harley St W1G 8QL)",
+      "historical_offer": "$300 (bookable consultation slot + shorter form)",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "No direct booking: \"Enquire Now\" goes to a 9-field enquiry form or a Calendly \"Book a call back\"",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 5,
+            "field": "main_problem"
+          },
+          "url": "https://drhausdermatology.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 5
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 481
+        }
+      ]
+    },
+    {
+      "id": "r1-avika-aesthetics-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Avika Aesthetics Clinic",
+        "website_as_recorded": "avikaaesthetics.co.uk",
+        "domain": "avikaaesthetics.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Small independent, 2 London sites (Marylebone W1G 6BP, Walthamstow E17 7JH)",
+      "historical_offer": "$150 (tidy-up + WhatsApp + lead capture), upsell $300",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-STALE-SIGNAL",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Footer still \"©2023\"",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 6,
+            "field": "main_problem"
+          },
+          "url": "https://avikaaesthetics.co.uk/",
+          "url_basis": "business_website"
+        },
+        {
+          "issue_code": "E-STALE-SIGNAL",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "header \"contact\" links to old /contact.php while other links use /contact",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 6,
+            "field": "main_problem"
+          },
+          "url": "https://avikaaesthetics.co.uk/",
+          "url_basis": "business_website"
+        },
+        {
+          "issue_code": "E-ABSENT-FEATURE",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "only contact number is a mobile (07897020331) with no WhatsApp link",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 6,
+            "field": "main_problem"
+          },
+          "url": "https://avikaaesthetics.co.uk/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 6
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 663
+        }
+      ]
+    },
+    {
+      "id": "r1-the-harper-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "The Harper Clinic",
+        "website_as_recorded": "theharperclinic.com",
+        "domain": "theharperclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Founder-led single Harley St clinic (39 Harley St W1G 8QH); menopause-led with a skincare & aesthetics line",
+      "historical_offer": "$300 (booking flow + auto-reply)",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "All \"Book\" buttons go to a general enquiry form where booking is one dropdown option next to \"Media enquiry\"",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 7,
+            "field": "main_problem"
+          },
+          "url": "https://theharperclinic.com/",
+          "url_basis": "business_website"
+        },
+        {
+          "issue_code": "E-STALE-SIGNAL",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "footer \"© 2024\"",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 7,
+            "field": "main_problem"
+          },
+          "url": "https://theharperclinic.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 7
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 337
+        }
+      ]
+    },
+    {
+      "id": "r1-absolute-aesthetics",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Absolute Aesthetics",
+        "website_as_recorded": "absoluteaesthetics.co.uk",
+        "domain": "absoluteaesthetics.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Small independent 2-site practice; London site at One Chapel Place W1G 0BG, main base Guildford",
+      "historical_offer": "$150 (London page + booking button), upsell $300",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-STALE-SIGNAL",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Footer \"©Copyright 2021\"",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 8,
+            "field": "main_problem"
+          },
+          "url": "https://absoluteaesthetics.co.uk/",
+          "url_basis": "business_website"
+        },
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "no online booking (enquiry form with a \"Yes I would like to book a consultation\" checkbox)",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 8,
+            "field": "main_problem"
+          },
+          "url": "https://absoluteaesthetics.co.uk/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 8
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 732
+        }
+      ]
+    },
+    {
+      "id": "r1-body-silktm-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Body SilkTM Clinic",
+        "website_as_recorded": "bodysilk.co.uk",
+        "domain": "bodysilk.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Single independent clinic, 31 Staplehurst Road SE13 5ND (Hither Green)",
+      "historical_offer": "$500 (rebuild + booking + contact paths)",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "curated_override",
+      "findings": [
+        {
+          "issue_code": "E-STALE-SIGNAL",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Footer \"Copyright 2010-2018\"",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 9,
+            "field": "main_problem"
+          },
+          "url": "https://bodysilk.co.uk/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 9
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 912
+        }
+      ],
+      "outcome_note": "qualification-50.md top-10 table: FIRST confirm it is still trading."
+    },
+    {
+      "id": "r1-montrose-london",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Montrose London",
+        "website_as_recorded": "montroseclinics.com → montroselondon.com",
+        "domain": "montroseclinics.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Independent single-site Belgravia clinic (19 West Eaton Place SW1X 8LT), doctor-led",
+      "historical_offer": "$300 (new-client booking + lead capture)",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "new clients go to /new-patient/ where no calendar was visible",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 10,
+            "field": "main_problem"
+          },
+          "url": "https://montroseclinics.com/",
+          "url_basis": "business_website"
+        },
+        {
+          "issue_code": "E-STALE-SIGNAL",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "contact email still on old domain (office@montroseclinics.com)",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 10,
+            "field": "main_problem"
+          },
+          "url": "https://montroseclinics.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 10
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 158
+        }
+      ]
+    },
+    {
+      "id": "r1-the-cosmetic-skin-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "The Cosmetic Skin Clinic",
+        "website_as_recorded": "cosmeticskinclinic.com",
+        "domain": "cosmeticskinclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Founder-led (Dr Tracy Mountford); 5 sites incl. 98 Harley St W1G, HQ in Stoke Poges",
+      "historical_offer": "$300 (per-location booking/routing)",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Four CTAs (\"Book a Consultation\", \"Request a Call Back\", \"Contact Us\", \"Get in Touch\") all go to one /contact/ enquiry form",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 11,
+            "field": "main_problem"
+          },
+          "url": "https://cosmeticskinclinic.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 11
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 207
+        }
+      ]
+    },
+    {
+      "id": "r1-ghb-clinic-global-healthcare-beauty-ltd",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "GHB Clinic (Global Healthcare & Beauty Ltd)",
+        "website_as_recorded": "ghbclinic.co.uk",
+        "domain": "ghbclinic.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Small (2-10) single London address, doctor-led",
+      "historical_offer": "$150 (make the booking page schedule), upsell $300",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Booking page is headed \"When works for you?\" but the form only asks name, email, mobile, message (no date/time)",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 12,
+            "field": "main_problem"
+          },
+          "url": "https://ghbclinic.co.uk/",
+          "url_basis": "business_website"
+        },
+        {
+          "issue_code": "E-CONTENT-ERROR",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "confirmation text misspelt \"Succesfully\"",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 12,
+            "field": "main_problem"
+          },
+          "url": "https://ghbclinic.co.uk/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 12
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 507
+        }
+      ]
+    },
+    {
+      "id": "r1-effect-doctors",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Effect Doctors",
+        "website_as_recorded": "effectdoctors.com",
+        "domain": "effectdoctors.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "2 London sites (Soho W1D, Westfield W12); IV drips/HBOT-led with some aesthetics",
+      "historical_offer": "$150 (fix the offer landing)",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "curated_override",
+      "findings": [
+        {
+          "issue_code": "E-CTA-DEAD-END",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "Hero \"Book Now 10% Off\" lands on the Westfield location page, which (in the fetched page) has no booking link",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 13,
+            "field": "main_problem"
+          },
+          "url": "https://effectdoctors.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 13
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 457
+        }
+      ],
+      "outcome_note": "The only finding was seen in a fetched page and round 2 still marked it for browser verification.",
+      "superseded_by": "r2-effect-doctors"
+    },
+    {
+      "id": "r1-111-harley-st",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "111 Harley St.",
+        "website_as_recorded": "111harleystreet.com",
+        "domain": "111harleystreet.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Single-site surgeon-led clinic (ACS Ltd t/a 111 Harley St) since 2001",
+      "historical_offer": "$300",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Paid consultations (£50-£350) can only be requested via a form with preferred call time",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 14,
+            "field": "main_problem"
+          },
+          "url": "https://111harleystreet.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 14
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 133
+        }
+      ]
+    },
+    {
+      "id": "r1-alta-medi",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "ALTA Medi",
+        "website_as_recorded": "altamedi.com",
+        "domain": "altamedi.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Doctor-led; 3 sites (London W1U, Ascot, Beverly Hills)",
+      "historical_offer": "$150 (WhatsApp link fix)",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-LINK-TARGET-MISMATCH",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Contact item labelled for WhatsApp/WeChat links to a WeChat URL (u.wechat.com), no wa.me link",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 15,
+            "field": "main_problem"
+          },
+          "url": "https://altamedi.com/",
+          "url_basis": "business_website"
+        },
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "booking split across per-location Phorest/Mangomint links",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 15,
+            "field": "main_problem"
+          },
+          "url": "https://altamedi.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 15
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 183
+        }
+      ],
+      "superseded_by": "r2-alta-medi"
+    },
+    {
+      "id": "r1-adonia-medical-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Adonia Medical Clinic",
+        "website_as_recorded": "adoniamedicalclinic.co.uk",
+        "domain": "adoniamedicalclinic.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Independent single clinic, 474 Harrow Road W9 3RU",
+      "historical_offer": "$150",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "header goes straight to Zenoti",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 16,
+            "field": "main_problem"
+          },
+          "url": "https://adoniamedicalclinic.co.uk/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 16
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 363
+        }
+      ],
+      "superseded_by": "r2-adonia-medical-clinic"
+    },
+    {
+      "id": "r1-omniya-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Omniya Clinic",
+        "website_as_recorded": "omniya.co.uk",
+        "domain": "omniya.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Independent single Knightsbridge clinic (3a Montpelier St SW7 1EX)",
+      "historical_offer": "$150",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "beside a Semble booking link",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 17,
+            "field": "main_problem"
+          },
+          "url": "https://omniya.co.uk/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 17
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 639
+        }
+      ],
+      "superseded_by": "r2-omniya-clinic"
+    },
+    {
+      "id": "r1-the-galen-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "The Galen Clinic",
+        "website_as_recorded": "thegalenclinic.com → rebornelongevity.com",
+        "domain": "thegalenclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Single London clinic (9 Queen Anne St W1G 9HW); now rebranded Reborne Longevity",
+      "historical_offer": "$300",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "All CTAs (\"ENQUIRE\", \"CONTACT US\") go to a contact page; no self-booking",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 18,
+            "field": "main_problem"
+          },
+          "url": "https://thegalenclinic.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 18
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 1057
+        }
+      ]
+    },
+    {
+      "id": "r1-vie-aesthetics",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Vie Aesthetics",
+        "website_as_recorded": "vie-aesthetics.com",
+        "domain": "vie-aesthetics.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Doctor-led, 2 sites (Holborn WC1X, Rayleigh Essex)",
+      "historical_offer": "$150",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-ABSENT-FEATURE",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Only gap seen: mobile number listed with no WhatsApp link",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 19,
+            "field": "main_problem"
+          },
+          "url": "https://vie-aesthetics.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 19
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 553
+        }
+      ],
+      "superseded_by": "r2-vie-aesthetics"
+    },
+    {
+      "id": "r1-the-avanti-aesthetics-clinic-harley-street",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "The Avanti Aesthetics Clinic, Harley Street",
+        "website_as_recorded": "avantiaesthetics.co.uk",
+        "domain": "avantiaesthetics.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Independent single clinic, 140 New Cavendish St W1W 6YE",
+      "historical_offer": "$150",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "\"Pricing\" nav link opens the Pabau booking page instead of a price list",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 20,
+            "field": "main_problem"
+          },
+          "url": "https://avantiaesthetics.co.uk/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 20
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 959
+        }
+      ],
+      "superseded_by": "r2-the-avanti-aesthetics-clinic"
+    },
+    {
+      "id": "r1-clinicbe",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Clinicbe",
+        "website_as_recorded": "clinicbe.com",
+        "domain": "clinicbe.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Keep",
+      "historical_reason": "Founder-led single Knightsbridge clinic (Dr Barbara Kubicka)",
+      "historical_offer": "$150",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-ABSENT-FEATURE",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "no WhatsApp next to phone",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 21,
+            "field": "main_problem"
+          },
+          "url": "https://clinicbe.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 21
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 984
+        }
+      ],
+      "superseded_by": "r2-clinicbe"
+    },
+    {
+      "id": "r1-lisa-franklin-london",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Lisa Franklin London",
+        "website_as_recorded": "lisafranklin.london",
+        "domain": "lisafranklin.london",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Check manually",
+      "historical_reason": "Founder-led London skin/eye clinic per Clay",
+      "historical_offer": "TBD ($150-$500 if the site is broken)",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 22
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 112
+        }
+      ],
+      "superseded_by": "r2-lisa-franklin-london"
+    },
+    {
+      "id": "r1-tempus-belgravia",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Tempus Belgravia",
+        "website_as_recorded": "tempusbelgravia.co.uk",
+        "domain": "tempusbelgravia.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Check manually",
+      "historical_reason": "Belgravia aesthetic clinic, 2-10 staff per Clay",
+      "historical_offer": "TBD",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 23
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 387
+        }
+      ],
+      "superseded_by": "r2-tempus-belgravia"
+    },
+    {
+      "id": "r1-swiss-care-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "SWISS CARE CLINIC",
+        "website_as_recorded": "swiss-care.com (found via WebSearch)",
+        "domain": "swiss-care.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Check manually",
+      "historical_reason": "North London 4-site operator (Palmers Green, Winchmore Hill, Hadley Wood, Harley St); site found at swiss-care.com",
+      "historical_offer": "TBD",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 24
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 758
+        }
+      ],
+      "superseded_by": "r2-swiss-care-swiss-aesthetics"
+    },
+    {
+      "id": "r1-lesley-leale-green-skin-laser-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Lesley Leale-Green Skin + Laser Clinic",
+        "website_as_recorded": "lesleylealegreen.com",
+        "domain": "lesleylealegreen.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Check manually",
+      "historical_reason": "South London skin + laser clinic, 70 Dulwich Village per Clay",
+      "historical_offer": "TBD",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 25
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 891
+        }
+      ],
+      "superseded_by": "r2-lesley-leale-green"
+    },
+    {
+      "id": "r1-the-lovely-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "The Lovely Clinic",
+        "website_as_recorded": "thelovelyclinic.co.uk",
+        "domain": "thelovelyclinic.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Check manually",
+      "historical_reason": "Knightsbridge/Belgravia medical aesthetics clinic per search titles",
+      "historical_offer": "TBD",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 26
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 1036
+        }
+      ],
+      "superseded_by": "r2-the-lovely-clinic"
+    },
+    {
+      "id": "r1-clear",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Clear",
+        "website_as_recorded": "getclearapp.com",
+        "domain": "getclearapp.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Skincare tracking app (software), not a clinic",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 27
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 3
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Skincare tracking app (software), not a clinic"
+      }
+    },
+    {
+      "id": "r1-levitas-group",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Levitas Group",
+        "website_as_recorded": "levitasclinic.com",
+        "domain": "levitasclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Multi-brand medical group (GP, dental, retail, aesthetics on a separate domain), Surrey-weighted",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 28
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 24
+        }
+      ],
+      "rejection": {
+        "category": "CHAIN_OR_GROUP",
+        "reason_verbatim": "Multi-brand medical group (GP, dental, retail, aesthetics on a separate domain), Surrey-weighted"
+      }
+    },
+    {
+      "id": "r1-intuisse",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Intuisse",
+        "website_as_recorded": "intuisse.com",
+        "domain": "intuisse.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Skincare product brand (e-commerce)",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 29
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 49
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Skincare product brand (e-commerce)"
+      }
+    },
+    {
+      "id": "r1-bam",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "&BAM",
+        "website_as_recorded": "andbam.care",
+        "domain": "andbam.care",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Online men's telehealth/product brand, no physical clinic",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 30
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 70
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Online men's telehealth/product brand, no physical clinic"
+      }
+    },
+    {
+      "id": "r1-london-aesthetics-u-k-pakistan-patient-clinic-doctors-academy",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "London Aesthetics U.K. Pakistan Patient Clinic & Doctors Academy",
+        "website_as_recorded": "londonaestheticspakistan.com",
+        "domain": "londonaestheticspakistan.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Mainly a doctors' training academy (Pakistan offices); site not fetchable",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 31
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 91
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Mainly a doctors' training academy (Pakistan offices); site not fetchable"
+      }
+    },
+    {
+      "id": "r1-aesthetics-today",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Aesthetics Today",
+        "website_as_recorded": "aesthetics.today",
+        "domain": "aesthetics.today",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Publisher/blog",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 32
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 232
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Publisher/blog"
+      }
+    },
+    {
+      "id": "r1-the-dental-surgery",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "The Dental Surgery",
+        "website_as_recorded": "thedentalsurgery.co.uk",
+        "domain": "thedentalsurgery.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Dentist, owned by Portman Healthcare group",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 33
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 253
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Dentist, owned by Portman Healthcare group"
+      }
+    },
+    {
+      "id": "r1-medino",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "medino",
+        "website_as_recorded": "medino.com",
+        "domain": "medino.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Online pharmacy/retailer",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 34
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 274
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Online pharmacy/retailer"
+      }
+    },
+    {
+      "id": "r1-natural-fragrance-company-limited",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "NATURAL FRAGRANCE COMPANY LIMITED",
+        "website_as_recorded": "naturalfragrancecompany.co.uk",
+        "domain": "naturalfragrancecompany.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Fragrance company (site would not load; name and search results)",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 35
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 295
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Fragrance company (site would not load; name and search results)",
+        "category_note": "Source says the site would not load; classification rests on the name and search results."
+      }
+    },
+    {
+      "id": "r1-harleydoc",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "HarleyDoc",
+        "website_as_recorded": "harleydoc.co.uk",
+        "domain": "harleydoc.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Private GP/concierge medicine across London, Dubai and Monaco",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 36
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 316
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Private GP/concierge medicine across London, Dubai and Monaco"
+      }
+    },
+    {
+      "id": "r1-define-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Define Clinic",
+        "website_as_recorded": "defineclinic.com",
+        "domain": "defineclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "No gap: already has Pabau booking, WhatsApp, GoHighLevel form and newsletter",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "already has Pabau booking, WhatsApp, GoHighLevel form and newsletter",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 37,
+            "field": "reason"
+          },
+          "url": "https://defineclinic.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 37
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 410
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "No gap: already has Pabau booking, WhatsApp, GoHighLevel form and newsletter"
+      }
+    },
+    {
+      "id": "r1-melior-clinics",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Melior Clinics",
+        "website_as_recorded": "meliorclinics.co.uk",
+        "domain": "meliorclinics.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Multi-site chain (find-a-clinic directory, 'expanding clinic portfolio'); site not fetchable",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 38
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 532
+        }
+      ],
+      "rejection": {
+        "category": "CHAIN_OR_GROUP",
+        "reason_verbatim": "Multi-site chain (find-a-clinic directory, 'expanding clinic portfolio'); site not fetchable"
+      }
+    },
+    {
+      "id": "r1-edible-health",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Edible Health",
+        "website_as_recorded": "ediblehealth.com",
+        "domain": "ediblehealth.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Collagen supplement brand (Shopify)",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 39
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 576
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Collagen supplement brand (Shopify)"
+      }
+    },
+    {
+      "id": "r1-cultbrands-cultskin",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "CULTBRANDS (CULTSKIN)",
+        "website_as_recorded": "cultskin.com",
+        "domain": "cultskin.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "4-city chain plus product shop (CULTSKIN, Dr Esho)",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 40
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 597
+        }
+      ],
+      "rejection": {
+        "category": "CHAIN_OR_GROUP",
+        "reason_verbatim": "4-city chain plus product shop (CULTSKIN, Dr Esho)"
+      }
+    },
+    {
+      "id": "r1-the-cbd-shop",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "The CBD Shop",
+        "website_as_recorded": "thecbd.shop",
+        "domain": "thecbd.shop",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "CBD/vape retailer",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 41
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 618
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "CBD/vape retailer"
+      }
+    },
+    {
+      "id": "r1-the-harley-street-dermatology-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "The Harley Street Dermatology Clinic",
+        "website_as_recorded": "theharleystreetdermatologyclinic.co.uk",
+        "domain": "theharleystreetdermatologyclinic.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Part of The Dermatology Partnership national network (7 clinics); medical dermatology",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 42
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 690
+        }
+      ],
+      "rejection": {
+        "category": "CHAIN_OR_GROUP",
+        "reason_verbatim": "Part of The Dermatology Partnership national network (7 clinics); medical dermatology"
+      }
+    },
+    {
+      "id": "r1-ava-estell",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Ava Estell",
+        "website_as_recorded": "avaestell.com",
+        "domain": "avaestell.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Skincare product brand (Shopify)",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 43
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 711
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Skincare product brand (Shopify)"
+      }
+    },
+    {
+      "id": "r1-zen-maitri",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Zen Maitri",
+        "website_as_recorded": "zenmaitri.com",
+        "domain": "zenmaitri.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Herbal product retailer",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 44
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 781
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Herbal product retailer"
+      }
+    },
+    {
+      "id": "r1-macom-medical",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "MACOM Medical",
+        "website_as_recorded": "macom-medical.com",
+        "domain": "macom-medical.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Compression garment retailer",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 45
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 828
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Compression garment retailer"
+      }
+    },
+    {
+      "id": "r1-parkside-health",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Parkside Health",
+        "website_as_recorded": "parksidehealth.com",
+        "domain": "parksidehealth.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Private GP in Ascot/Windlesham, outside London",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 46
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 849
+        }
+      ],
+      "rejection": {
+        "category": "OUT_OF_GEOGRAPHY",
+        "reason_verbatim": "Private GP in Ascot/Windlesham, outside London"
+      }
+    },
+    {
+      "id": "r1-soojib",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "SOOJIB",
+        "website_as_recorded": "soojib.com",
+        "domain": "soojib.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "K-pop merchandise retailer",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 47
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 870
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "K-pop merchandise retailer"
+      }
+    },
+    {
+      "id": "r1-medovie",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "Medovie",
+        "website_as_recorded": "medovie.com",
+        "domain": "medovie.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Skincare product brand (redirects to mdvskin.com)",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 48
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 938
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Skincare product brand (redirects to mdvskin.com)"
+      }
+    },
+    {
+      "id": "r1-vivaskinclinics",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "VIVASkinClinics",
+        "website_as_recorded": "vivaskinclinics.com",
+        "domain": "vivaskinclinics.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "No gap: 3-site group with Zenoti booking, WhatsApp and new-patient offer",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "3-site group with Zenoti booking, WhatsApp and new-patient offer",
+          "source": {
+            "file": "round1-qualification-50.csv",
+            "line": 49,
+            "field": "reason"
+          },
+          "url": "https://vivaskinclinics.com/",
+          "url_basis": "business_website"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 49
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 1082
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "No gap: 3-site group with Zenoti booking, WhatsApp and new-patient offer"
+      }
+    },
+    {
+      "id": "r1-london-dermatology-clinic",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "London Dermatology Clinic",
+        "website_as_recorded": "londondermatologyclinic.com",
+        "domain": "londondermatologyclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Closed: site says \"no longer operating\"",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 50
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 1103
+        }
+      ],
+      "rejection": {
+        "category": "CLOSED",
+        "reason_verbatim": "Closed: site says \"no longer operating\""
+      }
+    },
+    {
+      "id": "r1-the-bald-brothers",
+      "round": 1,
+      "recorded_on": "2026-09-23",
+      "business": {
+        "name": "The Bald Brothers",
+        "website_as_recorded": "thebaldbrothers.com",
+        "domain": "thebaldbrothers.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Reject",
+      "historical_reason": "Skincare product brand",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round1-qualification-50.csv",
+          "line": 51
+        },
+        {
+          "file": "round1-qualification-evidence.json",
+          "line": 1124
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Skincare product brand"
+      }
+    },
+    {
+      "id": "r2-fierce-face-skin-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Fierce Face Skin Clinic",
+        "website_as_recorded": "https://www.fierce-face.com/",
+        "domain": "fierce-face.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "READY",
+      "historical_reason": "\"Whatsapp only\" number linked to mailto; hello@ link 404s",
+      "historical_offer": "£120",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-LINK-TARGET-MISMATCH",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "The link text \"07376 617711 (Whatsapp only)\" is coded as `mailto:hello@fierce-face.com`, so it opens email, not WhatsApp.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 23
+          },
+          "url": "https://www.fierce-face.com/",
+          "url_basis": "evidence_url"
+        },
+        {
+          "issue_code": "E-EMAIL-INVALID",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "The email link has no `mailto:` and resolves to fierce-face.com/hello@fierce-face.com, which returns 404.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 23
+          },
+          "url": "https://www.fierce-face.com/",
+          "url_basis": "evidence_url",
+          "note": "The round 2 send package (not copied) later dropped this claim because a re-fetch was ambiguous about the href."
+        },
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Setmore self-booking works, so this is not a £240 prospect.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 23
+          },
+          "url": "https://www.fierce-face.com/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 2
+        },
+        {
+          "file": "round2-report.md",
+          "line": 23
+        }
+      ]
+    },
+    {
+      "id": "r2-london-aesthetic-medicine",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "London Aesthetic Medicine",
+        "website_as_recorded": "https://www.london-aesthetic-medicine.com/",
+        "domain": "london-aesthetic-medicine.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "READY",
+      "historical_reason": "Main WhatsApp icons use phone=07858668579 (no country code); tel has (0)",
+      "historical_offer": "£120",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-WA-BROKEN",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "The main WhatsApp icons (4 on the homepage) link to `api.whatsapp.com/send?phone=07858668579`: UK national format, no 44 country code.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 24
+          },
+          "url": "https://www.london-aesthetic-medicine.com/",
+          "url_basis": "evidence_url"
+        },
+        {
+          "issue_code": "E-TEL-BROKEN",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "The phone link is `tel:+44 (0) 207 637 5999`.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 24
+          },
+          "url": "https://www.london-aesthetic-medicine.com/",
+          "url_basis": "evidence_url"
+        },
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Pabau booking is already live.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 24
+          },
+          "url": "https://www.london-aesthetic-medicine.com/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 3
+        },
+        {
+          "file": "round2-report.md",
+          "line": 24
+        }
+      ]
+    },
+    {
+      "id": "r2-newlife-aesthetics",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "NewLife Aesthetics",
+        "website_as_recorded": "https://newlifeaesthetics.co.uk/",
+        "domain": "newlifeaesthetics.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "READY",
+      "historical_reason": "Book Consultation goes to generic enquiry form with manual reply",
+      "historical_offer": "£240",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "\"Book Consultation\" goes to /contact/, a general enquiry form (name, email, mobile, treatment, message, \"Send Enquiry\").",
+          "source": {
+            "file": "round2-report.md",
+            "line": 25
+          },
+          "url": "https://newlifeaesthetics.co.uk/contact/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 4
+        },
+        {
+          "file": "round2-report.md",
+          "line": 25
+        }
+      ]
+    },
+    {
+      "id": "r2-vie-aesthetics",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Vie Aesthetics",
+        "website_as_recorded": "https://www.vie-aesthetics.com/",
+        "domain": "vie-aesthetics.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "READY",
+      "historical_reason": "London and Rayleigh tel: links coded +440...",
+      "historical_offer": "£120",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-TEL-BROKEN",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Header phone links are `tel:+4402033438500` (London) and `tel:+4401268778615` (Rayleigh).",
+          "source": {
+            "file": "round2-report.md",
+            "line": 26
+          },
+          "url": "https://www.vie-aesthetics.com/",
+          "url_basis": "evidence_url"
+        },
+        {
+          "issue_code": "E-TEL-BROKEN",
+          "expectation": "MUST_NOT_CLAIM",
+          "verbatim_quote": "One audit also saw an empty \"Germany\" `tel:` link in the header; my re-check didn't show it.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 26
+          },
+          "url": "https://www.vie-aesthetics.com/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 5
+        },
+        {
+          "file": "round2-report.md",
+          "line": 26
+        }
+      ],
+      "supersedes": "r1-vie-aesthetics"
+    },
+    {
+      "id": "r2-the-bronte-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "The Bronte Clinic",
+        "website_as_recorded": "https://thebronteclinic.com/",
+        "domain": "thebronteclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "READY",
+      "historical_reason": "Privacy contact is info@bronte-clinic-old.local; postcode printed WIG 0PW",
+      "historical_offer": "£120",
+      "expected_outcome": "QUALIFIED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-EMAIL-INVALID",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "The privacy policy gives the only data-protection contact as `info@bronte-clinic-old.local`, a placeholder that cannot receive mail.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 27
+          },
+          "url": "https://thebronteclinic.com/document/privacy-policy/",
+          "url_basis": "evidence_url"
+        },
+        {
+          "issue_code": "E-CONTENT-ERROR",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "The postcode is printed \"WIG 0PW\" (letter I) on the homepage, contact, booking and privacy pages",
+          "source": {
+            "file": "round2-report.md",
+            "line": 27
+          },
+          "url": "https://thebronteclinic.com/document/privacy-policy/",
+          "url_basis": "evidence_url"
+        },
+        {
+          "issue_code": "E-FORM-BROKEN",
+          "expectation": "MUST_NOT_CLAIM",
+          "verbatim_quote": "The booking page says \"use the form below\" but no form was in the page source; it is probably loaded by JavaScript (HubSpot or Pabau), so don't claim it's broken.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 27
+          },
+          "url": "https://thebronteclinic.com/document/privacy-policy/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 6
+        },
+        {
+          "file": "round2-report.md",
+          "line": 27
+        }
+      ]
+    },
+    {
+      "id": "r2-city-dermatology-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "City Dermatology Clinic",
+        "website_as_recorded": "https://citydermatologyclinic.com/",
+        "domain": "citydermatologyclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "All booking CTAs open a callback popup despite fixed £100 consult",
+      "historical_offer": "£240",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "Every \"Enquire Now\" opens a callback popup (\"Our skin advisors will contact you back\")",
+          "source": {
+            "file": "round2-report.md",
+            "line": 33
+          },
+          "url": "https://citydermatologyclinic.com/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 7
+        },
+        {
+          "file": "round2-report.md",
+          "line": 33
+        }
+      ]
+    },
+    {
+      "id": "r2-23md-clinics",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "23MD Clinics",
+        "website_as_recorded": "https://23md.co.uk/",
+        "domain": "23md.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "No online booking; enquiry forms and phone only",
+      "historical_offer": "£240",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "No online booking: enquiry forms and phone only.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 34
+          },
+          "url": "https://23md.co.uk/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 8
+        },
+        {
+          "file": "round2-report.md",
+          "line": 34
+        }
+      ]
+    },
+    {
+      "id": "r2-dr-rasha-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Dr Rasha Clinic",
+        "website_as_recorded": "https://drrashaclinic.com/",
+        "domain": "drrashaclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "finsweet.com placeholder links and # CTA in page source",
+      "historical_offer": "£120",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-PLACEHOLDER-LINK",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "Page source contains \"Book\", \"Shop\", \"Clinic\" links pointing to `finsweet.com/client-first/docs` (a Webflow template placeholder)",
+          "source": {
+            "file": "round2-report.md",
+            "line": 35
+          },
+          "url": "https://drrashaclinic.com/",
+          "url_basis": "evidence_url"
+        },
+        {
+          "issue_code": "E-CTA-DEAD-END",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "\"Book your appointment Now\" links to `#`",
+          "source": {
+            "file": "round2-report.md",
+            "line": 35
+          },
+          "url": "https://drrashaclinic.com/",
+          "url_basis": "evidence_url"
+        },
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Phorest booking works. A browser check is needed before claiming anything.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 35
+          },
+          "url": "https://drrashaclinic.com/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 9
+        },
+        {
+          "file": "round2-report.md",
+          "line": 35
+        }
+      ]
+    },
+    {
+      "id": "r2-lesley-leale-green",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Lesley Leale-Green",
+        "website_as_recorded": "https://www.lesleylealegreen.com/",
+        "domain": "lesleylealegreen.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "Schedule an Appointment links to itself; phone/WhatsApp not clickable",
+      "historical_offer": "£120",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-CTA-DEAD-END",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "On /booknow, \"Schedule an Appointment\" links back to /booknow itself",
+          "source": {
+            "file": "round2-report.md",
+            "line": 36
+          },
+          "url": "https://www.lesleylealegreen.com/booknow",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 10
+        },
+        {
+          "file": "round2-report.md",
+          "line": 36
+        }
+      ],
+      "outcome_note": "Also held for compliance: no limited company found, possible sole trader (PECR consent).",
+      "supersedes": "r1-lesley-leale-green-skin-laser-clinic"
+    },
+    {
+      "id": "r2-effect-doctors",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Effect Doctors",
+        "website_as_recorded": "https://www.effectdoctors.com/",
+        "domain": "effectdoctors.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "Book Now 10% Off lands on page with no booking or offer",
+      "historical_offer": "£120",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-CTA-DEAD-END",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "The hero \"Book Now 10% Off\" lands on the Westfield page, which has no booking link and no 10% offer.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 37
+          },
+          "url": "https://www.effectdoctors.com/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 11
+        },
+        {
+          "file": "round2-report.md",
+          "line": 37
+        }
+      ],
+      "supersedes": "r1-effect-doctors"
+    },
+    {
+      "id": "r2-the-avanti-aesthetics-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "The Avanti Aesthetics Clinic",
+        "website_as_recorded": "https://avantiaesthetics.co.uk/",
+        "domain": "avantiaesthetics.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "Footer booking points to old Pabau URL that didn't load",
+      "historical_offer": "£120",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-CTA-DEAD-END",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "The footer \"Book An Appointment\" points to an old Pabau address (bookings.php?compid=8396) that wouldn't load",
+          "source": {
+            "file": "round2-report.md",
+            "line": 38
+          },
+          "url": "https://avantiaesthetics.co.uk/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 12
+        },
+        {
+          "file": "round2-report.md",
+          "line": 38
+        }
+      ],
+      "supersedes": "r1-the-avanti-aesthetics-clinic-harley-street"
+    },
+    {
+      "id": "r2-expert-medical",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Expert Medical",
+        "website_as_recorded": "https://expertmedical.net/",
+        "domain": "expertmedical.net",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "Footer tel: +447700000000 placeholder on one page",
+      "historical_offer": "£120",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-PLACEHOLDER-LINK",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "On /laser-hair-removal the footer displays 0800 955 8891 but links to `tel:+447700000000`, which looks like a placeholder.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 39
+          },
+          "url": "https://expertmedical.net/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 13
+        },
+        {
+          "file": "round2-report.md",
+          "line": 39
+        }
+      ]
+    },
+    {
+      "id": "r2-clinica-london",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Clinica London",
+        "website_as_recorded": "https://www.clinicalondon.co.uk/",
+        "domain": "clinicalondon.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "Book a Consultation leads to callback form",
+      "historical_offer": "£240",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "\"Book a Consultation\" leads to a request-a-callback form.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 40
+          },
+          "url": "https://www.clinicalondon.co.uk/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 14
+        },
+        {
+          "file": "round2-report.md",
+          "line": 40
+        }
+      ],
+      "outcome_note": "Source notes consultant triage is a fair clinical reason for a callback: weak case even if confirmed."
+    },
+    {
+      "id": "r2-wy-skin-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "WY Skin Clinic",
+        "website_as_recorded": "https://www.wyskinclinic.com/",
+        "domain": "wyskinclinic.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "Book an Appointment is arrange-later form",
+      "historical_offer": "£240",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "\"Book an Appointment\" is a form where the team \"will be in touch to arrange\".",
+          "source": {
+            "file": "round2-report.md",
+            "line": 41
+          },
+          "url": "https://www.wyskinclinic.com/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 15
+        },
+        {
+          "file": "round2-report.md",
+          "line": 41
+        }
+      ]
+    },
+    {
+      "id": "r2-dermaperfect",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Dermaperfect",
+        "website_as_recorded": "https://www.dermaperfect.co.uk/",
+        "domain": "dermaperfect.co.uk",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "Form missing from source; malformed phone",
+      "historical_offer": "£120",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-FORM-BROKEN",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "Contact page says \"fill in the form below\" but no form is in the page source",
+          "source": {
+            "file": "round2-report.md",
+            "line": 42
+          },
+          "url": "https://www.dermaperfect.co.uk/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 16
+        },
+        {
+          "file": "round2-report.md",
+          "line": 42
+        }
+      ]
+    },
+    {
+      "id": "r2-the-laser-clinic-group",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "The Laser Clinic Group",
+        "website_as_recorded": "https://www.thelaserclinicgroup.com/",
+        "domain": "thelaserclinicgroup.com",
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "VERIFY",
+      "historical_reason": "Book appointment is 24h enquiry form; dropdown omits Hounslow",
+      "historical_offer": "£240",
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "E-BOOK-TO-ENQUIRY",
+          "expectation": "NEEDS_BROWSER_CHECK",
+          "verbatim_quote": "\"Book appointment\" is an enquiry form with a 24-hour wait",
+          "source": {
+            "file": "round2-report.md",
+            "line": 43
+          },
+          "url": "https://www.thelaserclinicgroup.com/",
+          "url_basis": "evidence_url"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-prospects.csv",
+          "line": 17
+        },
+        {
+          "file": "round2-report.md",
+          "line": 43
+        }
+      ],
+      "outcome_note": "Source flags a PECR risk: the company has had no officers since 2016."
+    },
+    {
+      "id": "r2-the-lovely-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "The Lovely Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Unreachable",
+      "historical_reason": "Their sites would not load for the fetch tool (timeouts, DNS, 403 or SSL errors), so nothing could be audited. Enhance For Life's SSL mismatch could itself be a £120 fix if a real browser shows the same warning.",
+      "historical_offer": null,
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 44
+        }
+      ],
+      "supersedes": "r1-the-lovely-clinic"
+    },
+    {
+      "id": "r2-paradise-aesthetic-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Paradise Aesthetic Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Unreachable",
+      "historical_reason": "Their sites would not load for the fetch tool (timeouts, DNS, 403 or SSL errors), so nothing could be audited. Enhance For Life's SSL mismatch could itself be a £120 fix if a real browser shows the same warning.",
+      "historical_offer": null,
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 44
+        }
+      ]
+    },
+    {
+      "id": "r2-house-of-saab",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "House of Saab",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Unreachable",
+      "historical_reason": "Their sites would not load for the fetch tool (timeouts, DNS, 403 or SSL errors), so nothing could be audited. Enhance For Life's SSL mismatch could itself be a £120 fix if a real browser shows the same warning.",
+      "historical_offer": null,
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 44
+        }
+      ]
+    },
+    {
+      "id": "r2-the-dolls-london",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "The Dolls London",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Unreachable",
+      "historical_reason": "Their sites would not load for the fetch tool (timeouts, DNS, 403 or SSL errors), so nothing could be audited. Enhance For Life's SSL mismatch could itself be a £120 fix if a real browser shows the same warning.",
+      "historical_offer": null,
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 44
+        }
+      ]
+    },
+    {
+      "id": "r2-enhance-for-life",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Enhance For Life",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Unreachable",
+      "historical_reason": "Their sites would not load for the fetch tool (timeouts, DNS, 403 or SSL errors), so nothing could be audited. Enhance For Life's SSL mismatch could itself be a £120 fix if a real browser shows the same warning.",
+      "historical_offer": null,
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 44
+        }
+      ]
+    },
+    {
+      "id": "r2-chiswick-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Chiswick Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Unreachable",
+      "historical_reason": "Their sites would not load for the fetch tool (timeouts, DNS, 403 or SSL errors), so nothing could be audited. Enhance For Life's SSL mismatch could itself be a £120 fix if a real browser shows the same warning.",
+      "historical_offer": null,
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 44
+        }
+      ]
+    },
+    {
+      "id": "r2-eudelo",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "EUDELO",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Ceased trading; insolvency notice on the homepage.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 50
+        }
+      ],
+      "rejection": {
+        "category": "CLOSED",
+        "reason_verbatim": "Ceased trading; insolvency notice on the homepage."
+      }
+    },
+    {
+      "id": "r2-primas-medispa",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Primas Medispa",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Appears closed; the likely company is in liquidation.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 51
+        }
+      ],
+      "rejection": {
+        "category": "CLOSED",
+        "reason_verbatim": "Appears closed; the likely company is in liquidation."
+      }
+    },
+    {
+      "id": "r2-tempus-belgravia",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Tempus Belgravia",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Rebranded to Founders Health (Founders Forum Group) and already has self-booking.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "already has self-booking",
+          "source": {
+            "file": "round2-report.md",
+            "line": 52
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 52
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Rebranded to Founders Health (Founders Forum Group) and already has self-booking."
+      },
+      "supersedes": "r1-tempus-belgravia"
+    },
+    {
+      "id": "r2-lisa-franklin-london",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Lisa Franklin London",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Company renamed and the founder resigned in June 2026; site returns 401.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 53
+        }
+      ],
+      "rejection": {
+        "category": "INSUFFICIENT_EVIDENCE",
+        "reason_verbatim": "Company renamed and the founder resigned in June 2026; site returns 401.",
+        "category_note": "Founder resigned and site returns 401; trading status is not confirmed either way."
+      },
+      "supersedes": "r1-lisa-franklin-london"
+    },
+    {
+      "id": "r2-private-harley-street-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Private Harley Street Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Site is Covid-testing era (latest posts from 2022) and accounts are overdue; unclear it still trades in aesthetics.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 54
+        }
+      ],
+      "rejection": {
+        "category": "INSUFFICIENT_EVIDENCE",
+        "reason_verbatim": "Site is Covid-testing era (latest posts from 2022) and accounts are overdue; unclear it still trades in aesthetics.",
+        "category_note": "Source: unclear it still trades in aesthetics."
+      }
+    },
+    {
+      "id": "r2-continental-skin-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Continental Skin Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "No decision-maker; its company was dissolved in 2024.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 55
+        }
+      ],
+      "rejection": {
+        "category": "CLOSED",
+        "reason_verbatim": "No decision-maker; its company was dissolved in 2024."
+      }
+    },
+    {
+      "id": "r2-neogleam-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Neogleam Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "CQC registration archived in January 2025; site mostly unreachable.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 56
+        }
+      ],
+      "rejection": {
+        "category": "CLOSED",
+        "reason_verbatim": "CQC registration archived in January 2025; site mostly unreachable."
+      }
+    },
+    {
+      "id": "r2-cosmedics-skin-clinics",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Cosmedics Skin Clinics",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Working booking platform (Wilford); the company named on its site was dissolved.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Working booking platform (Wilford)",
+          "source": {
+            "file": "round2-report.md",
+            "line": 57
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 57
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Working booking platform (Wilford); the company named on its site was dissolved."
+      }
+    },
+    {
+      "id": "r2-swiss-care-swiss-aesthetics",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Swiss Care / Swiss Aesthetics",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Five-branch group with no founder-level contact.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 58
+        }
+      ],
+      "rejection": {
+        "category": "CHAIN_OR_GROUP",
+        "reason_verbatim": "Five-branch group with no founder-level contact."
+      },
+      "supersedes": "r1-swiss-care-clinic"
+    },
+    {
+      "id": "r2-alta-medi",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "ALTA Medi",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Three sites in two countries; Phorest self-booking works. The round 1 WhatsApp claim no longer holds.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Three sites in two countries; Phorest self-booking works.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 59
+          },
+          "url": null,
+          "url_basis": "unknown"
+        },
+        {
+          "issue_code": "E-LINK-TARGET-MISMATCH",
+          "expectation": "MUST_NOT_CLAIM",
+          "verbatim_quote": "The round 1 WhatsApp claim no longer holds.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 59
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 59
+        }
+      ],
+      "rejection": {
+        "category": "CHAIN_OR_GROUP",
+        "reason_verbatim": "Three sites in two countries; Phorest self-booking works. The round 1 WhatsApp claim no longer holds."
+      },
+      "supersedes": "r1-alta-medi"
+    },
+    {
+      "id": "r2-cosmedocs",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "CosmeDocs",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Multi-country group; Acuity booking and WhatsApp work.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Multi-country group; Acuity booking and WhatsApp work.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 60
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 60
+        }
+      ],
+      "rejection": {
+        "category": "CHAIN_OR_GROUP",
+        "reason_verbatim": "Multi-country group; Acuity booking and WhatsApp work."
+      }
+    },
+    {
+      "id": "r2-the-aesthetics-club-uk",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "The Aesthetics Club UK",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Five-clinic group (four in Scotland); Phorest booking works.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Five-clinic group (four in Scotland); Phorest booking works.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 61
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 61
+        }
+      ],
+      "rejection": {
+        "category": "CHAIN_OR_GROUP",
+        "reason_verbatim": "Five-clinic group (four in Scotland); Phorest booking works."
+      }
+    },
+    {
+      "id": "r2-injectual",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Injectual",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Three sites, 12+ clinicians; Zenoti booking works.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Three sites, 12+ clinicians; Zenoti booking works.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 62
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 62
+        }
+      ],
+      "rejection": {
+        "category": "CHAIN_OR_GROUP",
+        "reason_verbatim": "Three sites, 12+ clinicians; Zenoti booking works."
+      }
+    },
+    {
+      "id": "r2-skin-design-london",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Skin Design London",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Mainly a product brand; Zenoti booking works.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Mainly a product brand; Zenoti booking works.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 63
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 63
+        }
+      ],
+      "rejection": {
+        "category": "WRONG_BUSINESS_TYPE",
+        "reason_verbatim": "Mainly a product brand; Zenoti booking works."
+      }
+    },
+    {
+      "id": "r2-omniya-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Omniya Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Semble self-booking on the booking page.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Semble self-booking on the booking page.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 64
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 64
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Semble self-booking on the booking page."
+      },
+      "supersedes": "r1-omniya-clinic"
+    },
+    {
+      "id": "r2-clinicbe",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Clinicbe",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Pabau booking works; no defect found.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Pabau booking works; no defect found.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 65
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 65
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Pabau booking works; no defect found."
+      },
+      "supersedes": "r1-clinicbe"
+    },
+    {
+      "id": "r2-adonia-medical-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Adonia Medical Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Zenoti booking works; the footer route is one extra click, not a dead end.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Zenoti booking works; the footer route is one extra click, not a dead end.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 66
+          },
+          "url": null,
+          "url_basis": "unknown"
+        },
+        {
+          "issue_code": "E-CTA-DEAD-END",
+          "expectation": "MUST_NOT_CLAIM",
+          "verbatim_quote": "the footer route is one extra click, not a dead end",
+          "source": {
+            "file": "round2-report.md",
+            "line": 66
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 66
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Zenoti booking works; the footer route is one extra click, not a dead end."
+      },
+      "supersedes": "r1-adonia-medical-clinic"
+    },
+    {
+      "id": "r2-medicetics",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Medicetics",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Calendly for new clients and Pabau for returning clients: booking already solved.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Calendly for new clients and Pabau for returning clients: booking already solved.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 67
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 67
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Calendly for new clients and Pabau for returning clients: booking already solved."
+      }
+    },
+    {
+      "id": "r2-dermasurge",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Dermasurge",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Online self-booking with deposit works; the only issue is a form label typo.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Online self-booking with deposit works; the only issue is a form label typo.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 68
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 68
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Online self-booking with deposit works; the only issue is a form label typo."
+      }
+    },
+    {
+      "id": "r2-harley-street-skin-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Harley Street Skin Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Own booking site with card payment; surgery routed through a coordinator for clinical reasons.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Own booking site with card payment",
+          "source": {
+            "file": "round2-report.md",
+            "line": 69
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 69
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Own booking site with card payment; surgery routed through a coordinator for clinical reasons."
+      }
+    },
+    {
+      "id": "r2-the-devonshire-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "The Devonshire Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Consultant dermatology practice; collecting GP and insurance details is a legitimate medical step.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 70
+        }
+      ],
+      "rejection": {
+        "category": "NO_CREDIBLE_OPPORTUNITY",
+        "reason_verbatim": "Consultant dermatology practice; collecting GP and insurance details is a legitimate medical step.",
+        "category_note": "Legitimate reason: collecting GP and insurance details is a medical step."
+      }
+    },
+    {
+      "id": "r2-skin55",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Skin55",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Consultant dermatology practice; phone and enquiry booking is clinically justified; nothing broken.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 71
+        }
+      ],
+      "rejection": {
+        "category": "NO_CREDIBLE_OPPORTUNITY",
+        "reason_verbatim": "Consultant dermatology practice; phone and enquiry booking is clinically justified; nothing broken.",
+        "category_note": "Legitimate reason: phone and enquiry booking is clinically justified."
+      }
+    },
+    {
+      "id": "r2-d-thomas-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "D.Thomas Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Zenoti booking and a correct WhatsApp link.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Zenoti booking and a correct WhatsApp link.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 72
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 72
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Zenoti booking and a correct WhatsApp link."
+      }
+    },
+    {
+      "id": "r2-aesthetics-lab",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Aesthetics Lab",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Pabau booking works; no email published.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Pabau booking works; no email published.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 73
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 73
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Pabau booking works; no email published."
+      }
+    },
+    {
+      "id": "r2-askinology",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "ASKINOLOGY",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Collums booking works; possible sole trader.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Collums booking works; possible sole trader.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 74
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 74
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Collums booking works; possible sole trader."
+      }
+    },
+    {
+      "id": "r2-belle-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Belle Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Setmore booking and WhatsApp work.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Setmore booking and WhatsApp work.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 75
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 75
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Setmore booking and WhatsApp work."
+      }
+    },
+    {
+      "id": "r2-nakedhealth-medispa",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "nakedhealth Medispa",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Phorest booking and correct WhatsApp and phone links.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Phorest booking and correct WhatsApp and phone links.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 76
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 76
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Phorest booking and correct WhatsApp and phone links."
+      }
+    },
+    {
+      "id": "r2-nova-aesthetic-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Nova Aesthetic Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Pabau booking works.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Pabau booking works.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 77
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 77
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Pabau booking works."
+      }
+    },
+    {
+      "id": "r2-exclusive-aesthetics-wellbeing",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Exclusive Aesthetics & Wellbeing",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Self-booking calendar (LeadConnector) in place.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Self-booking calendar (LeadConnector) in place.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 78
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 78
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Self-booking calendar (LeadConnector) in place."
+      }
+    },
+    {
+      "id": "r2-dr-sna-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "DR SNA Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Own booking flow with Stripe; links well-formed.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Own booking flow with Stripe; links well-formed.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 79
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 79
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Own booking flow with Stripe; links well-formed."
+      }
+    },
+    {
+      "id": "r2-ace-skin-health-clinic",
+      "round": 2,
+      "recorded_on": "2026-09-24",
+      "business": {
+        "name": "Ace Skin Health Clinic",
+        "website_as_recorded": null,
+        "domain": null,
+        "vertical": "aesthetics",
+        "country_code": "GB",
+        "city": "London"
+      },
+      "historical_decision": "Rejected",
+      "historical_reason": "Pabau booking in place.",
+      "historical_offer": null,
+      "expected_outcome": "REJECTED",
+      "outcome_basis": "historical_decision",
+      "findings": [
+        {
+          "issue_code": "O-BOOKING-PLATFORM",
+          "expectation": "OBSERVED",
+          "verbatim_quote": "Pabau booking in place.",
+          "source": {
+            "file": "round2-report.md",
+            "line": 80
+          },
+          "url": null,
+          "url_basis": "unknown"
+        }
+      ],
+      "sources": [
+        {
+          "file": "round2-report.md",
+          "line": 80
+        }
+      ],
+      "rejection": {
+        "category": "SERVICE_ALREADY_SOLVED",
+        "reason_verbatim": "Pabau booking in place."
+      }
+    }
+  ]
+}

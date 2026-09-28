@@ -1,0 +1,367 @@
+{
+  "_about": "Hand-curated labels layered on the verbatim OutboundOS sources. Every quote must occur exactly once in the named source file (CSV rows are matched on parsed field text, markdown on raw lines); the builder fails otherwise. rejection_category and issue_code are the only interpretive fields and are marked as curated in the built fixtures. expectation: OBSERVED = the source recorded it from page markup/text; NEEDS_BROWSER_CHECK = the source said it could not confirm; MUST_NOT_CLAIM = the source withdrew it or said not to claim it.",
+  "cases": {
+    "r1-the-mw-clinic-london": {
+      "findings": [
+        { "issue_code": "E-LINK-TARGET-MISMATCH", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "Header link \"WhatsApp: 0800 772 0300\" is coded as href \"tel:WhatsApp:  0800 772 0300\"" },
+        { "issue_code": "E-TEL-BROKEN", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "is coded as href \"tel:WhatsApp:  0800 772 0300\"" },
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "\"BOOK CONSULTATION\" goes to a general contact form with no date/time choice" }
+      ]
+    },
+    "r1-phi-clinic": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "Every \"Book Consultation\" CTA goes to a callback form (\"Best time to call: Morning/Afternoon/Evening\")" }
+      ]
+    },
+    "r1-wimpole-aesthetics": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "\"Book a consultation\" is a request form (\"an expert will be in touch to arrange your booking\")" },
+        { "issue_code": "E-CONTENT-ERROR", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "label typo \"consulation\"" }
+      ]
+    },
+    "r1-dr-haus-dermatology-clinic": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "No direct booking: \"Enquire Now\" goes to a 9-field enquiry form or a Calendly \"Book a call back\"" }
+      ]
+    },
+    "r1-avika-aesthetics-clinic": {
+      "findings": [
+        { "issue_code": "E-STALE-SIGNAL", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "Footer still \"©2023\"" },
+        { "issue_code": "E-STALE-SIGNAL", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "header \"contact\" links to old /contact.php while other links use /contact" },
+        { "issue_code": "E-ABSENT-FEATURE", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "only contact number is a mobile (07897020331) with no WhatsApp link" }
+      ]
+    },
+    "r1-the-harper-clinic": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "All \"Book\" buttons go to a general enquiry form where booking is one dropdown option next to \"Media enquiry\"" },
+        { "issue_code": "E-STALE-SIGNAL", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "footer \"© 2024\"" }
+      ]
+    },
+    "r1-absolute-aesthetics": {
+      "findings": [
+        { "issue_code": "E-STALE-SIGNAL", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "Footer \"©Copyright 2021\"" },
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "no online booking (enquiry form with a \"Yes I would like to book a consultation\" checkbox)" }
+      ]
+    },
+    "r1-body-silktm-clinic": {
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_note": "qualification-50.md top-10 table: FIRST confirm it is still trading.",
+      "findings": [
+        { "issue_code": "E-STALE-SIGNAL", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "Footer \"Copyright 2010-2018\"" }
+      ]
+    },
+    "r1-montrose-london": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "NEEDS_BROWSER_CHECK", "source": "round1-qualification-50.csv", "quote": "new clients go to /new-patient/ where no calendar was visible" },
+        { "issue_code": "E-STALE-SIGNAL", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "contact email still on old domain (office@montroseclinics.com)" }
+      ]
+    },
+    "r1-the-cosmetic-skin-clinic": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "Four CTAs (\"Book a Consultation\", \"Request a Call Back\", \"Contact Us\", \"Get in Touch\") all go to one /contact/ enquiry form" }
+      ]
+    },
+    "r1-ghb-clinic-global-healthcare-beauty-ltd": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "Booking page is headed \"When works for you?\" but the form only asks name, email, mobile, message (no date/time)" },
+        { "issue_code": "E-CONTENT-ERROR", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "confirmation text misspelt \"Succesfully\"" }
+      ]
+    },
+    "r1-effect-doctors": {
+      "expected_outcome": "NEEDS_BROWSER_CHECK",
+      "outcome_note": "The only finding was seen in a fetched page and round 2 still marked it for browser verification.",
+      "findings": [
+        { "issue_code": "E-CTA-DEAD-END", "expectation": "NEEDS_BROWSER_CHECK", "source": "round1-qualification-50.csv", "quote": "Hero \"Book Now 10% Off\" lands on the Westfield location page, which (in the fetched page) has no booking link" }
+      ]
+    },
+    "r1-111-harley-st": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "Paid consultations (£50-£350) can only be requested via a form with preferred call time" }
+      ]
+    },
+    "r1-alta-medi": {
+      "findings": [
+        { "issue_code": "E-LINK-TARGET-MISMATCH", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "Contact item labelled for WhatsApp/WeChat links to a WeChat URL (u.wechat.com), no wa.me link" },
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "booking split across per-location Phorest/Mangomint links" }
+      ]
+    },
+    "r1-adonia-medical-clinic": {
+      "findings": [
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "header goes straight to Zenoti" }
+      ]
+    },
+    "r1-omniya-clinic": {
+      "findings": [
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "beside a Semble booking link" }
+      ]
+    },
+    "r1-the-galen-clinic": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "All CTAs (\"ENQUIRE\", \"CONTACT US\") go to a contact page; no self-booking" }
+      ]
+    },
+    "r1-vie-aesthetics": {
+      "findings": [
+        { "issue_code": "E-ABSENT-FEATURE", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "Only gap seen: mobile number listed with no WhatsApp link" }
+      ]
+    },
+    "r1-the-avanti-aesthetics-clinic-harley-street": {
+      "findings": [
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "\"Pricing\" nav link opens the Pabau booking page instead of a price list" }
+      ]
+    },
+    "r1-clinicbe": {
+      "findings": [
+        { "issue_code": "E-ABSENT-FEATURE", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "no WhatsApp next to phone" }
+      ]
+    },
+
+    "r1-clear": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-levitas-group": { "rejection_category": "CHAIN_OR_GROUP" },
+    "r1-intuisse": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-bam": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-london-aesthetics-u-k-pakistan-patient-clinic-doctors-academy": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-aesthetics-today": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-the-dental-surgery": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-medino": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-natural-fragrance-company-limited": { "rejection_category": "WRONG_BUSINESS_TYPE", "category_note": "Source says the site would not load; classification rests on the name and search results." },
+    "r1-harleydoc": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-define-clinic": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "already has Pabau booking, WhatsApp, GoHighLevel form and newsletter" }
+      ]
+    },
+    "r1-melior-clinics": { "rejection_category": "CHAIN_OR_GROUP" },
+    "r1-edible-health": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-cultbrands-cultskin": { "rejection_category": "CHAIN_OR_GROUP" },
+    "r1-the-cbd-shop": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-the-harley-street-dermatology-clinic": { "rejection_category": "CHAIN_OR_GROUP" },
+    "r1-ava-estell": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-zen-maitri": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-macom-medical": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-parkside-health": { "rejection_category": "OUT_OF_GEOGRAPHY" },
+    "r1-soojib": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-medovie": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+    "r1-vivaskinclinics": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round1-qualification-50.csv", "quote": "3-site group with Zenoti booking, WhatsApp and new-patient offer" }
+      ]
+    },
+    "r1-london-dermatology-clinic": { "rejection_category": "CLOSED" },
+    "r1-the-bald-brothers": { "rejection_category": "WRONG_BUSINESS_TYPE" },
+
+    "r2-fierce-face-skin-clinic": {
+      "findings": [
+        { "issue_code": "E-LINK-TARGET-MISMATCH", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "The link text \"07376 617711 (Whatsapp only)\" is coded as `mailto:hello@fierce-face.com`, so it opens email, not WhatsApp." },
+        { "issue_code": "E-EMAIL-INVALID", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "The email link has no `mailto:` and resolves to fierce-face.com/hello@fierce-face.com, which returns 404.", "note": "The round 2 send package (not copied) later dropped this claim because a re-fetch was ambiguous about the href." },
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Setmore self-booking works, so this is not a £240 prospect." }
+      ]
+    },
+    "r2-london-aesthetic-medicine": {
+      "findings": [
+        { "issue_code": "E-WA-BROKEN", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "The main WhatsApp icons (4 on the homepage) link to `api.whatsapp.com/send?phone=07858668579`: UK national format, no 44 country code." },
+        { "issue_code": "E-TEL-BROKEN", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "The phone link is `tel:+44 (0) 207 637 5999`." },
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Pabau booking is already live." }
+      ]
+    },
+    "r2-newlife-aesthetics": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "\"Book Consultation\" goes to /contact/, a general enquiry form (name, email, mobile, treatment, message, \"Send Enquiry\")." }
+      ]
+    },
+    "r2-vie-aesthetics": {
+      "supersedes": "r1-vie-aesthetics",
+      "findings": [
+        { "issue_code": "E-TEL-BROKEN", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Header phone links are `tel:+4402033438500` (London) and `tel:+4401268778615` (Rayleigh)." },
+        { "issue_code": "E-TEL-BROKEN", "expectation": "MUST_NOT_CLAIM", "source": "round2-report.md", "quote": "One audit also saw an empty \"Germany\" `tel:` link in the header; my re-check didn't show it." }
+      ]
+    },
+    "r2-the-bronte-clinic": {
+      "findings": [
+        { "issue_code": "E-EMAIL-INVALID", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "The privacy policy gives the only data-protection contact as `info@bronte-clinic-old.local`, a placeholder that cannot receive mail." },
+        { "issue_code": "E-CONTENT-ERROR", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "The postcode is printed \"WIG 0PW\" (letter I) on the homepage, contact, booking and privacy pages" },
+        { "issue_code": "E-FORM-BROKEN", "expectation": "MUST_NOT_CLAIM", "source": "round2-report.md", "quote": "The booking page says \"use the form below\" but no form was in the page source; it is probably loaded by JavaScript (HubSpot or Pabau), so don't claim it's broken." }
+      ]
+    },
+
+    "r2-city-dermatology-clinic": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "Every \"Enquire Now\" opens a callback popup (\"Our skin advisors will contact you back\")" }
+      ]
+    },
+    "r2-23md-clinics": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "No online booking: enquiry forms and phone only." }
+      ]
+    },
+    "r2-dr-rasha-clinic": {
+      "findings": [
+        { "issue_code": "E-PLACEHOLDER-LINK", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "Page source contains \"Book\", \"Shop\", \"Clinic\" links pointing to `finsweet.com/client-first/docs` (a Webflow template placeholder)" },
+        { "issue_code": "E-CTA-DEAD-END", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "\"Book your appointment Now\" links to `#`" },
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Phorest booking works. A browser check is needed before claiming anything." }
+      ]
+    },
+    "r2-lesley-leale-green": {
+      "supersedes": "r1-lesley-leale-green-skin-laser-clinic",
+      "findings": [
+        { "issue_code": "E-CTA-DEAD-END", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "On /booknow, \"Schedule an Appointment\" links back to /booknow itself" }
+      ],
+      "outcome_note": "Also held for compliance: no limited company found, possible sole trader (PECR consent)."
+    },
+    "r2-effect-doctors": {
+      "supersedes": "r1-effect-doctors",
+      "findings": [
+        { "issue_code": "E-CTA-DEAD-END", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "The hero \"Book Now 10% Off\" lands on the Westfield page, which has no booking link and no 10% offer." }
+      ]
+    },
+    "r2-the-avanti-aesthetics-clinic": {
+      "supersedes": "r1-the-avanti-aesthetics-clinic-harley-street",
+      "findings": [
+        { "issue_code": "E-CTA-DEAD-END", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "The footer \"Book An Appointment\" points to an old Pabau address (bookings.php?compid=8396) that wouldn't load" }
+      ]
+    },
+    "r2-expert-medical": {
+      "findings": [
+        { "issue_code": "E-PLACEHOLDER-LINK", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "On /laser-hair-removal the footer displays 0800 955 8891 but links to `tel:+447700000000`, which looks like a placeholder." }
+      ]
+    },
+    "r2-clinica-london": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "\"Book a Consultation\" leads to a request-a-callback form." }
+      ],
+      "outcome_note": "Source notes consultant triage is a fair clinical reason for a callback: weak case even if confirmed."
+    },
+    "r2-wy-skin-clinic": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "\"Book an Appointment\" is a form where the team \"will be in touch to arrange\"." }
+      ]
+    },
+    "r2-dermaperfect": {
+      "findings": [
+        { "issue_code": "E-FORM-BROKEN", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "Contact page says \"fill in the form below\" but no form is in the page source" }
+      ]
+    },
+    "r2-the-laser-clinic-group": {
+      "findings": [
+        { "issue_code": "E-BOOK-TO-ENQUIRY", "expectation": "NEEDS_BROWSER_CHECK", "source": "round2-report.md", "quote": "\"Book appointment\" is an enquiry form with a 24-hour wait" }
+      ],
+      "outcome_note": "Source flags a PECR risk: the company has had no officers since 2016."
+    },
+    "r2-the-lovely-clinic": { "supersedes": "r1-the-lovely-clinic" },
+
+    "r2-eudelo": { "rejection_category": "CLOSED" },
+    "r2-primas-medispa": { "rejection_category": "CLOSED" },
+    "r2-tempus-belgravia": {
+      "supersedes": "r1-tempus-belgravia",
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "already has self-booking" } ]
+    },
+    "r2-lisa-franklin-london": {
+      "supersedes": "r1-lisa-franklin-london",
+      "rejection_category": "INSUFFICIENT_EVIDENCE",
+      "category_note": "Founder resigned and site returns 401; trading status is not confirmed either way."
+    },
+    "r2-private-harley-street-clinic": { "rejection_category": "INSUFFICIENT_EVIDENCE", "category_note": "Source: unclear it still trades in aesthetics." },
+    "r2-continental-skin-clinic": { "rejection_category": "CLOSED" },
+    "r2-neogleam-clinic": { "rejection_category": "CLOSED" },
+    "r2-cosmedics-skin-clinics": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Working booking platform (Wilford)" } ]
+    },
+    "r2-swiss-care-swiss-aesthetics": { "supersedes": "r1-swiss-care-clinic", "rejection_category": "CHAIN_OR_GROUP" },
+    "r2-alta-medi": {
+      "supersedes": "r1-alta-medi",
+      "rejection_category": "CHAIN_OR_GROUP",
+      "findings": [
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Three sites in two countries; Phorest self-booking works." },
+        { "issue_code": "E-LINK-TARGET-MISMATCH", "expectation": "MUST_NOT_CLAIM", "source": "round2-report.md", "quote": "The round 1 WhatsApp claim no longer holds." }
+      ]
+    },
+    "r2-cosmedocs": {
+      "rejection_category": "CHAIN_OR_GROUP",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Multi-country group; Acuity booking and WhatsApp work." } ]
+    },
+    "r2-the-aesthetics-club-uk": {
+      "rejection_category": "CHAIN_OR_GROUP",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Five-clinic group (four in Scotland); Phorest booking works." } ]
+    },
+    "r2-injectual": {
+      "rejection_category": "CHAIN_OR_GROUP",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Three sites, 12+ clinicians; Zenoti booking works." } ]
+    },
+    "r2-skin-design-london": {
+      "rejection_category": "WRONG_BUSINESS_TYPE",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Mainly a product brand; Zenoti booking works." } ]
+    },
+    "r2-omniya-clinic": {
+      "supersedes": "r1-omniya-clinic",
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Semble self-booking on the booking page." } ]
+    },
+    "r2-clinicbe": {
+      "supersedes": "r1-clinicbe",
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Pabau booking works; no defect found." } ]
+    },
+    "r2-adonia-medical-clinic": {
+      "supersedes": "r1-adonia-medical-clinic",
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [
+        { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Zenoti booking works; the footer route is one extra click, not a dead end." },
+        { "issue_code": "E-CTA-DEAD-END", "expectation": "MUST_NOT_CLAIM", "source": "round2-report.md", "quote": "the footer route is one extra click, not a dead end" }
+      ]
+    },
+    "r2-medicetics": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Calendly for new clients and Pabau for returning clients: booking already solved." } ]
+    },
+    "r2-dermasurge": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Online self-booking with deposit works; the only issue is a form label typo." } ]
+    },
+    "r2-harley-street-skin-clinic": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Own booking site with card payment" } ]
+    },
+    "r2-the-devonshire-clinic": { "rejection_category": "NO_CREDIBLE_OPPORTUNITY", "category_note": "Legitimate reason: collecting GP and insurance details is a medical step." },
+    "r2-skin55": { "rejection_category": "NO_CREDIBLE_OPPORTUNITY", "category_note": "Legitimate reason: phone and enquiry booking is clinically justified." },
+    "r2-d-thomas-clinic": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Zenoti booking and a correct WhatsApp link." } ]
+    },
+    "r2-aesthetics-lab": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Pabau booking works; no email published." } ]
+    },
+    "r2-askinology": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Collums booking works; possible sole trader." } ]
+    },
+    "r2-belle-clinic": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Setmore booking and WhatsApp work." } ]
+    },
+    "r2-nakedhealth-medispa": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Phorest booking and correct WhatsApp and phone links." } ]
+    },
+    "r2-nova-aesthetic-clinic": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Pabau booking works." } ]
+    },
+    "r2-exclusive-aesthetics-wellbeing": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Self-booking calendar (LeadConnector) in place." } ]
+    },
+    "r2-dr-sna-clinic": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Own booking flow with Stripe; links well-formed." } ]
+    },
+    "r2-ace-skin-health-clinic": {
+      "rejection_category": "SERVICE_ALREADY_SOLVED",
+      "findings": [ { "issue_code": "O-BOOKING-PLATFORM", "expectation": "OBSERVED", "source": "round2-report.md", "quote": "Pabau booking in place." } ]
+    }
+  }
+}
