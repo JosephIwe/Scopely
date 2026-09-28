@@ -211,7 +211,6 @@ export async function executeBuildRun(db: Db, deps: BuildRunDeps, runId: string)
     if (deps.storage) await deps.storage.removePrefix(`workspaces/${run.workspace_id}/projects/${run.project_id}/versions/run-${runId}/`).catch(() => undefined);
     // A database refusal (a guard or constraint) means the version could not be recorded as returned.
     const sqlState = (err as { code?: unknown }).code;
-    if (process.env.SCOPELY_DEBUG_RUNS) console.error('run failed', err);
     const code = err instanceof BuildRunError ? err.code
       : typeof sqlState === 'string' && /^[0-9A-Z]{5}$/.test(sqlState) ? 'VERSION_REFUSED' : 'AGENT_ERROR';
     // The error's message may quote agent output; only the code is stored.

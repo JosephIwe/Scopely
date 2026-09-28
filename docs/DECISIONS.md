@@ -19,6 +19,7 @@ place where each one would land is named so it can be added without rework.
 | A10 | Website and Fix are two opportunity paths in one system; the path comes from the catalog item's build kind | same brief | `build_kinds.opportunity_path`, `opportunities.opportunity_kind` |
 | A11 | Discovery, pre-qualification and analysis are separate stages; unknown data goes to review, never to pass or fail | same brief | `search_run_businesses`, `src/discovery/qualify.ts` |
 | A12 | A run's analysis cap and credit budget are never silently exceeded; an unknown cost is reported as unknown | same brief | `search_run_business_guard`, `cost_event_run_guard`, `estimateRunAnalysis` |
+| A13 | The first build kind is `website`, built from one reusable template (Meridian) and edited as structured operations, never as HTML (the first half of B6) | Osim Joe, 2026-09-28 (Slice 5 brief) | `src/build/site`, `websiteBuilder`, `ScopelySiteAgent` |
 
 ## Open
 
@@ -29,7 +30,7 @@ place where each one would land is named so it can be added without rework.
 | B3 | Does a UK PLC count alongside Ltd/LLP? | PLCs are corporate subscribers under PECR, but the stated rule is Ltd/LLP | The type list in `contact_outreach_blocker` |
 | B4 | Article 14 notice wording vs "no links on Day 0" (D5) | First-message compliance | Message lint rule, when drafting exists |
 | B5 | Prices, effort and scope for Landing Page Build | It cannot be priced until a basis is recorded | `catalog_items` price band + `price_source` |
-| B6 | Which build kind to implement first, and whether a demo build is offered free | Changes what the seller gives away before a sale | A `FixBuilder` registered for that kind (with `instruct`), and a `BuildAgent` to run it |
+| B6 | Whether a demo build is offered free (which kind comes first is now A13) | Changes what the seller gives away before a sale. Today a website build records no cost and no price: the catalog item's price stays NULL | The catalog item's price band, and a `cost_events` row per build run once a model is used |
 | B8 | Daily cap, spacing and window for automated sending (D8) | Only matters once sending is built | `sending_settings` (not created), per mailbox |
 | B9 | Shared starter catalog, or a copy per workspace? | Today starter items are shared rows a workspace can use as-is or override with its own item of the same key. A copy per workspace would let sellers edit starters but duplicates reference data | `catalog_items.workspace_id` |
 | B10 | Authentication and who may act in a workspace | Users and memberships exist, but nothing authenticates a request; `recorded_by`, `approved_by`, `selected_by`, and in Slice 4 `build_requirements.recorded_by` / `build_assets.recorded_by`, are still free text, not user ids. A free-text actor is a label, not an identity: the API returns `approvedByIsAuthenticated: false`. The `*_user_id` columns Slice 4 adds (`created_by_user_id`, `started_by_user_id`) are real user FKs and must be members of the row's workspace | An API layer calling `isMember` then `withWorkspace`; then nullable `*_user_id` FKs beside each free-text actor column, backfilled only where a person is known |
@@ -45,3 +46,7 @@ are listed in `MANUAL_VALIDATION.md`.
 
 `max_discovered_per_run` is how the brief's per-run limit is read: it caps discovery per run, while
 `max_businesses_to_analyze` and `analysis_budget_credits` cap analysis.
+| B16 | May a version be approved and shown while its main button has no destination? | The build answers a booking or next-step problem, so a site with no working button repeats the defect. Today approval is allowed, the approve screen says what is missing, and the artifact leaves the button out rather than showing one that goes nowhere | `readiness` in `src/build/site/document.ts` and the approve call in `service.ts`; or a check in `build_approve_blocker` |
+| B17 | How long a prospect's preview link lasts, and whether a seller can revoke it | A link is a signed, stateless token: it expires (default 72 hours, `SHOW_LINK_TTL_HOURS`) but cannot be withdrawn early. Revoking needs a stored link id | `signPreview`/`verifyPreview` in `src/build/site/preview.ts`, plus a `preview_links` table if revocation is wanted |
+| B18 | Where version files are stored outside a developer's machine | Files are write-once and hash-checked, but only in memory (tests) or a local folder (`SCOPELY_STORAGE_DIR`). No cloud resource is allowed until a slice authorises one | A third `ObjectStore` implementation in `src/storage` |
+| B19 | Whether AI edits may write copy (headlines, service descriptions, about text) | The interpreter in this slice writes no copy of its own beyond button labels. A model-backed one could draft copy; the claim check (`claimBlocker`) refuses numbers, prices, reviews, credentials, history and superlatives, but a draft is still words the business did not say | An `EditInterpreter` with `modelUse = 'PROVIDER_CONNECTION'`, depending on B14 and B15 |

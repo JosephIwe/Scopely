@@ -64,7 +64,7 @@ describe('opening a website build from an opportunity', () => {
     expect(setup.basis.addresses[0]!.evidenceIds).toEqual([seed.evidenceId]);
     expect(setup.basis.usedFacts.map((f) => f.attribute)).toEqual(['business name', 'review rating and count']);
     const notUsed = setup.basis.notUsed.map((n) => n.what);
-    expect(notUsed).toEqual(expect.arrayContaining(['address', 'phone', 'city', 'industry', 'revenue', 'booking cta trace path']));
+    expect(notUsed).toEqual(expect.arrayContaining(['address', 'phone', 'city', 'industry', 'revenue', 'Where the booking button leads']));
     expect(setup.hasVersions).toBe(false);
   });
 });
@@ -99,8 +99,9 @@ describe('generating the site', () => {
     for (const hidden of ['7946', 'Hidden Street', 'ZZ1', 'London', 'aesthetics', '950', 'GB']) expect(html).not.toContain(hidden);
     expect(html).not.toMatch(/booking/i);
     // The review rating is shown with its source and date, from the fact.
-    expect(html).toContain('4.8');
-    expect(html).toMatch(/From 132 reviews on Google places as of Sep 2026/);
+    expect(html).toContain('>4.8<');
+    expect(html).not.toContain('4.80');
+    expect(html).toMatch(/From 132 reviews on Google as of Sep 2026/);
     const d = await doc(db(), store, projectId);
     expect(d.provenance['proof.rating']).toBe('fact');
     // Services and the button destination could not be observed, so they are left for a person.

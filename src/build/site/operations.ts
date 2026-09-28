@@ -166,7 +166,12 @@ export function describeOperation(op: EditOperation, t: SiteTemplate): string {
     case 'update_items': return `Updated ${name(op.section)} list (${op.items.length})`;
     case 'replace_image': return op.assetId ? `Changed ${name(op.section)} image` : `Removed ${name(op.section)} image`;
     case 'set_images': return `Updated ${name(op.section)} photos (${op.assetIds.length})`;
-    case 'update_cta': return op.action ? `Main button now ${op.action.kind === 'unset' ? 'has no destination' : `opens ${op.action.kind === 'link' ? 'a link' : op.action.kind}`}` : `Main button reads "${op.label}"`;
+    case 'update_cta': {
+      const target = !op.action ? null : op.action.kind === 'unset' ? 'waits for a destination'
+        : `opens ${({ phone: 'a phone call', whatsapp: 'WhatsApp', email: 'an email', link: 'a link' } as const)[op.action.kind]}`;
+      if (op.label && target) return `Main button reads "${op.label}" and ${target}`;
+      return op.label ? `Main button reads "${op.label}"` : `Main button ${target}`;
+    }
     case 'change_color': return op.palette ? `Colours: ${t.palettes.find((p) => p.key === op.palette)?.name ?? op.palette}` : 'Accent colour changed';
     case 'change_font': return `Type: ${t.fonts.find((f) => f.key === op.fonts)?.name ?? op.fonts}`;
     case 'change_layout': return `${name(op.section)} layout: ${op.variant}`;

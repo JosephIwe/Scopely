@@ -89,7 +89,54 @@ route is a thin wrapper that authenticates, checks membership and calls one of t
   (payer not recorded) with events, amount and currency (`null` when unknown or when currencies
   are mixed), credits and operator minutes. `WORKSPACE` rows never carry Scopely credits.
 - **Refs are storage keys, not URLs.** `previewRef`, `manifestRef` and asset `storageRef` are keys
-  under the project's `storagePrefix`. Nothing serves them yet.
+  under the project's `storagePrefix`. A browser never receives them: the Build Workspace HTTP
+  surface below serves a version only through a signed preview link.
+
+### Website builds (Slice 5, `src/build/site/service.ts`)
+
+Functions take the database client (inside `withWorkspace`) and an `ObjectStore`. `SiteError`
+carries an HTTP status and a message a person can read; `EditRejected` carries the index of the
+refused operation and why.
+
+| Function | Does |
+|---|---|
+| `openWebsiteProject(db, opportunityId)` | Opens (or reuses) the opportunity's website project; refuses an opportunity not mapped to a website service |
+| `getBuildSetup(db, projectId)` | `BuildSetup`: business, the evidence it answers, build type, templates, the planned changes, facts used and left out |
+| `generateSite(db, deps, projectId, { templateKey })` | A build run that makes version 1 (or a fresh version); returns `RunOutcome` (`status`, `buildId`, `errorCode`, `message`) |
+| `renderDraft(db, store, projectId, { baseBuildId, operations, selected })` | Applies operations in memory and returns editor HTML and readiness; stores nothing |
+| `saveEdits(db, store, projectId, { baseBuildId, operations })` | A new version from the person's operations |
+| `requestAiEdit(db, deps, projectId, { baseBuildId, request })` | A build run: request → operations → validation → new version; `lastEdit.needsInput` lists what it asks for |
+| `restoreVersion(db, store, projectId, { baseBuildId, fromBuildId })` | An earlier version's document as a new version |
+| `uploadImage(db, store, projectId, { bytes, description, recordedBy })` | PNG, JPEG, WebP or GIF up to 5 MB, checked by content; SVG refused; stored as a project asset |
+| `approveVersion` / `showVersion` | Slice 4's approve and show, with their blockers |
+| `previewLink(db, projectId, buildId, { kind, signingKey, ttlSeconds })` | A signed link; `show` only for a shown version |
+| `getSiteWorkspace(db, store, projectId, { selected })` | `SiteWorkspace`: project, current version (document, editor HTML, readiness, blockers), history, template, images |
+
+### Build Workspace HTTP (`pnpm serve`, `src/server/app.ts`)
+
+JSON over HTTP, acting in the one workspace the server was started with (B10). Every non-GET
+request must send `x-scopely-request: 1`, and an `Origin` header, when present, must be this
+server; anything else is `403`. Each request is one transaction. Errors are `{ error }` with a
+readable message; an unexpected failure is `500` with no detail. Responses carry no storage keys
+or hashes.
+
+| Route | Body → result |
+|---|---|
+| `GET /api/opportunities` | Opportunities with their first plain-language issue, `buildable` and `projectId` |
+| `POST /api/opportunities/:id/website` | → `{ projectId }` |
+| `GET /api/projects/:id/setup` | `BuildSetup` |
+| `GET /api/projects/:id/workspace?selected=` | The workspace screen |
+| `POST /api/projects/:id/generate` | `{ templateKey }` → `RunOutcome` |
+| `POST /api/projects/:id/render` | `{ baseBuildId, operations, selected }` → `{ html, readiness }` |
+| `POST /api/projects/:id/save` | `{ baseBuildId, operations }` → the new version |
+| `POST /api/projects/:id/ai-edit` | `{ baseBuildId, request }` (≤ 500 characters) → `RunOutcome` |
+| `POST /api/projects/:id/restore` | `{ baseBuildId, fromBuildId }` → the new version |
+| `POST /api/projects/:id/images` | raw image bytes, `x-description` (URI-encoded alt text) → the image |
+| `POST /api/projects/:id/versions/:bid/approve` | `{ approvedBy }` |
+| `POST /api/projects/:id/versions/:bid/show` | → `{ url, expiresAt }`, the prospect's link |
+| `POST /api/projects/:id/versions/:bid/link` | `{ kind: 'edit' \| 'show' }` → `{ url, expiresAt }` |
+| `GET /p/:token` | The artifact, with a sandboxing content security policy |
+| `GET /s/:token` | The prospect's page: a "design preview, not a live website" bar around the artifact in a sandboxed frame |
 
 ### Map query (`MapQuery`)
 

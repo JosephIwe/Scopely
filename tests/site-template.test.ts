@@ -56,7 +56,7 @@ describe('generating a document', () => {
     const d = await generated();
     expect(d.cta.label).toBe('Make an enquiry');
     expect(d.basis.addresses).toEqual([{ evidenceIds: ['21'], change: expect.stringMatching(/One clear next step/) }]);
-    expect(d.basis.notUsed).toEqual(expect.arrayContaining([{ what: 'booking cta trace path', why: expect.stringMatching(/could not be observed/) }]));
+    expect(d.basis.notUsed).toEqual(expect.arrayContaining([{ what: 'Where the booking button leads', why: expect.stringMatching(/could not be observed/) }]));
     expect(readiness(d, MERIDIAN).map((r) => r.section)).toEqual(['cta', 'services', 'about']);
   });
 });
@@ -100,6 +100,18 @@ describe('rendering', () => {
     ]) {
       expect(() => parseOperation({ op: 'update_cta', action: bad }), JSON.stringify(bad)).toThrow();
     }
+  });
+
+  it('leaves a button with no destination off the artifact and shows it only in the editor', async () => {
+    const d = await generated();
+    expect(d.cta.action).toEqual({ kind: 'unset' });
+    const artifact = renderSite(d, MERIDIAN, new Map(), { mode: 'artifact' });
+    expect(artifact).not.toContain(d.cta.label);
+    expect(artifact).not.toContain('btn is-unset');
+    expect(artifact).not.toContain('class="mobile-cta"');
+    expect(renderSite(d, MERIDIAN, new Map(), { mode: 'editor' })).toContain('is-unset');
+    const { document } = applyEdits(d, [{ op: 'update_cta', action: { kind: 'phone', value: '+442079460000' } }], env);
+    expect(renderSite(document, MERIDIAN, new Map(), { mode: 'artifact' })).toContain('href="tel:+442079460000"');
   });
 });
 

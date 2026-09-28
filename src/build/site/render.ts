@@ -149,7 +149,12 @@ section{padding:clamp(64px,9vw,120px) 0}
 `.replace(/\n\s*/g, '');
 
 /** A plain label for a review source key (e.g. `google_places` → "Google places"). */
-const sourceLabel = (s: string) => { const t = s.replace(/[_-]+/g, ' ').trim(); return t.charAt(0).toUpperCase() + t.slice(1); };
+const SOURCE_NAMES: Record<string, string> = { google_places: 'Google', google: 'Google', trustpilot: 'Trustpilot', yelp: 'Yelp', facebook: 'Facebook' };
+const sourceLabel = (s: string) => {
+  if (SOURCE_NAMES[s]) return SOURCE_NAMES[s];
+  const t = s.replace(/[_-]+/g, ' ').trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
 
 const monthYear = (iso: string | null) => {
   if (!iso) return null;
@@ -174,7 +179,8 @@ export function renderSite(doc: SiteDocument, t: SiteTemplate, images: ReadonlyM
   const href = ctaHref(doc.cta.action);
   const cta = (extra = '') => href
     ? `<a class="btn${extra}" href="${esc(href)}"${doc.cta.action.kind === 'link' || doc.cta.action.kind === 'whatsapp' ? ' target="_blank" rel="noopener noreferrer"' : ''}>${esc(doc.cta.label)}</a>`
-    : `<span class="btn is-unset${extra}"${editor ? ' title="Add a destination for this button"' : ''}>${esc(doc.cta.label)}</span>`;
+    // A button that goes nowhere is the defect the build answers, so the artifact leaves it out; only the editor shows it.
+    : editor ? `<span class="btn is-unset${extra}" title="Add a destination for this button">${esc(doc.cta.label)}</span>` : '';
   const visible = doc.sections.filter((s) => s.visible);
   const has = (type: string) => visible.some((s) => s.type === type);
   const attrs = (s: Section) => ` id="s-${s.type}" data-section="${s.type}"${editor && opts.selected === s.type ? ' data-selected' : ''}`;

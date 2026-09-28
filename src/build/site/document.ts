@@ -83,7 +83,21 @@ const PRIVATE_FACTS: Record<string, string> = {
   employee_count: 'staff numbers', revenue: 'revenue', website_status: 'website status', coordinates: 'map position',
 };
 
-const plain = (code: string) => code.replace(/^check\./, '').replace(/[._]+/g, ' ');
+// What each check looks at, in words a person reads on the setup screen.
+const CHECK_NAMES: Record<string, string> = {
+  booking_cta_trace: 'Where the booking button leads',
+  booking_platform_fingerprint: 'Which booking system the site uses',
+  contact_links: 'Contact links',
+  placeholder_links: 'Unfinished links',
+  stale_signals: 'Signs the site is out of date',
+  trades_hours_and_routes: 'Opening hours and service area',
+  website_presence: 'Whether the website is up',
+};
+const plain = (code: string) => {
+  const check = code.replace(/^check\./, '').split('.')[0]!;
+  return CHECK_NAMES[check] ?? check.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+};
+const WITHHELD_WHY: Record<string, string> = { website_status: 'not confirmed, so the site does not say whether a current website exists' };
 
 export function describeBasis(ctx: BuildContext, instructions: BuildInstructions | null): BuildBasis {
   const reviews = ctx.facts.find((f) => f.attribute === 'reviews');
@@ -99,7 +113,7 @@ export function describeBasis(ctx: BuildContext, instructions: BuildInstructions
       ...(reviews ? [{ attribute: 'review rating and count', basis: reviews.basis, source: reviews.source }] : []),
     ],
     notUsed: [
-      ...ctx.withheldFacts.map((w) => ({ what: w.attribute.replace(/_/g, ' '), why: w.reason })),
+      ...ctx.withheldFacts.map((w) => ({ what: w.attribute.replace(/_/g, ' '), why: WITHHELD_WHY[w.attribute] ?? w.reason })),
       ...ctx.facts.filter((f) => PRIVATE_FACTS[f.attribute]).map((f) => ({ what: PRIVATE_FACTS[f.attribute]!, why: 'known, but not something a public site should state' })),
       ...ctx.notObservable.map((o) => ({ what: plain(o.checkCode), why: 'could not be observed, so nothing is said about it' })),
       ...(ctx.notObservableNotes ? [{ what: 'operator note', why: ctx.notObservableNotes }] : []),
@@ -110,7 +124,8 @@ export function describeBasis(ctx: BuildContext, instructions: BuildInstructions
 function reviewsFact(f: BusinessFact | undefined): ReviewsFact | null {
   if (!f) return null;
   const count = f.value.count === null || f.value.count === undefined ? null : Number(f.value.count);
-  const rating = f.value.rating === null || f.value.rating === undefined ? null : String(f.value.rating);
+  // Stated as recorded: a numeric column's padding ("4.90") is not precision anyone measured.
+  const rating = f.value.rating === null || f.value.rating === undefined ? null : String(f.value.rating).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
   if (count === null && rating === null) return null;
   return { rating, count, source: f.source, asOf: f.asOf };
 }
