@@ -13,6 +13,7 @@
 // An agent receives the context, the instructions and a handle to its project's storage prefix.
 // It never receives a database handle, so it cannot approve, show or deliver anything; the run
 // executor records what it returns as a DRAFT version (see runs.ts).
+import type { ProjectFiles } from '../storage/index.js';
 import type { BuildContext } from './context.js';
 
 export interface BuildInstructions {
@@ -33,6 +34,11 @@ export interface ProjectHandle {
   storagePrefix: string;
   /** Where this run writes its version manifest and files: `${storagePrefix}versions/run-<runId>/`. */
   workPrefix: string;
+  /**
+   * Project storage when the executor has a store: reads anywhere in this project, writes only
+   * under `workPrefix`. Never another project's or workspace's files.
+   */
+  files?: ProjectFiles;
 }
 
 // ------------------------------------------------------------------ ModelProvider
@@ -98,6 +104,8 @@ export interface BuildAgentTask {
   context: BuildContext;
   instructions: BuildInstructions;
   project: ProjectHandle;
+  /** The run's own parameters as queued (for example a template key or an edit request). Never a credential. */
+  meta: Record<string, unknown>;
 }
 
 export interface BuildAgentResult {

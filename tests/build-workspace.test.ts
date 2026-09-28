@@ -83,7 +83,8 @@ function stubAgent(over: Partial<BuildAgent> = {}): BuildAgent {
   return {
     key: 'stub_agent', version: 't1', modelUse: 'NONE',
     run: async (task) => ({ title: 'Agent draft', summary: `${task.instructions.tasks.length} fixes`,
-      manifestRef: `${task.project.workPrefix}manifest.json`, previewRef: `${task.project.workPrefix}preview/index.html`, usage: [] }),
+      manifestRef: `${task.project.workPrefix}manifest.json`, previewRef: `${task.project.workPrefix}preview/index.html`,
+      previewSha256: 'c'.repeat(64), usage: [] }),
     ...over,
   };
 }
@@ -377,7 +378,7 @@ describe('a build agent can never pass a human gate', () => {
     // The agent received no database handle and no model (it uses none).
     expect(Object.keys(seen[0] as object).sort()).toEqual(['model', 'task']);
     expect((seen[0] as { model: unknown }).model).toBeNull();
-    expect(Object.keys((seen[0] as { task: object }).task).sort()).toEqual(['context', 'instructions', 'project', 'runId']);
+    expect(Object.keys((seen[0] as { task: object }).task).sort()).toEqual(['context', 'instructions', 'meta', 'project', 'runId']);
     const view = (await getBuildRun(db(), run))!;
     expect(view).toMatchObject({ status: 'SUCCEEDED', producedBuildId: result.buildId, agent: { key: 'stub_agent', version: 't1' } });
     const asOf = '2026-10-01T12:00:00Z';

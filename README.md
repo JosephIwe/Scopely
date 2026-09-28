@@ -29,8 +29,18 @@ says which stages are built, manual, a boundary only, or deferred.
   pre-qualification, analysis caps and credit budgets; website status; Website and Fix
   opportunities in one feed; and the read contract for the frontend. No discovery provider is
   implemented. See `docs/PRODUCT_MODEL.md` and `docs/API_CONTRACT.md`.
+- **Slice 5 (template-first Build Workspace):** one build kind (`website`) and one reusable
+  template (Meridian). An opportunity becomes a generated site through Slice 4's projects, runs and
+  versions; a person edits it with validated operations (text, lists, images, button, colours,
+  type, layout, sections) and a live preview; an AI edit turns a request into the same operations
+  and makes a new version; approved and shown versions are immutable, hash-checked, write-once
+  files; a version is shown only once its button has a destination; and a prospect sees a shown
+  version through a signed link that lasts 72 hours unless the seller revokes it. `pnpm serve` runs
+  the Build Workspace locally. See `docs/PRODUCT_MODEL.md` (Template-first website builds) and
+  `docs/API_CONTRACT.md`.
 
-There is **no crawler, no AI, no sending and no cloud resource**. Nothing here contacts a business:
+There is **no crawler, no model call, no sending and no cloud resource**. The AI edit in Slice 5 is
+a deterministic interpreter behind the same seam a model-backed one will use. Nothing here contacts a business:
 `messages.sent_at` records a send made by hand.
 
 ## The Truth Rule
@@ -110,7 +120,15 @@ pnpm test                             # creates a throwaway database, migrates t
 pnpm check                            # typecheck + test
 pnpm record workspace <file.json>     # provision a workspace
 SCOPELY_WORKSPACE_ID=<id> pnpm record <command> <file.json|->   # see docs/MANUAL_VALIDATION.md
+pnpm demo:seed                        # a sample workspace with one website opportunity; prints its id
+SCOPELY_WORKSPACE_ID=<id> pnpm serve  # the Build Workspace on http://127.0.0.1:4310
 ```
+
+`pnpm serve` acts in one workspace, named by `SCOPELY_WORKSPACE_ID`, because nothing authenticates a
+person yet (B10); it listens on 127.0.0.1 only. It reads `PREVIEW_SIGNING_KEY` (at least 32
+characters; a random one is used, with a warning, when unset, so links stop working on restart),
+`SCOPELY_STORAGE_DIR` (default `.scopely/storage`) and `SHOW_LINK_TTL_HOURS` (default 72, A15).
+No model credential is read or needed.
 
 Tests read `TEST_DATABASE_ADMIN_URL` (default `postgres://scopely:scopely@localhost:5432/postgres`)
 and create and drop their own `scopely_test_<random>` database. Every test runs in a transaction

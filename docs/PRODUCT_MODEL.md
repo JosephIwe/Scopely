@@ -222,7 +222,10 @@ details, no credentials; the context is checked for secret-shaped values before 
 Each project has a key prefix `workspaces/<workspace>/projects/<project>/`: versions under
 `versions/`, assets under `assets/`. A version's `manifest_ref` (and an asset's `storage_ref`) must
 be a key under its own project's prefix; another project, another workspace, `..`, a URL or a
-scheme is refused. No files are stored in Postgres and no storage exists yet: this is the seam.
+scheme is refused. No files are stored in Postgres. Since Slice 5 an `ObjectStore`
+(`src/storage`) holds the files: write-once, read back only against the sha256 the version
+recorded, in memory for tests or a local folder for `pnpm serve` (B18). An agent gets a handle that
+reads the project's prefix and writes only inside its run's own `versions/run-<id>/` prefix.
 
 ### Provider connections
 
@@ -249,6 +252,61 @@ through a `CUSTOMER_KEY` connection is billed to the `WORKSPACE` and carries no 
 it: a contradicting payer or provider is refused, and a provider cost with no payer is refused.
 Payer, connection and run never change on a recorded cost. No price is assumed: an unknown amount
 stays NULL. How Scopely-managed build AI is charged to a workspace is open decision B15.
+
+### Template-first website builds (Slice 5)
+
+One build kind, `website`, and one template, **Meridian** (hero, services, about, reviews,
+gallery, contact, footer; five colour schemes, three type pairs, three hero layouts). Nothing in the
+template names a business, place, seller or price.
+
+- **The site is a document, not HTML.** A `SiteDocument` (`scopely.site/1`) holds the template
+  key and version, brand, theme, the main button (label and destination), the sections with their
+  content, the review fact, per-field provenance (`template`, `business`, `fact`, `person`, `ai`)
+  and the **basis**: the evidence it answers (the BEFORE), what each change does about it (the
+  AFTER), the facts used and what was left out on purpose. The renderer turns a document into one
+  static HTML file with inline CSS, no script, escaped text and images as data URIs.
+- **Generation states only what it can back.** The business name and a sourced review rating are
+  used. Services, about text, photos and the button's destination could not be observed, so they
+  are left for a person, and the editor lists them as readiness items. An address, phone, hours,
+  prices or services are never written from nothing. `NOT_OBSERVABLE` checks and withheld facts
+  appear under "left out on purpose".
+- **Every edit is a validated operation.** `update_text`, `update_items`, `replace_image`,
+  `set_images`, `update_cta`, `change_color`, `change_font`, `change_layout`, `show_section`,
+  `hide_section` and `move_section` are parsed strictly against the template (slots, lengths,
+  variants, palettes, image ids, contact formats). One bad operation refuses the whole batch. The
+  browser sends operations and receives rendered HTML; it never sends HTML.
+- **AI edits propose; they do not apply.** An `EditInterpreter` turns a request into operations,
+  which go through the same validator with origin `ai`. Since A16 an AI edit may rewrite copy
+  (headline, supporting text, section text, service descriptions, button labels), but every word
+  passes the claim check: no numbers or statistics, prices, reviews, awards, credentials or
+  expertise, history or years of experience, guarantees, memberships, locations, "we offer …"
+  service claims, "now you can book online", contact details, markup or code. It may reword a
+  service's description but not add or rename a service (or a contact detail such as hours), and
+  it may not supply a phone, WhatsApp number, email or link the person did not write in the
+  request; when one is needed it asks. A sourced fact such as the review rating is rendered from
+  the fact, never written as copy. A refused edit makes no version. The interpreter in this slice
+  is deterministic (`modelUse = NONE`): it places the copy a request quotes into the slot the
+  request names. A model-backed interpreter would draft copy instead, through the same checks,
+  receiving a `ModelProvider` from the run's provider connection; it never sees a key.
+- **Versions.** Generation and AI edits are build runs (Slice 4's `executeBuildRun`), so they
+  produce a DRAFT or nothing. The executor checks that the agent's files are inside its own run
+  prefix and match their hashes, and removes them if the run fails. A person's saved edits and a
+  restore make a new version directly (generator `editor:meridian@1`), carrying the same cited
+  evidence. Edits apply only to the newest version; approved and shown versions never change, and
+  migration 010 refuses a stored artifact outside the project's `versions/` prefix or without a
+  hash.
+- **Approve and show are Slice 4's gates,** plus one for websites (A14): a version whose main
+  button has no destination can be approved but not shown, and the artifact never renders a
+  button that goes nowhere. A person approves; an agent cannot. Showing needs the approval and,
+  for HIGH evidence, a confirmed re-check.
+- **Preview links** are HMAC-signed tokens naming workspace, project, version, kind and expiry.
+  An `edit` link (the Build Workspace's own, 15 minutes) is stateless. A `show` link, for a
+  prospect, also names a `preview_links` row (A15): it lasts 72 hours by default, and the seller
+  can revoke it, which stops it on the next request. Its state is ACTIVE, EXPIRED or REVOKED;
+  revoking never changes the version. Opening a link re-reads the version (and the link row)
+  inside the token's workspace and checks the artifact's hash. The artifact is served with a
+  sandboxing content security policy; a `show` link opens a page that says it is a design
+  preview, not a live website.
 
 ## Selling from the seller's own mailbox
 

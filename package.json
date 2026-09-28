@@ -12,7 +12,9 @@
     "record": "tsx scripts/record.ts",
     "golden:build": "tsx scripts/golden-build.ts",
     "test": "vitest run",
-    "check": "pnpm typecheck && pnpm test"
+    "check": "pnpm typecheck && pnpm test",
+    "serve": "tsx scripts/serve.ts",
+    "demo:seed": "tsx scripts/demo-seed.ts"
   },
   "dependencies": {
     "pg": "8.23.0"

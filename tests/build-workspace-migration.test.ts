@@ -79,7 +79,7 @@ describe('upgrading Slice 3 builds to build projects', () => {
     // Slice 3 never marked a parent superseded; the chain existed only as a pointer.
     expect((await db.query('SELECT status FROM builds WHERE id = $1', [d.v1])).rows[0].status).toBe('APPROVED');
 
-    expect((await migrate(db, MIGRATIONS_DIR)).applied).toEqual(['009_build_workspace']);
+    expect((await migrate(db, MIGRATIONS_DIR)).applied[0]).toBe('009_build_workspace');
     expect(await counts(db)).toEqual(before);
 
     const rows = (await db.query(`SELECT id::text, project_id::text, version_no, status, approved_at FROM builds ORDER BY id`)).rows;

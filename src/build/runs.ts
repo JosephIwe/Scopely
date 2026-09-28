@@ -8,6 +8,7 @@
 // and showing stay with approveBuild / markBuildShown, called for a person.
 //
 // No agent or model provider is registered by default; nothing here calls a model.
+import { type ObjectStore, ProjectFiles } from '../storage/index.js';
 import type { Db } from '../tenancy/index.js';
 import type { BuildAgentRegistry, ModelProvider, ModelProviderRegistry, ProviderConnectionHandle, SecretResolver } from './agents.js';
 import { assertNoSecrets, loadBuildContext } from './context.js';
@@ -55,19 +56,48 @@ export interface BuildRunInput {
   /** The version to modify. The run's version will supersede it. */
   baseBuildId?: string | null;
   startedByUserId?: string | null;
+  /** The run's parameters for its agent (a template key, an edit request). Refused if credential-like. */
+  meta?: Record<string, unknown>;
 }
 
 export async function queueBuildRun(db: Db, r: BuildRunInput): Promise<string> {
   return (await one<{ id: string }>(db,
-    `INSERT INTO scopely.build_runs (project_id, purpose, agent_key, agent_version, provider_connection_id, base_build_id, started_by_user_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    `INSERT INTO scopely.build_runs (project_id, purpose, agent_key, agent_version, provider_connection_id, base_build_id, started_by_user_id, meta)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
     [r.projectId, r.purpose, r.agentKey, r.agentVersion ?? null, r.providerConnectionId ?? null, r.baseBuildId ?? null,
-     r.startedByUserId ?? null])).id;
+     r.startedByUserId ?? null, r.meta ?? {}])).id;
 }
 
 export async function cancelBuildRun(db: Db, runId: string, errorCode?: string): Promise<void> {
   await db.query(`UPDATE scopely.build_runs SET status = 'CANCELLED', finished_at = now(), error_code = $2
                    WHERE id = $1 AND workspace_id = scopely.current_workspace_id()`, [runId, errorCode ?? null]);
+}
+
+/**
+ * With storage, what an agent reports must be what it stored: each reference sits in the run's own
+ * work prefix, carries a hash, and the stored bytes match it. The site document is checked for
+ * credential-like content before it can become a version.
+ */
+async function verifyStoredResult(db: Db, files: ProjectFiles, workPrefix: string,
+  result: { manifestRef: string; manifestSha256?: string; previewRef?: string; previewSha256?: string }): Promise<void> {
+  const refs: [string, string | undefined][] = [[result.manifestRef, result.manifestSha256]];
+  if (result.previewRef) refs.push([result.previewRef, result.previewSha256]);
+  for (const [ref, sha] of refs) {
+    if (!ref.startsWith(workPrefix)) throw new BuildRunError('ARTIFACT_OUTSIDE_RUN', 'an agent reported a file outside its own work prefix');
+    try {
+      await files.readVerified(ref, sha ?? null);
+    } catch {
+      throw new BuildRunError('ARTIFACT_UNVERIFIED', 'a stored file does not match the hash the agent reported');
+    }
+  }
+  const manifest = await files.read(result.manifestRef);
+  if (manifest && manifest.contentType === 'application/json') {
+    try {
+      await assertNoSecrets(db, 'site document', JSON.parse(manifest.bytes.toString('utf8')));
+    } catch {
+      throw new BuildRunError('SECRET_REFUSED', 'the site document holds what looks like a credential');
+    }
+  }
 }
 
 /** A failure the executor records on the run as its error code. */
@@ -94,6 +124,8 @@ export interface BuildRunDeps {
   agents: BuildAgentRegistry;
   providers?: ModelProviderRegistry;
   secrets?: SecretResolver;
+  /** Project storage. With it, an agent gets a handle on its own project and the executor verifies what it wrote. */
+  storage?: ObjectStore;
 }
 
 /**
@@ -137,9 +169,12 @@ export async function executeBuildRun(db: Db, deps: BuildRunDeps, runId: string)
     }
 
     const storagePrefix = context.project.storagePrefix;
-    const result = await agent.run({ runId: String(runId), context, instructions,
-      project: { projectId: String(run.project_id), storagePrefix, workPrefix: `${storagePrefix}versions/run-${runId}/` } }, model);
+    const workPrefix = `${storagePrefix}versions/run-${runId}/`;
+    const files = deps.storage ? new ProjectFiles(deps.storage, storagePrefix, workPrefix) : undefined;
+    const result = await agent.run({ runId: String(runId), context, instructions, meta: run.meta ?? {},
+      project: { projectId: String(run.project_id), storagePrefix, workPrefix, files } }, model);
     await assertNoSecrets(db, 'agent result', result);
+    if (files) await verifyStoredResult(db, files, workPrefix, result);
 
     const buildId = await withAgentActor(db, async () => {
       const b = await one<{ id: string }>(db,
@@ -172,6 +207,8 @@ export async function executeBuildRun(db: Db, deps: BuildRunDeps, runId: string)
     return { status: 'SUCCEEDED', buildId, errorCode: null };
   } catch (err) {
     await db.query('ROLLBACK TO SAVEPOINT build_run');
+    // What the failed run wrote is unreferenced; remove it so nothing half-made stays in storage.
+    if (deps.storage) await deps.storage.removePrefix(`workspaces/${run.workspace_id}/projects/${run.project_id}/versions/run-${runId}/`).catch(() => undefined);
     // A database refusal (a guard or constraint) means the version could not be recorded as returned.
     const sqlState = (err as { code?: unknown }).code;
     const code = err instanceof BuildRunError ? err.code
