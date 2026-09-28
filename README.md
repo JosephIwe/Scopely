@@ -1,22 +1,30 @@
 # Scopely
 
-Scopely is a commercial opportunity engine for small businesses. It is not an auditor. It finds
-a business, observes a real, fixable problem on the business's own site, attaches the
-evidence, maps that problem to a service Joseph can sell at a known price, records what happened
-commercially, and later verifies the fix against a fresh snapshot.
+Scopely is an opportunity-to-revenue platform for sellers of digital services. It is not an
+auditor. It finds a business, observes a real, fixable problem on the business's own site,
+attaches the evidence, maps that problem to a service Joseph can sell at a known price, can build
+the fix before the pitch, records what happened commercially, and later verifies the fix against a
+fresh snapshot.
 
 ```
-observation → evidence → opportunity → service → price → outcome → verification → learning
+FIND → evidence → opportunity → service → BUILD/FIX → SELL → DELIVER → VERIFY → GET PAID
 ```
 
 The metric that matters is **revenue and gross profit per 100 prospects**. It is not the number
-of findings or of audits.
+of findings or of audits. `docs/PRODUCT_MODEL.md` maps every stage to the tables that hold it and
+says which stages are built, manual, a boundary only, or deferred.
 
-## Status: Slice 1 (foundation only)
+## Status
 
-Slice 1 contains a schema, reference data, a golden benchmark and the tests that hold them to the
-Truth Rule. It has **no crawler, no AI, no outreach, and no cloud resources**. Nothing here
-contacts a business. See `docs/SLICE1_PLAN.md`.
+- **Slice 1 (foundation):** schema, reference data, golden benchmark and the Truth Rule tests.
+  See `docs/SLICE1_PLAN.md`.
+- **Slice 2 (manual validation + BUILD boundary):** evidence re-check ledger, approval and send
+  gates (lawful recipient, suppression, re-checked evidence), pitch traceability, the per-
+  opportunity ledger view, a `pnpm record` operator CLI, and the BUILD/FIX data model and builder
+  interface with no builder implemented. See `docs/MANUAL_VALIDATION.md` and `docs/DECISIONS.md`.
+
+There is **no crawler, no AI, no sending and no cloud resource**. Nothing here contacts a business:
+`messages.sent_at` records a send made by hand.
 
 ## The Truth Rule
 
@@ -40,6 +48,11 @@ not zero. The database enforces this, not the application:
 | At most one effective won or lost outcome; a mistake is corrected by a `voided` outcome naming it, never after a delivery | `outcome_guard` |
 | CLIENT_REQUIRED work is never recorded as delivered by us | `outcome_guard` |
 | A verification uses a snapshot taken after the evidence | `verification_guard` |
+| A re-check uses a later snapshot and re-runs the same check and rule version; re-checks are append-only | `evidence_recheck_guard`, `evidence_rechecks_append_only` |
+| A message is approved only for a contact of the same business with a lawful basis (UK: active Ltd/LLP), not suppressed | `message_gate`, `contact_outreach_blocker` |
+| A message is marked sent only after approval, with HIGH evidence re-checked and confirmed and no evidence changed or gone | `message_gate`, `evidence_send_blocker` |
+| Approved message or build content cannot change without a new approval; sent or shown content cannot change | `message_gate`, `build_guard` |
+| A build fixes cited evidence of its own mapped opportunity; a DELIVERY build needs a win; a demo is shown only when approved and re-checked | `build_guard`, `build_evidence_guard`, `build_has_evidence` |
 
 ## VALIDATED vs HYPOTHESIS, and commercial status
 
@@ -83,6 +96,7 @@ cp .env.example .env                  # DATABASE_URL for your dev database
 pnpm migrate                          # apply migrations/ in order (sha256 ledger)
 pnpm test                             # creates a throwaway database, migrates twice, runs, drops it
 pnpm check                            # typecheck + test
+pnpm record <command> <file.json|->   # manual recording, see docs/MANUAL_VALIDATION.md
 ```
 
 Tests read `TEST_DATABASE_ADMIN_URL` (default `postgres://scopely:scopely@localhost:5432/postgres`)

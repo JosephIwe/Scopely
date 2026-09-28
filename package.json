@@ -9,6 +9,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "migrate": "tsx scripts/migrate.ts",
+    "record": "tsx scripts/record.ts",
     "golden:build": "tsx scripts/golden-build.ts",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test"

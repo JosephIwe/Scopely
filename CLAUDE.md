@@ -1,6 +1,8 @@
 # CLAUDE.md: Scopely operating rules
 
-Read `README.md` first. `docs/SLICE1_PLAN.md` records what Slice 1 is and is not.
+Read `README.md` first. `docs/PRODUCT_MODEL.md` maps FIND → BUILD/FIX → SELL → DELIVER → VERIFY
+to the schema; `docs/DECISIONS.md` lists what is decided and what is still open. Do not decide an
+open item in code.
 
 ## Hard rules
 
@@ -25,6 +27,11 @@ Read `README.md` first. `docs/SLICE1_PLAN.md` records what Slice 1 is and is not
 10. **No cloud resources and no outbound contact with businesses** until a slice explicitly
     authorises it. Nothing may send a message without a recorded human approval (`approved_at`).
 11. **Never log page HTML, message bodies, contact details or credentials.** Log ids.
+12. **A HIGH finding is re-checked on a new snapshot before it reaches a prospect.** Record it in
+    `evidence_rechecks`; never write `evidence.rechecked_at` directly.
+13. **BUILD/FIX is a boundary, not a generator.** A builder receives `loadBuildInput` (cited
+    evidence only, never page HTML) and returns an artifact reference. A demo build is never
+    delivery or revenue.
 
 ## Tests
 
