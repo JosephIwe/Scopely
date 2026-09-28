@@ -28,14 +28,16 @@ not zero. The database enforces this, not the application:
 |---|---|
 | Evidence rests on an observation made on a stored snapshot | `evidence_guard`, FK + NOT NULL |
 | Evidence has a URL, verbatim quote, `observed_at` and confidence | column CHECKs |
+| Evidence `observed_at` is its snapshot's capture time (derived; a different value is refused) | `evidence_guard`, `snapshot_time_guard` |
 | `NOT_OBSERVABLE` never becomes evidence or a defect | `observations` CHECKs, `evidence_guard` |
 | An `INFERRED` observation cannot back an `OBSERVED` claim | `evidence_guard` |
 | An opportunity has at least one evidence record | deferred `opportunity_has_evidence` |
 | An opportunity is mapped to a catalog service or explicitly `UNMAPPED` with a reason | CHECK |
-| A price comes from the catalog band, or from an explicit override basis | `opportunity_price_guard` |
-| Every finding cites a rule version | NOT NULL FK `rule_version_id` |
+| A price sits inside the catalog band, or is a structured override: an approved DISCOUNT below the band, or a BUNDLE inside the summed bands of named catalog items | `opportunity_price_guard` + CHECK |
+| Every finding cites a rule version, the same one from observation to evidence to verification | NOT NULL FK, `evidence_guard`, `verification_guard` |
 | Deal value, reply and win dates exist only through an outcome record | `opportunity_projection_guard` + `outcome_project` |
 | Outcomes are append-only | `outcomes_append_only` |
+| At most one effective won or lost outcome; a mistake is corrected by a `voided` outcome naming it, never after a delivery | `outcome_guard` |
 | CLIENT_REQUIRED work is never recorded as delivered by us | `outcome_guard` |
 | A verification uses a snapshot taken after the evidence | `verification_guard` |
 

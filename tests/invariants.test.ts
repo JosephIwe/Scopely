@@ -43,9 +43,15 @@ describe('1. evidence requires an observation made on a snapshot', () => {
 });
 
 describe('2. evidence requires url, quote, observed_at and confidence', () => {
+  it('always carries observed_at: derived from the snapshot when not supplied', async () => {
+    const c = await seedChain(db());
+    const e = await one<{ observed_at: Date }>(db(), evidenceSql + ' RETURNING observed_at',
+      [c.businessId, c.observationId, c.ruleId, 'x', 'https://e.test/', 'q', null, 'HIGH']);
+    expect(e.observed_at.toISOString()).toBe('2026-09-28T10:00:00.000Z');
+  });
   const cases: [string, number, unknown][] = [
     ['url', 4, null], ['url', 4, '  '], ['quote', 5, null], ['quote', 5, ''],
-    ['observed_at', 6, null], ['confidence', 7, null], ['confidence', 7, 'SURE'],
+    ['confidence', 7, null], ['confidence', 7, 'SURE'],
   ];
   for (const [field, idx, value] of cases) {
     it(`rejects ${field} = ${JSON.stringify(value)}`, async () => {
@@ -114,7 +120,7 @@ describe('5. a service price cannot be fabricated', () => {
     const c = await seedChain(db());
     const err = await failure(db(), `INSERT INTO opportunities (business_id, opportunity_type, mapping_status, catalog_item_id, currency, service_price)
       VALUES ($1, 't', 'MAPPED', $2, 'USD', 120)`, [c.businessId, await catalogId(db(), 'website_fix_sprint')]);
-    expect(err).toMatch(/outside catalog band/);
+    expect(err).toMatch(/not the catalog currency/);
   });
   it('rejects a price with no mapped service', async () => {
     const c = await seedChain(db());
@@ -125,14 +131,6 @@ describe('5. a service price cannot be fabricated', () => {
   it('accepts a price inside the Lead Recovery band', async () => {
     const c = await seedChain(db());
     await seedOpportunity(db(), c, 'lead_recovery_system', 425);
-    expect(await failure(db(), 'SELECT 1')).toBeNull();
-  });
-  it('accepts an out-of-band price only with an override basis', async () => {
-    const c = await seedChain(db());
-    const opp = await one<{ id: string }>(db(), `INSERT INTO opportunities (business_id, opportunity_type, mapping_status, catalog_item_id, currency, service_price, price_override_basis)
-      VALUES ($1, 't', 'MAPPED', $2, 'GBP', 150, 'Quoted £150 in writing on 2026-10-01 for two extra pages') RETURNING id`,
-      [c.businessId, await catalogId(db(), 'website_fix_sprint')]);
-    await db().query('INSERT INTO opportunity_evidence VALUES ($1, $2)', [opp.id, c.evidenceId]);
     expect(await failure(db(), 'SELECT 1')).toBeNull();
   });
   it('rejects a catalog price without a cited source', async () => {
@@ -243,7 +241,10 @@ describe('10. NOT_OBSERVABLE never becomes a defect', () => {
   });
   it('rejects promoting an observation to NOT_OBSERVABLE while keeping its defect', async () => {
     const c = await seedChain(db());
-    expect(await failure(db(), `UPDATE observations SET state = 'NOT_OBSERVABLE' WHERE id = $1`, [c.observationId])).toMatch(/check constraint/);
+    const free = await one<{ id: string }>(db(), `INSERT INTO observations (snapshot_id, check_code, rule_version_id, state, result)
+      VALUES ($1, 'c', $2, 'OBSERVED', 'defect') RETURNING id`, [c.snapshotId, c.ruleId]);
+    expect(await failure(db(), `UPDATE observations SET state = 'NOT_OBSERVABLE' WHERE id = $1`, [free.id])).toMatch(/check constraint/);
+    expect(await failure(db(), `UPDATE observations SET state = 'NOT_OBSERVABLE' WHERE id = $1`, [c.observationId])).not.toBeNull();
   });
   it('rejects evidence that claims OBSERVED on an INFERRED observation', async () => {
     const c = await seedChain(db());

@@ -14,7 +14,8 @@ Read `README.md` first. `docs/SLICE1_PLAN.md` records what Slice 1 is and is not
    proof (`commercial_status = PROVEN`) needs recorded outcomes, not detection accuracy.
 4. **Never claim CLIENT_REQUIRED work was completed by us.** The database refuses it, so do not
    route around the guard.
-5. **Outcomes are append-only.** Correct a mistake with a new outcome row, never an UPDATE.
+5. **Outcomes are append-only.** Correct a mistaken win or loss with a `voided` outcome that
+   names it (`corrects_outcome_id`, reason in `notes`), then record the right one. Never UPDATE.
 6. **Every rule change is a new `rule_versions` row.** Never edit a rule that findings cite.
 7. **Applied migrations are immutable.** The runner stores a sha256 and refuses an edited file.
    Add `NNN_name.sql` instead.
