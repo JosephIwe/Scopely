@@ -3,9 +3,9 @@
 // strictly (known op, exact fields, types, lengths and formats), checks it against the template and
 // the document as it stands, then applies it to a copy. Nothing else can write a document, and no
 // operation carries HTML, CSS or a URL that is not a validated contact target.
-import type { CtaAction, Item, Provenance, SiteDocument } from './document.js';
+import type { ChangeRow, CtaAction, Item, Provenance, SiteDocument } from './document.js';
 import { claimBlocker } from './claims.js';
-import { type SectionType, type SiteTemplate, sectionSpec } from './template.js';
+import { type SectionType, type SiteTemplate, type StyleKey, sectionSpec } from './template.js';
 
 export type EditOperation =
   | { op: 'update_text'; section: SectionType; slot: string; value: string }
@@ -15,6 +15,7 @@ export type EditOperation =
   | { op: 'update_cta'; label?: string; action?: CtaAction }
   | { op: 'change_color'; palette?: string; accent?: string | null }
   | { op: 'change_font'; fonts: string }
+  | { op: 'change_style'; button?: string; spacing?: string; image?: string; backgrounds?: string }
   | { op: 'change_layout'; section: SectionType; variant: string }
   | { op: 'show_section'; section: SectionType }
   | { op: 'hide_section'; section: SectionType }
@@ -43,6 +44,7 @@ const FIELDS: Record<EditOperation['op'], string[]> = {
   update_cta: ['label', 'action'],
   change_color: ['palette', 'accent'],
   change_font: ['fonts'],
+  change_style: ['button', 'spacing', 'image', 'backgrounds'],
   change_layout: ['section', 'variant'],
   show_section: ['section'],
   hide_section: ['section'],
@@ -104,6 +106,8 @@ export function parseCtaAction(v: unknown): CtaAction {
 }
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
+const STYLE_KEYS: StyleKey[] = ['button', 'spacing', 'image', 'backgrounds'];
+const STYLE_NAMES: Record<StyleKey, string> = { button: 'Buttons', spacing: 'Spacing', image: 'Images', backgrounds: 'Section backgrounds' };
 
 /** Parses one untrusted operation. Unknown ops and unknown or missing fields are refused. */
 export function parseOperation(raw: unknown): EditOperation {
@@ -148,6 +152,12 @@ export function parseOperation(raw: unknown): EditOperation {
       return out;
     }
     case 'change_font': return { op, fonts: str('fonts') };
+    case 'change_style': {
+      const out: EditOperation = { op };
+      for (const k of STYLE_KEYS) if (raw[k] !== undefined) out[k] = str(k);
+      if (Object.keys(out).length === 1) throw new Error('nothing to change on the style');
+      return out;
+    }
     case 'change_layout': return { op, section: str('section') as SectionType, variant: str('variant') };
     case 'show_section': case 'hide_section': return { op, section: str('section') as SectionType };
     case 'move_section': {
@@ -174,6 +184,8 @@ export function describeOperation(op: EditOperation, t: SiteTemplate): string {
     }
     case 'change_color': return op.palette ? `Colours: ${t.palettes.find((p) => p.key === op.palette)?.name ?? op.palette}` : 'Accent colour changed';
     case 'change_font': return `Type: ${t.fonts.find((f) => f.key === op.fonts)?.name ?? op.fonts}`;
+    case 'change_style': return STYLE_KEYS.filter((k) => op[k] !== undefined)
+      .map((k) => `${STYLE_NAMES[k]}: ${t.styles?.[k].find((o) => o.key === op[k])?.name ?? op[k]}`).join('; ');
     case 'change_layout': return `${name(op.section)} layout: ${op.variant}`;
     case 'show_section': return `Showed ${name(op.section)}`;
     case 'hide_section': return `Hid ${name(op.section)}`;
@@ -285,6 +297,17 @@ function applyOne(doc: SiteDocument, op: EditOperation, env: EditEnv): void {
       doc.provenance.theme = prov;
       return;
     }
+    case 'change_style': {
+      if (!t.styles) throw new Error('this template has no style controls');
+      for (const k of STYLE_KEYS) {
+        const v = op[k];
+        if (v === undefined) continue;
+        if (!t.styles[k].some((o) => o.key === v)) throw new Error(`unknown ${STYLE_NAMES[k].toLowerCase()} style`);
+        doc.theme[k] = v;
+      }
+      doc.provenance.theme = prov;
+      return;
+    }
     case 'change_layout': {
       const { spec, s } = section(op.section);
       if (!spec.variants?.some((v) => v.key === op.variant)) throw new Error(`${spec.name} has no ${op.variant.slice(0, 30)} layout`);
@@ -349,17 +372,86 @@ export function applyEdits(doc: SiteDocument, rawOps: unknown, env: EditEnv): { 
 /** Checks a whole document against its template. Used before any document is stored or rendered from storage. */
 export function assertValidDocument(doc: unknown, t: SiteTemplate): asserts doc is SiteDocument {
   const d = doc as SiteDocument;
-  if (!isObj(doc) || d.schema !== 'scopely.site/1' || d.template?.templateKey !== t.key || d.template?.version !== t.version) throw new Error('not a site document for this template');
+  if (!isObj(doc) || d.schema !== (t.styles ? 'scopely.site/2' : 'scopely.site/1') || d.template?.templateKey !== t.key || d.template?.version !== t.version) {
+    throw new Error('not a site document for this template');
+  }
   if (!Array.isArray(d.sections) || d.sections.length !== t.sections.length) throw new Error('site document sections do not match the template');
   const types = d.sections.map((s) => s.type);
   if (new Set(types).size !== types.length || types.some((x) => !t.sections.some((s) => s.type === x))) throw new Error('site document sections do not match the template');
   if (types[0] !== 'hero' || types[types.length - 1] !== 'footer') throw new Error('hero comes first and footer last');
   if (!t.palettes.some((p) => p.key === d.theme?.palette) || !t.fonts.some((f) => f.key === d.theme?.fonts)) throw new Error('unknown theme');
   if (d.theme.accent !== null && !COLOR.test(String(d.theme.accent))) throw new Error('unknown accent colour');
+  for (const k of STYLE_KEYS) {
+    if (t.styles ? !t.styles[k].some((o) => o.key === d.theme[k]) : d.theme[k] !== undefined) throw new Error('unknown style');
+  }
   parseCtaAction(d.cta?.action);
   for (const s of d.sections) {
     const spec = sectionSpec(t, s.type);
     if (s.variant !== undefined && !spec.variants?.some((v) => v.key === s.variant)) throw new Error('unknown layout');
     for (const k of Object.keys(s.content)) if (!(k in spec.slots)) throw new Error(`unknown slot ${k.slice(0, 30)}`);
   }
+}
+
+// ------------------------------------------------------------------ what changed
+
+const shown = (v: unknown): string => {
+  if (v === null || v === undefined || v === '') return '(empty)';
+  if (Array.isArray(v)) return v.length === 0 ? '(none)' : v.map((x) => (typeof x === 'object' && x ? (x as Item).title : String(x))).join(', ');
+  return String(v);
+};
+
+const actionText = (a: CtaAction): string => (a.kind === 'unset' ? 'No destination'
+  : `${({ phone: 'Call', whatsapp: 'WhatsApp', email: 'Email', link: 'Link' } as const)[a.kind]} ${a.value}`);
+
+/**
+ * Every field that differs between two documents of the same template, in page order, as rows a
+ * person reads ("Headline: old → new"). Images show as a count, never as ids.
+ */
+export function describeChanges(before: SiteDocument, after: SiteDocument, t: SiteTemplate): ChangeRow[] {
+  const rows: ChangeRow[] = [];
+  const nameOf = (x: string) => t.fonts.find((f) => f.key === x)?.name ?? t.palettes.find((p) => p.key === x)?.name ?? x;
+  if (before.theme.palette !== after.theme.palette) rows.push({ section: 'page', label: 'Colours', from: nameOf(before.theme.palette), to: nameOf(after.theme.palette) });
+  if (before.theme.accent !== after.theme.accent) rows.push({ section: 'page', label: 'Accent colour', from: before.theme.accent ?? 'From the scheme', to: after.theme.accent ?? 'From the scheme' });
+  if (before.theme.fonts !== after.theme.fonts) rows.push({ section: 'page', label: 'Type', from: nameOf(before.theme.fonts), to: nameOf(after.theme.fonts) });
+  for (const k of STYLE_KEYS) {
+    if (before.theme[k] !== after.theme[k]) {
+      const n = (v?: string) => t.styles?.[k].find((o) => o.key === v)?.name ?? shown(v);
+      rows.push({ section: 'page', label: STYLE_NAMES[k], from: n(before.theme[k]), to: n(after.theme[k]) });
+    }
+  }
+  if (before.cta.label !== after.cta.label) rows.push({ section: 'hero', label: 'Main button', from: before.cta.label, to: after.cta.label });
+  if (actionText(before.cta.action) !== actionText(after.cta.action)) {
+    rows.push({ section: 'hero', label: 'Main button goes to', from: actionText(before.cta.action), to: actionText(after.cta.action) });
+  }
+  const order = (d: SiteDocument) => d.sections.map((s) => sectionSpec(t, s.type).name).join(' · ');
+  if (order(before) !== order(after)) rows.push({ section: 'page', label: 'Section order', from: order(before), to: order(after) });
+  for (const a of after.sections) {
+    const b = before.sections.find((x) => x.type === a.type);
+    const spec = sectionSpec(t, a.type);
+    if (!b) continue;
+    if (b.visible !== a.visible) rows.push({ section: a.type, label: `${spec.name}`, from: b.visible ? 'Shown' : 'Hidden', to: a.visible ? 'Shown' : 'Hidden' });
+    if (b.variant !== a.variant) {
+      const v = (k?: string) => spec.variants?.find((x) => x.key === k)?.name ?? shown(k);
+      rows.push({ section: a.type, label: `${spec.name} layout`, from: v(b.variant), to: v(a.variant) });
+    }
+    for (const [slot, sp] of Object.entries(spec.slots)) {
+      const x = b.content[slot];
+      const y = a.content[slot];
+      if (JSON.stringify(x ?? null) === JSON.stringify(y ?? null)) continue;
+      const label = `${spec.name} · ${sp.label.toLowerCase()}`;
+      if (sp.kind === 'image') rows.push({ section: a.type, label, from: x ? 'A photo' : '(none)', to: y ? 'A different photo' : '(none)' });
+      else if (sp.kind === 'images') rows.push({ section: a.type, label, from: `${(x as string[] ?? []).length} photos`, to: `${(y as string[] ?? []).length} photos` });
+      else if (sp.kind === 'items') {
+        const bi = (x as Item[]) ?? [];
+        const ai = (y as Item[]) ?? [];
+        ai.forEach((it, i) => {
+          const was = bi.find((z) => z.title === it.title) ?? bi[i];
+          if (!was || was.title !== it.title) rows.push({ section: a.type, label, from: was ? was.title : '(none)', to: it.title });
+          else if (was.text !== it.text) rows.push({ section: a.type, label: `${spec.name} · ${it.title}`, from: shown(was.text), to: shown(it.text) });
+        });
+        if (bi.length > ai.length) rows.push({ section: a.type, label, from: `${bi.length} entries`, to: `${ai.length} entries` });
+      } else rows.push({ section: a.type, label, from: shown(x), to: shown(y) });
+    }
+  }
+  return rows;
 }

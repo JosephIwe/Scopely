@@ -23,6 +23,10 @@ place where each one would land is named so it can be added without rework.
 | A14 | A version may be approved while its main button has no destination, but it cannot be shown until it has one; a site never renders a button that goes nowhere (was B16) | Osim Joe, 2026-09-28 (Slice 5 final patch) | `showVersion` / `siteShowBlocker` in `src/build/site/service.ts`; the renderer leaves an unset button out of the artifact |
 | A15 | A prospect link lasts 72 hours by default and the seller can revoke it early; a link is ACTIVE, EXPIRED or REVOKED, and revoking never changes the version (was B17) | same patch | `preview_links` (migration 011), `DEFAULT_SHOW_LINK_TTL_SECONDS`, `revokeProspectLink` |
 | A16 | AI edits may rewrite website copy (headline, supporting text, section text, service descriptions, button labels) as structured edits under the same claim checks as generated copy; they cannot add services or invent facts (was B19) | same patch | `claimBlocker` in `src/build/site/claims.ts`, `applyEdits` with origin `ai` |
+| A17 | Saving makes a new immutable version; nothing is autosaved as a draft | Osim Joe, 2026-09-28 (Slice 6 brief) | `saveEdits`; the workspace keeps unsaved edits in the browser until Save |
+| A18 | Undo never deletes a version: it restores the previous version as a new version, and only the latest change can be undone this way | same brief | `restoreVersion(..., { undo: true })` |
+| A19 | One website template, Meridian, restyled to the "Modern Clinic" direction as template version 2; version 1 stays registered and frozen so earlier versions keep their bytes, and a new version is always made with the current template | same brief | `MERIDIAN` / `MERIDIAN_V1` in `template.ts`, `render-v1.ts`, `upgradeDocument` |
+| A20 | The Build Workspace UI stays plain JS with no framework | same brief | `src/server/ui` |
 
 ## Open
 

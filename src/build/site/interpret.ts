@@ -29,10 +29,11 @@ export interface EditInterpreter {
 }
 
 const SECTION_WORDS: [RegExp, string][] = [
-  [/\bservices?\b|\bofferings?\b/, 'services'],
+  [/\bservices?\b|\bofferings?\b|\btreatments?\b/, 'services'],
   [/\babout\b/, 'about'],
   [/\breviews?\b|\bratings?\b|\bproof\b|\btestimonials?\b/, 'proof'],
   [/\bgallery\b|\bphotos?\b|\bimages?\b|\bpictures?\b/, 'gallery'],
+  [/\bcall[- ]to[- ]action (band|section)\b|\bcta (band|section)\b/, 'cta'],
   [/\bcontact\b/, 'contact'],
 ];
 
@@ -78,25 +79,38 @@ export class RuleBasedEditInterpreter implements EditInterpreter {
     const needsInput: string[] = [];
     const palette = (p: string) => ops.push({ op: 'change_color', palette: p });
 
-    // Look and feel.
-    if (/\b(premium|luxur(y|ious)|elegant|upscale|high[- ]end|sophisticated|refined|classy)\b/.test(r)) {
-      palette('graphite');
+    // Look and feel (Meridian 2's palettes, pairings, layouts and style controls).
+    const premium = /\b(premium|luxur(y|ious)|elegant|upscale|high[- ]end|sophisticated|refined|classy)\b/.test(r);
+    if (premium) {
+      palette('noir');
       ops.push({ op: 'change_font', fonts: 'editorial' });
       if (/\bhero\b|\btop\b|\bheader\b/.test(r) || !/\b(section|services|about|gallery|contact)\b/.test(r)) ops.push({ op: 'change_layout', section: 'hero', variant: 'centered' });
-    } else if (/\b(minimal|clean|simple|airy|light(er)?)\b/.test(r)) { palette('linen'); ops.push({ op: 'change_font', fonts: 'modern' }); }
-    else if (/\b(warm(er)?|friendly|welcoming|earthy|terracotta)\b/.test(r)) palette('clay');
-    else if (/\b(green|natural|fresh|organic)\b/.test(r)) palette('evergreen');
-    else if (/\b(blue|navy|calm|trustworthy|coastal)\b/.test(r)) palette('harbor');
-    else if (/\b(dark(er)?|moody|night)\b/.test(r)) palette('graphite');
-    if (!/\b(premium|luxur|elegant|upscale|high[- ]end|sophisticated|refined|classy)/.test(r)) {
+    } else if (/\b(minimal|clean|simple|light(er)?|neutral|calm)\b/.test(r)) { palette('stone'); ops.push({ op: 'change_font', fonts: 'modern' }); }
+    else if (/\b(warm(er)?|friendly|welcoming|soft(er)?|pink|terracotta|blush)\b/.test(r)) palette('blush');
+    else if (/\b(green|natural|fresh|organic|sage)\b/.test(r)) palette('sage');
+    else if (/\b(dark(er)?|moody|night|noir)\b/.test(r)) palette('noir');
+    if (!premium) {
       if (/\bserif\b|\bclassic(al)?\b|\btraditional\b/.test(r) && !/\bsans\b/.test(r)) ops.push({ op: 'change_font', fonts: /\bclassic|traditional/.test(r) ? 'classic' : 'editorial' });
       else if (/\bsans\b|\bmodern\b/.test(r)) ops.push({ op: 'change_font', fonts: 'modern' });
     }
     const hex = r.match(/#[0-9a-f]{6}\b/);
     if (hex && /\b(accent|colou?r|button)\b/.test(r)) ops.push({ op: 'change_color', accent: hex[0] });
-    if (/\b(bold|dramatic|banner|full[- ]width|big(ger)? hero)\b/.test(r)) ops.push({ op: 'change_layout', section: 'hero', variant: 'banner' });
-    else if (/\bcent(er|re)d?\b/.test(r) && /\bhero\b/.test(r)) ops.push({ op: 'change_layout', section: 'hero', variant: 'centered' });
-    else if (/\bsplit\b|\bside by side\b/.test(r)) ops.push({ op: 'change_layout', section: 'hero', variant: 'split' });
+    if (!premium) {
+      if (/\bcent(er|re)d?\b/.test(r) && /\bhero\b/.test(r)) ops.push({ op: 'change_layout', section: 'hero', variant: 'centered' });
+      else if (/\bsplit\b|\bside by side\b/.test(r)) ops.push({ op: 'change_layout', section: 'hero', variant: 'split' });
+      else if (/\b(bold|dramatic|big(ger)? hero)\b/.test(r)) ops.push({ op: 'change_layout', section: 'hero', variant: 'centered' });
+    }
+    const style: Record<string, string> = {};
+    if (/\b(pill|round(ed)?) buttons?\b|\bbuttons? (more )?(round(ed)?|pill)/.test(r)) style.button = /pill/.test(r) ? 'pill' : 'rounded';
+    else if (/\b(square|sharp)( |-)?(cornered )?buttons?\b|\bbuttons? (more )?(square|sharp)/.test(r)) style.button = 'square';
+    if (/\b(more space|more room|spacious|airy|breathing room)\b/.test(r)) style.spacing = 'airy';
+    else if (/\b(compact|tighter|less space|denser)\b/.test(r)) style.spacing = 'compact';
+    if (/\barch(ed|es)?\b/.test(r)) style.image = 'arch';
+    else if (/\b(square|sharp)( |-)?(cornered )?(images?|photos?|pictures?)\b/.test(r)) style.image = 'square';
+    else if (/\b(soft|rounded) (images?|photos?|pictures?)\b/.test(r)) style.image = 'soft';
+    if (/\balternat(e|ing) (section )?backgrounds?\b|\bstripe/.test(r)) style.backgrounds = 'alternate';
+    else if (/\bplain backgrounds?\b|\bsame background\b/.test(r)) style.backgrounds = 'plain';
+    if (Object.keys(style).length) ops.push({ op: 'change_style', ...style });
 
     // The main button.
     const aboutButton = /\b(cta|button|call to action)\b/.test(r);

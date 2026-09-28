@@ -255,11 +255,17 @@ stays NULL. How Scopely-managed build AI is charged to a workspace is open decis
 
 ### Template-first website builds (Slice 5)
 
-One build kind, `website`, and one template, **Meridian** (hero, services, about, reviews,
-gallery, contact, footer; five colour schemes, three type pairs, three hero layouts). Nothing in the
-template names a business, place, seller or price.
+One build kind, `website`, and one template, **Meridian**. Nothing in the template names a
+business, place, seller or price. Version 1 (Slice 5: hero, services, about, reviews, gallery,
+contact, footer; five colour schemes, three type pairs, three hero layouts) is frozen. Version 2
+(Slice 6, the design handoff's "Modern Clinic" direction) adds a call-to-action band, four
+palettes (Stone, Sage, Blush, Noir), three type pairings with embedded OFL faces (Editorial,
+Modern, Classic), split and centred heroes, and page-wide button, spacing, image and background
+styles (`change_style`). A version keeps the template version it was made with, so its artifact
+always re-renders to the same bytes; a new version is made with the current template
+(`upgradeDocument` maps a version 1 document to the nearest version 2 choices and adds the band).
 
-- **The site is a document, not HTML.** A `SiteDocument` (`scopely.site/1`) holds the template
+- **The site is a document, not HTML.** A `SiteDocument` (`scopely.site/1`, or `/2` for Meridian 2) holds the template
   key and version, brand, theme, the main button (label and destination), the sections with their
   content, the review fact, per-field provenance (`template`, `business`, `fact`, `person`, `ai`)
   and the **basis**: the evidence it answers (the BEFORE), what each change does about it (the
@@ -271,7 +277,7 @@ template names a business, place, seller or price.
   prices or services are never written from nothing. `NOT_OBSERVABLE` checks and withheld facts
   appear under "left out on purpose".
 - **Every edit is a validated operation.** `update_text`, `update_items`, `replace_image`,
-  `set_images`, `update_cta`, `change_color`, `change_font`, `change_layout`, `show_section`,
+  `set_images`, `update_cta`, `change_color`, `change_font`, `change_layout`, `change_style`, `show_section`,
   `hide_section` and `move_section` are parsed strictly against the template (slots, lengths,
   variants, palettes, image ids, contact formats). One bad operation refuses the whole batch. The
   browser sends operations and receives rendered HTML; it never sends HTML.
@@ -291,8 +297,10 @@ template names a business, place, seller or price.
 - **Versions.** Generation and AI edits are build runs (Slice 4's `executeBuildRun`), so they
   produce a DRAFT or nothing. The executor checks that the agent's files are inside its own run
   prefix and match their hashes, and removes them if the run fails. A person's saved edits and a
-  restore make a new version directly (generator `editor:meridian@1`), carrying the same cited
-  evidence. Edits apply only to the newest version; approved and shown versions never change, and
+  restore make a new version directly (generator `editor:meridian@<template version>`), carrying the
+  same cited evidence. Undo is a restore of the version the current one replaced, made as a new
+  version (A18); nothing is deleted. An AI edit records what it changed (`lastEdit.changes`) so the
+  workspace can show each change and offer Undo. Edits apply only to the newest version; approved and shown versions never change, and
   migration 010 refuses a stored artifact outside the project's `versions/` prefix or without a
   hash.
 - **Approve and show are Slice 4's gates,** plus one for websites (A14): a version whose main

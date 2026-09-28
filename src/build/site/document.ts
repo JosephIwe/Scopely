@@ -7,7 +7,7 @@
 // what it deliberately did not use. The site itself never states any of that.
 import type { BuildInstructions } from '../agents.js';
 import type { BuildContext, BusinessFact } from '../context.js';
-import { type SectionType, type SiteTemplate, sectionSpec } from './template.js';
+import { MERIDIAN, type SectionType, type SiteTemplate, sectionSpec } from './template.js';
 
 export type CtaAction =
   | { kind: 'unset' }
@@ -46,20 +46,31 @@ export interface BuildBasis {
   notUsed: { what: string; why: string }[];
 }
 
+/** One field an AI edit changed, for the proposal card: what it was and what it became. */
+export interface ChangeRow { section: SectionType | 'page'; label: string; from: string; to: string }
+
 export interface SiteDocument {
-  schema: 'scopely.site/1';
+  /** `scopely.site/1` for Meridian 1; `scopely.site/2` adds the style controls and the CTA band. */
+  schema: 'scopely.site/1' | 'scopely.site/2';
   /** Named templateKey, not key: a bare "key" reads as a credential to the secret scan. */
   template: { templateKey: string; version: number };
   brand: { name: string };
-  theme: { palette: string; fonts: string; accent: string | null };
+  /** Schema 2 also carries button, spacing, image and backgrounds (template.styles keys). */
+  theme: { palette: string; fonts: string; accent: string | null; button?: string; spacing?: string; image?: string; backgrounds?: string };
   cta: { label: string; action: CtaAction };
   sections: Section[];
   facts: { reviews: ReviewsFact | null };
   /** Keyed `<section>.<slot>`, plus `cta` and `theme`. */
   provenance: Record<string, Provenance>;
   basis: BuildBasis;
-  lastEdit: { by: 'generator' | 'person' | 'ai'; request: string | null; applied: string[]; needsInput: string[] };
+  lastEdit: {
+    by: 'generator' | 'person' | 'ai'; request: string | null; applied: string[]; needsInput: string[];
+    /** Schema 2, AI edits: every field the edit changed, before and after. */
+    changes?: ChangeRow[];
+  };
 }
+
+export const SCHEMA_FOR_VERSION: Record<number, SiteDocument['schema']> = { 1: 'scopely.site/1', 2: 'scopely.site/2' };
 
 const BOOKING_ISSUES = new Set(['E-BOOK-TO-ENQUIRY', 'E-NO-NEXT-STEP', 'E-CTA-DEAD-END']);
 const CONTACT_LINK_ISSUES = new Set(['E-TEL-BROKEN', 'E-WA-BROKEN', 'E-LINK-TARGET-MISMATCH', 'E-EMAIL-INVALID', 'E-PLACEHOLDER-LINK']);
@@ -147,11 +158,12 @@ export function generateDocument(ctx: BuildContext, instructions: BuildInstructi
     about: { heading: `About ${name}`.slice(0, 60), body: '', image: images[1] ?? null },
     proof: { heading: 'What customers say' },
     gallery: { heading: 'Gallery', images: images.slice(0, 8) },
+    cta: { heading: 'Take the next step', text: 'Get in touch whenever you are ready.' },
     contact: { heading: 'Get in touch', body: 'We would be glad to hear from you.', details: [] },
     footer: { note: '' },
   };
   const visible: Record<SectionType, boolean> = {
-    hero: true, services: true, about: true, proof: reviews !== null, gallery: images.length >= 2, contact: true, footer: true,
+    hero: true, services: true, about: true, proof: reviews !== null, gallery: images.length >= 2, cta: true, contact: true, footer: true,
   };
   const provenance: Record<string, Provenance> = { 'hero.headline': 'business', 'about.heading': 'business', cta: 'template', theme: 'template' };
   for (const s of t.sections) {
@@ -159,10 +171,10 @@ export function generateDocument(ctx: BuildContext, instructions: BuildInstructi
   }
   if (reviews) provenance['proof.rating'] = 'fact';
   return {
-    schema: 'scopely.site/1',
+    schema: SCHEMA_FOR_VERSION[t.version]!,
     template: { templateKey: t.key, version: t.version },
     brand: { name },
-    theme: { palette: t.defaults.palette, fonts: t.defaults.fonts, accent: null },
+    theme: { palette: t.defaults.palette, fonts: t.defaults.fonts, accent: null, ...styleDefaults(t) },
     cta: { label: ctaLabel, action: { kind: 'unset' } },
     sections: t.sections.map((s) => ({ type: s.type, visible: visible[s.type], ...(s.variants ? { variant: s.variants[0]!.key } : {}),
       content: structuredClone(content[s.type]) })),
@@ -171,6 +183,38 @@ export function generateDocument(ctx: BuildContext, instructions: BuildInstructi
     basis: describeBasis(ctx, instructions),
     lastEdit: { by: 'generator', request: null, applied: [`Built from the ${t.name} template`], needsInput: [] },
   };
+}
+
+const styleDefaults = (t: SiteTemplate) => (t.styles
+  ? { button: t.defaults.button!, spacing: t.defaults.spacing!, image: t.defaults.image!, backgrounds: t.defaults.backgrounds! } : {});
+
+// Meridian 1 palettes, mapped to the nearest Meridian 2 palette.
+const V1_PALETTE: Record<string, string> = { harbor: 'stone', evergreen: 'sage', clay: 'blush', graphite: 'noir', linen: 'stone' };
+
+/**
+ * A document in the current version of its template. A Meridian 1 document keeps everything a
+ * person or the generator wrote (text, lists, images, the button, order, visibility, provenance
+ * and the basis) and gains version 2's style controls and a call-to-action band before the
+ * contact section. Colours and type map to the nearest version 2 choice; the banner hero becomes
+ * centred. Stored versions are never rewritten: this runs only when a document becomes the base
+ * of a new version, which is then made with the current template.
+ */
+export function upgradeDocument(doc: SiteDocument): SiteDocument {
+  if (doc.template.version === MERIDIAN.version) return doc;
+  if (doc.template.templateKey !== MERIDIAN.key || doc.template.version !== 1) throw new Error('no upgrade for this site document');
+  const t = MERIDIAN;
+  const d = structuredClone(doc);
+  d.schema = SCHEMA_FOR_VERSION[t.version]!;
+  d.template = { templateKey: t.key, version: t.version };
+  d.theme = { palette: V1_PALETTE[d.theme.palette] ?? t.defaults.palette, fonts: d.theme.fonts, accent: d.theme.accent, ...styleDefaults(t) };
+  for (const s of d.sections) if (s.type === 'hero' && !sectionSpec(t, 'hero').variants!.some((v) => v.key === s.variant)) s.variant = 'centered';
+  if (!d.sections.some((s) => s.type === 'cta')) {
+    const at = d.sections.findIndex((s) => s.type === 'contact');
+    d.sections.splice(at, 0, { type: 'cta', visible: true, content: { heading: 'Take the next step', text: 'Get in touch whenever you are ready.' } });
+    d.provenance['cta.heading'] = 'template';
+    d.provenance['cta.text'] = 'template';
+  }
+  return d;
 }
 
 export interface ReadinessItem { section: SectionType | 'cta'; message: string }

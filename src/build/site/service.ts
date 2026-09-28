@@ -20,7 +20,7 @@ import { assertNoSecrets, loadBuildContext } from '../context.js';
 import { BuilderRegistry, approveBuild, markBuildShown, recordBuild } from '../index.js';
 import { createBuildProject, executeBuildRun, queueBuildRun } from '../runs.js';
 import { ScopelySiteAgent, WEBSITE_KIND, websiteBuilder } from './agent.js';
-import { type BuildBasis, type ReadinessItem, type SiteDocument, describeBasis, readiness } from './document.js';
+import { type BuildBasis, type ReadinessItem, type SiteDocument, describeBasis, readiness, upgradeDocument } from './document.js';
 import { EXT, type ImageAsset, MAX_IMAGE_BYTES, imageType, loadPlacedImages } from './images.js';
 import { type EditInterpreter, RuleBasedEditInterpreter } from './interpret.js';
 import { applyEdits, assertValidDocument, describeOperation } from './operations.js';
@@ -84,6 +84,8 @@ export interface BuildSetup {
   projectId: string;
   business: { name: string; websiteUrl: string | null };
   buildType: { key: string; name: string; description: string };
+  /** The service this build is sold as, and its price when one is set (never invented). */
+  opportunity: { service: string | null; price: string | null; currency: string | null };
   templates: { key: string; name: string; description: string; sections: string[] }[];
   /** The problem, the plan, and what will and will not be used. */
   basis: BuildBasis;
@@ -101,10 +103,12 @@ export async function getBuildSetup(db: Db, projectId: string): Promise<BuildSet
   const instructions = await websiteBuilder.instruct!(ctx);
   const kind = (await db.query('SELECT name, description FROM scopely.build_kinds WHERE key = $1', [WEBSITE_KIND])).rows[0];
   const versions = (await db.query('SELECT count(*)::int AS n FROM scopely.builds WHERE project_id = $1 AND workspace_id = scopely.current_workspace_id()', [p.id])).rows[0];
+  const service = (await getBuildProject(db, p.id))!.opportunity.service;
   return {
     projectId: String(p.id),
     business: { name: ctx.business.name, websiteUrl: ctx.business.websiteUrl },
     buildType: { key: WEBSITE_KIND, name: kind.name, description: kind.description },
+    opportunity: { service: service.name ?? null, price: service.price ?? null, currency: service.currency ?? null },
     templates: listTemplates(WEBSITE_KIND).map((t) => ({ key: t.key, name: t.name, description: t.description, sections: t.sections.map((s) => s.name) })),
     basis: describeBasis(ctx, instructions),
     hasVersions: versions.n > 0,
@@ -194,6 +198,15 @@ async function readDocument(store: ObjectStore, workspaceId: string, projectId: 
   return { doc, template };
 }
 
+/** A stored document as the base of new work: in the current version of its template (upgradeDocument). */
+async function readEditable(store: ObjectStore, workspaceId: string, projectId: string, v: VersionRow): Promise<{ doc: SiteDocument; template: SiteTemplate; upgraded: boolean }> {
+  const { doc } = await readDocument(store, workspaceId, projectId, v);
+  const next = upgradeDocument(doc);
+  const template = getTemplate(next.template.templateKey, next.template.version);
+  assertValidDocument(next, template);
+  return { doc: next, template, upgraded: next !== doc };
+}
+
 async function imageAssets(db: Db, projectId: string): Promise<ImageAsset[]> {
   const r = await db.query(
     `SELECT id, storage_ref, sha256, description FROM scopely.build_assets
@@ -211,7 +224,7 @@ export async function renderDraft(db: Db, store: ObjectStore, projectId: string,
   opts: { baseBuildId: string; operations: unknown; selected?: string | null }): Promise<DraftRender> {
   const p = await projectRow(db, projectId);
   const base = await requireCurrent(db, p.id, opts.baseBuildId);
-  const { doc, template } = await readDocument(store, p.workspace_id, p.id, base);
+  const { doc, template } = await readEditable(store, p.workspace_id, p.id, base);
   const assets = await imageAssets(db, p.id);
   const { document, applied } = applyEdits(doc, opts.operations, { template, origin: 'person', imageAssetIds: new Set(assets.map((a) => a.assetId)) });
   const images = await loadPlacedImages(filesFor(store, p.workspace_id, p.id), assets, document);
@@ -259,7 +272,7 @@ export async function saveEdits(db: Db, store: ObjectStore, projectId: string,
   opts: { baseBuildId: string; operations: unknown }): Promise<{ buildId: string }> {
   const p = await projectRow(db, projectId);
   const base = await requireCurrent(db, p.id, opts.baseBuildId);
-  const { doc, template } = await readDocument(store, p.workspace_id, p.id, base);
+  const { doc, template } = await readEditable(store, p.workspace_id, p.id, base);
   const assets = await imageAssets(db, p.id);
   const { document, applied } = applyEdits(doc, opts.operations, { template, origin: 'person', imageAssetIds: new Set(assets.map((a) => a.assetId)) });
   if (applied.length === 0) throw new SiteError(400, 'There are no changes to save.');
@@ -269,17 +282,30 @@ export async function saveEdits(db: Db, store: ObjectStore, projectId: string,
   return { buildId: await recordPersonVersion(db, store, p, base, document, template, summary, { by: 'person', request: null, applied: unique, needsInput: [] }) };
 }
 
-/** Makes an earlier version's site the newest version again. History stays linear; nothing is rewritten. */
-export async function restoreVersion(db: Db, store: ObjectStore, projectId: string, opts: { baseBuildId: string; fromBuildId: string }): Promise<{ buildId: string }> {
+/**
+ * Makes an earlier version's site the newest version again, as a new version. History stays
+ * linear and append-only; nothing is rewritten or deleted.
+ *
+ * Undo (A18) is this same operation: undoing the current version restores the version before it,
+ * and says so in the new version's summary. Only the current version can be undone, and only
+ * back to the version it superseded.
+ */
+export async function restoreVersion(db: Db, store: ObjectStore, projectId: string,
+  opts: { baseBuildId: string; fromBuildId: string; undo?: boolean }): Promise<{ buildId: string; versionNo: number }> {
   const p = await projectRow(db, projectId);
   const base = await requireCurrent(db, p.id, opts.baseBuildId);
   const from = (await db.query(`SELECT * FROM scopely.builds WHERE id = $1 AND project_id = $2 AND workspace_id = scopely.current_workspace_id()`,
     [opts.fromBuildId, p.id])).rows[0] as VersionRow | undefined;
   if (!from) throw new SiteError(404, 'That version does not exist.');
   if (String(from.id) === String(base.id)) throw new SiteError(400, 'That is already the current version.');
-  const { doc, template } = await readDocument(store, p.workspace_id, p.id, from);
-  return { buildId: await recordPersonVersion(db, store, p, base, doc, template, `Restored version ${from.version_no}`,
-    { by: 'person', request: null, applied: [`Restored version ${from.version_no}`], needsInput: [] }) };
+  if (opts.undo) {
+    const prev = (await db.query('SELECT supersedes_build_id FROM scopely.builds WHERE id = $1', [base.id])).rows[0];
+    if (!prev || String(prev.supersedes_build_id) !== String(from.id)) throw new SiteError(409, 'Only the latest change can be undone. Restore an earlier version from the history instead.');
+  }
+  const { doc, template } = await readEditable(store, p.workspace_id, p.id, from);
+  const summary = opts.undo ? `Undid version ${base.version_no}: restored version ${from.version_no}` : `Restored version ${from.version_no}`;
+  const buildId = await recordPersonVersion(db, store, p, base, doc, template, summary, { by: 'person', request: null, applied: [summary], needsInput: [] });
+  return { buildId, versionNo: base.version_no + 1 };
 }
 
 // ------------------------------------------------------------------ images
@@ -421,6 +447,8 @@ export interface SiteWorkspace {
   current: {
     buildId: string; versionNo: number; status: string; document: SiteDocument; readiness: ReadinessItem[];
     html: string; approveBlocker: string | null; showBlocker: string | null; artifactSha256: string | null;
+    /** The version was made with an earlier template version; the preview shows how the next version will look. */
+    upgraded: boolean;
   } | null;
   template: SiteTemplate;
   images: { assetId: string; description: string; dataUrl: string }[];
@@ -442,13 +470,15 @@ export async function getSiteWorkspace(db: Db, store: ObjectStore, projectId: st
     } catch { /* an image that fails its hash is not offered */ }
   }
   if (!cur) return { project, current: null, template: MERIDIAN, images };
-  const { doc, template } = await readDocument(store, p.workspace_id, p.id, cur);
+  // Shown as the next version would be made: a Meridian 1 version is previewed in the current look,
+  // and says so (`upgraded`). Its stored files are untouched.
+  const { doc, template, upgraded } = await readEditable(store, p.workspace_id, p.id, cur);
   const html = renderSite(doc, template, await loadPlacedImages(files, assets, doc), { mode: 'editor', selected: opts.selected ?? null });
   const v = project.versions.find((x) => x.buildId === String(cur.id))!;
   return {
     project,
     current: { buildId: String(cur.id), versionNo: cur.version_no, status: cur.status, document: doc, readiness: readiness(doc, template), html,
-      approveBlocker: v.gate.approveBlocker, showBlocker: siteShowBlocker(v.gate.showBlocker, doc), artifactSha256: cur.artifact_sha256 },
+      approveBlocker: v.gate.approveBlocker, showBlocker: siteShowBlocker(v.gate.showBlocker, doc), artifactSha256: cur.artifact_sha256, upgraded },
     template, images,
   };
 }

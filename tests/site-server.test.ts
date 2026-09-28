@@ -144,6 +144,26 @@ describe('Build Workspace server', () => {
     expect((await call('GET', shown.url)).status).toBe(404);
   });
 
+  it('serves its own typefaces, lets the preview use embedded ones, and undoes an edit as a new version (Slice 6)', async () => {
+    const { projectId, buildId, call } = await generated();
+    const page = await call('GET', '/');
+    expect(page.headers.get('content-security-policy')).toContain("font-src 'self' data:");
+    const font = await call('GET', '/fonts/geist.woff2');
+    expect(font.status).toBe(200);
+    expect(font.headers.get('content-type')).toBe('font/woff2');
+    expect((await call('GET', '/fonts/../app.ts')).status).toBe(404);
+
+    const edit = (await call('POST', `/api/projects/${projectId}/save`, { baseBuildId: buildId, operations: [{ op: 'change_style', button: 'square' }] })).json();
+    const undo = await call('POST', `/api/projects/${projectId}/restore`, { baseBuildId: edit.buildId, fromBuildId: buildId, undo: true });
+    expect(undo.status).toBe(200);
+    expect(undo.json()).toMatchObject({ versionNo: 3 });
+    const view = (await call('GET', `/api/projects/${projectId}/workspace`)).json();
+    expect(view.current.document.theme.button).toBe('pill');
+    expect(view.versions.map((v: { versionNo: number; kind: string }) => [v.versionNo, v.kind])).toEqual([[3, 'restore'], [2, 'manual'], [1, 'build']]);
+    // Undo only ever steps back one version.
+    expect((await call('POST', `/api/projects/${projectId}/restore`, { baseBuildId: undo.json().buildId, fromBuildId: buildId, undo: true })).status).toBe(409);
+  });
+
   it('answers an unexpected failure without detail', async () => {
     const { call } = await generated();
     const r = await call('POST', '/api/projects/1/save', { baseBuildId: 'x', operations: [] });

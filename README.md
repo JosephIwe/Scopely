@@ -38,6 +38,14 @@ says which stages are built, manual, a boundary only, or deferred.
   version through a signed link that lasts 72 hours unless the seller revokes it. `pnpm serve` runs
   the Build Workspace locally. See `docs/PRODUCT_MODEL.md` (Template-first website builds) and
   `docs/API_CONTRACT.md`.
+- **Slice 6 (Build Workspace design):** the workspace rebuilt to the design handoff in plain JS
+  (template select, generating, a workspace with AI / Sections / Design / Settings, a section
+  inspector, version history, approve and show dialogs, preview mode, a Before → After drawer,
+  and a bottom sheet below 1000px). Meridian is restyled as version 2 ("Modern Clinic": four
+  palettes, three embedded type pairings, a call-to-action band, and button, spacing, image and
+  background styles). Saving makes a new version; Undo restores the previous version as a new
+  version. Versions built with Meridian 1 keep rendering to their stored bytes; their next
+  version is made with Meridian 2.
 
 There is **no crawler, no model call, no sending and no cloud resource**. The AI edit in Slice 5 is
 a deterministic interpreter behind the same seam a model-backed one will use. Nothing here contacts a business:

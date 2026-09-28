@@ -14,10 +14,10 @@
 import type { BuildAgent, BuildAgentResult, BuildAgentTask, BuildInstructions, ModelProvider } from '../agents.js';
 import type { FixBuilder } from '../index.js';
 import { BuildRunError } from '../runs.js';
-import { type SiteDocument, generateDocument, planChanges } from './document.js';
+import { type SiteDocument, generateDocument, planChanges, upgradeDocument } from './document.js';
 import { loadPlacedImages } from './images.js';
 import type { EditInterpreter } from './interpret.js';
-import { EditRejected, applyEdits, assertValidDocument, describeOperation } from './operations.js';
+import { EditRejected, applyEdits, assertValidDocument, describeChanges, describeOperation } from './operations.js';
 import { renderSite } from './render.js';
 import { getTemplate } from './template.js';
 
@@ -71,9 +71,11 @@ export class ScopelySiteAgent implements BuildAgent {
     } else {
       const base = ctx.baseVersion;
       if (!base.manifestRef) throw new BuildRunError('BASE_NOT_EDITABLE', 'the base version has no site document');
-      const raw = JSON.parse((await files.readVerified(base.manifestRef, base.manifestSha256)).bytes.toString('utf8')) as SiteDocument;
-      const t = getTemplate(raw.template?.templateKey, raw.template?.version);
-      assertValidDocument(raw, t);
+      const stored = JSON.parse((await files.readVerified(base.manifestRef, base.manifestSha256)).bytes.toString('utf8')) as SiteDocument;
+      assertValidDocument(stored, getTemplate(stored.template?.templateKey, stored.template?.version));
+      // The new version is made with the current template; the stored one is never rewritten.
+      const raw = upgradeDocument(stored);
+      const t = getTemplate(raw.template.templateKey, raw.template.version);
       const request = typeof task.meta.request === 'string' ? task.meta.request : '';
       if (!request.trim()) throw new BuildRunError('EDIT_REQUEST_EMPTY', 'no edit request');
       const interpretation = await this.interpreter.interpret({ request, document: raw, template: t, context: ctx }, model);
@@ -89,7 +91,7 @@ export class ScopelySiteAgent implements BuildAgent {
         throw err;
       }
       const lines = applied.map((op) => describeOperation(op, t));
-      doc.lastEdit = { by: 'ai', request: cap(request.trim(), 500), applied: lines, needsInput: interpretation.needsInput };
+      doc.lastEdit = { by: 'ai', request: cap(request.trim(), 500), applied: lines, needsInput: interpretation.needsInput, changes: describeChanges(raw, doc, t) };
       summary = cap(`AI edit: ${lines.join('; ') || 'no change yet'}${interpretation.needsInput.length ? `. Needs you: ${interpretation.needsInput.join(' ')}` : ''}`, 600);
     }
 

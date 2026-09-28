@@ -35,6 +35,9 @@ async function doc(d: pg.Client, store: MemoryObjectStore, projectId: string): P
   return (await getSiteWorkspace(d, store, projectId)).current!.document;
 }
 
+/** A page's text and markup without embedded data (fonts and images), which is base64 noise to a substring check. */
+const withoutData = (html: string) => html.replace(/data:[a-z0-9/+.-]+;base64,[A-Za-z0-9+/=]+/g, 'data:…');
+
 async function artifactHtml(d: pg.Client, store: MemoryObjectStore, buildId: string): Promise<string> {
   const b = await one<{ artifact_ref: string }>(d, 'SELECT artifact_ref FROM builds WHERE id = $1', [buildId]);
   return store.objects.get(b.artifact_ref)!.bytes.toString('utf8');
@@ -99,14 +102,14 @@ describe('generating the site', () => {
 
   it('states only the business name and sourced facts; withheld, private and unobservable facts never reach the site', async () => {
     const { projectId, buildId, store } = await built(db(), new MemoryObjectStore(), { reviews: true });
-    const html = await artifactHtml(db(), store, buildId);
+    const html = withoutData(await artifactHtml(db(), store, buildId));
     expect(html).toContain('Example Clinic');
     for (const hidden of ['7946', 'Hidden Street', 'ZZ1', 'London', 'aesthetics', '950', 'GB']) expect(html).not.toContain(hidden);
     expect(html).not.toMatch(/booking/i);
     // The review rating is shown with its source and date, from the fact.
     expect(html).toContain('>4.8<');
     expect(html).not.toContain('4.80');
-    expect(html).toMatch(/From 132 reviews on Google as of Sep 2026/);
+    expect(html).toMatch(/out of 5 · from 132 reviews · on Google · as of Sep 2026/);
     const d = await doc(db(), store, projectId);
     expect(d.provenance['proof.rating']).toBe('fact');
     // Services and the button destination could not be observed, so they are left for a person.
@@ -195,7 +198,7 @@ describe('editing makes new versions', () => {
       { op: 'update_text', section: 'hero', slot: 'eyebrow', value: 'Skin and aesthetics clinic' },
       { op: 'update_items', section: 'services', slot: 'items', items: [{ title: 'Consultations', text: 'A first conversation about what you want.' }] },
       { op: 'update_cta', label: 'Book a consultation', action: { kind: 'whatsapp', value: '+44 7700 900123' } },
-      { op: 'change_color', palette: 'evergreen' },
+      { op: 'change_color', palette: 'sage' },
       { op: 'hide_section', section: 'about' },
       { op: 'move_section', section: 'contact', direction: 'up' },
     ];
@@ -211,13 +214,13 @@ describe('editing makes new versions', () => {
     const rows = (await db().query('SELECT id, version_no, status, supersedes_build_id, generator FROM builds WHERE project_id = $1 ORDER BY version_no', [projectId])).rows;
     expect(rows).toEqual([
       { id: buildId, version_no: 1, status: 'SUPERSEDED', supersedes_build_id: null, generator: 'agent:scopely_site:1' },
-      { id: v2, version_no: 2, status: 'DRAFT', supersedes_build_id: buildId, generator: 'editor:meridian@1' },
+      { id: v2, version_no: 2, status: 'DRAFT', supersedes_build_id: buildId, generator: 'editor:meridian@2' },
     ]);
     const d = await doc(db(), store, projectId);
     expect(d.provenance['hero.eyebrow']).toBe('person');
     expect(d.lastEdit.by).toBe('person');
     expect(d.basis.problem[0]!.issueCode).toBe('E-LINK-TARGET-MISMATCH'); // the BEFORE travels with every version
-    expect(d.sections.map((s: { type: string }) => s.type)).toEqual(['hero', 'services', 'about', 'proof', 'contact', 'gallery', 'footer']);
+    expect(d.sections.map((s: { type: string }) => s.type)).toEqual(['hero', 'services', 'about', 'proof', 'gallery', 'contact', 'cta', 'footer']);
     expect(await verifyVersionArtifact(db(), store, projectId, v2)).toBe(true);
     // Version 1's files are untouched.
     expect(await verifyVersionArtifact(db(), store, projectId, buildId)).toBe(true);
@@ -237,7 +240,7 @@ describe('editing makes new versions', () => {
     const run = await getBuildRun(db(), r.runId);
     expect(run).toMatchObject({ baseBuildId: buildId, producedBuildId: r.buildId });
     const d = await doc(db(), store, projectId);
-    expect(d.theme).toEqual({ palette: 'graphite', fonts: 'editorial', accent: null });
+    expect(d.theme).toEqual({ palette: 'noir', fonts: 'editorial', accent: null, button: 'pill', spacing: 'comfortable', image: 'soft', backgrounds: 'alternate' });
     expect(d.sections[0]!.variant).toBe('centered');
     expect(d.cta).toEqual({ label: 'Message us on WhatsApp', action: { kind: 'unset' } });
     // It could not know the number, so it asks rather than inventing one.
@@ -263,11 +266,11 @@ describe('editing makes new versions', () => {
 
   it('restores an earlier version as a new version, keeping history linear', async () => {
     const { projectId, buildId, store } = await built(db());
-    const { buildId: v2 } = await saveEdits(db(), store, projectId, { baseBuildId: buildId, operations: [{ op: 'change_color', palette: 'clay' }] });
+    const { buildId: v2 } = await saveEdits(db(), store, projectId, { baseBuildId: buildId, operations: [{ op: 'change_color', palette: 'blush' }] });
     const { buildId: v3 } = await restoreVersion(db(), store, projectId, { baseBuildId: v2, fromBuildId: buildId });
     expect((await one<{ version_no: number; supersedes_build_id: string }>(db(), 'SELECT version_no, supersedes_build_id FROM builds WHERE id = $1', [v3])))
       .toEqual({ version_no: 3, supersedes_build_id: v2 });
-    expect((await doc(db(), store, projectId)).theme.palette).toBe('harbor');
+    expect((await doc(db(), store, projectId)).theme.palette).toBe('stone');
   });
 
   it('replaces images only with this project\'s verified uploads', async () => {

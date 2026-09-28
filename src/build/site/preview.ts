@@ -81,7 +81,7 @@ export async function loadPreviewArtifact(db: Db, store: ObjectStore, c: Preview
 /** Headers for serving an artifact: no script, no network, an opaque origin, no framing by strangers. */
 export const ARTIFACT_HEADERS: Record<string, string> = {
   'content-type': 'text/html; charset=utf-8',
-  'content-security-policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation",
+  'content-security-policy': "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation",
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
   'cache-control': 'private, no-store',
