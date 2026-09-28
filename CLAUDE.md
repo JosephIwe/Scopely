@@ -30,8 +30,10 @@ open item in code.
 12. **A HIGH finding is re-checked on a new snapshot before it reaches a prospect.** Record it in
     `evidence_rechecks`; never write `evidence.rechecked_at` directly.
 13. **BUILD/FIX is a boundary, not a generator.** A builder receives `loadBuildInput` (cited
-    evidence only, never page HTML) and returns an artifact reference. A demo build is never
-    delivery or revenue.
+    evidence only, never page HTML) and returns an artifact reference; a build agent receives a
+    `BuildContext` (`loadBuildContext`) and can only produce a DRAFT version through
+    `executeBuildRun`. A demo build is never delivery or revenue. A run never approves, shows or
+    delivers, and no key is ever stored: only a `secretref:ws/<workspace>/<name>` reference.
 14. **Scopely is multi-user.** Every commercial row has a `workspace_id` and a new owned table
     gets one too, with the `a00_workspace_guard` trigger and a `workspace_isolation` RLS policy.
     Never add a default workspace, user, sender, niche, country, currency or price. Never name the

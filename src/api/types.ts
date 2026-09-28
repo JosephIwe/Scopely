@@ -120,7 +120,10 @@ export interface OpportunityFeedItem {
   };
   service: { mappingStatus: 'MAPPED' | 'UNMAPPED'; catalogKey: string | null; name: string | null; price: string | null; currency: string | null };
   evidence: { count: number; issueCodes: string[]; claimStates: string[]; topConfidence: Confidence | null };
+  /** The latest version's human lifecycle state. */
   buildState: BuildState;
+  /** The latest agent run's execution state: never merged into buildState. */
+  buildRunState: 'NONE' | 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
   sellState: SellState;
   deliveryState: DeliveryState;
   dealValue: string | null;
@@ -189,4 +192,143 @@ export interface SearchPerformance {
   revenue: string | null;
   creditsConsumed: string | null;
   revenuePer100Discovered: string | null;
+}
+
+// ------------------------------------------------------------------ searches (saved criteria)
+
+/** A saved search exactly as the seller defined it. Every criterion is present; null / [] / false means not set. */
+export interface SearchDefinition {
+  searchId: string;
+  name: string;
+  description: string | null;
+  playbookKey: string | null;
+  geography: { countryCode: string | null; region: string | null; city: string | null; postalPrefix: string | null;
+               center: { latitude: string; longitude: string } | null; radiusKm: string | null };
+  industry: { verticals: string[]; subverticals: string[]; specialties: string[] };
+  employees: { min: number | null; max: number | null };
+  revenue: { min: string | null; max: string | null; currency: string | null };
+  structure: { businessTypes: string[]; excludeChains: boolean; excludeFranchises: boolean };
+  website: { presence: 'any' | 'required' | 'absent'; statuses: WebsiteStatus[] };
+  opportunityKinds: string[];
+  reviews: { countMin: number | null; countMax: number | null; ratingMin: string | null; ratingMax: string | null };
+  businessAge: { minYears: number | null; maxYears: number | null };
+  contactability: { requirePublicEmail: boolean; requirePhone: boolean; requireDomain: boolean };
+  exclusions: { previouslyAnalyzed: boolean; previouslyContacted: boolean; existingClients: boolean; won: boolean; lost: boolean;
+                suppressed: boolean; domains: string[]; businessTypes: string[] };
+  limits: { maxBusinessesToAnalyze: number | null; analysisBudgetCredits: string | null; maxDiscoveredPerRun: number | null };
+  runs: { searchRunId: string; status: 'OPEN' | 'COMPLETED' | 'CANCELLED'; startedAt: string; completedAt: string | null }[];
+  createdByUserId: string | null;
+  createdAt: string;
+  archivedAt: string | null;
+}
+
+export interface SearchListItem {
+  searchId: string;
+  name: string;
+  runs: number;
+  lastRunAt: string | null;
+  createdAt: string;
+  archivedAt: string | null;
+}
+
+// ------------------------------------------------------------------ build workspace
+
+/** The human lifecycle of a version. Never an agent's execution state. */
+export type BuildVersionStatus = 'DRAFT' | 'APPROVED' | 'SHOWN' | 'DISCARDED' | 'SUPERSEDED';
+/** An agent run's execution state. Never a version's approval state. */
+export type BuildRunStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+export type Payer = 'SCOPELY' | 'WORKSPACE' | 'UNATTRIBUTED';
+
+/** Cost grouped by who pays. UNATTRIBUTED is cost recorded before payers were (or with no payer). */
+export interface CostByPayer {
+  payer: Payer;
+  events: number;
+  /** null when any event's amount is unknown or currencies differ. */
+  amount: string | null;
+  currency: string | null;
+  /** Scopely credits. Always "0" for WORKSPACE; null when any metered event has no credits recorded. */
+  credits: string | null;
+  operatorMinutes: string | null;
+}
+
+export interface BuildRunView {
+  runId: string;
+  projectId: string;
+  purpose: 'DEMO' | 'DELIVERY';
+  agent: { key: string; version: string | null };
+  providerConnection: { connectionId: string; provider: string; mode: 'SCOPELY_MANAGED' | 'CUSTOMER_KEY'; billedTo: 'SCOPELY' | 'WORKSPACE' } | null;
+  status: BuildRunStatus;
+  baseBuildId: string | null;
+  producedBuildId: string | null;
+  queuedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  errorCode: string | null;
+  /** Free text until authentication exists (B10). */
+  startedByUserId: string | null;
+  cost: CostByPayer[];
+}
+
+export interface BuildVersionView {
+  buildId: string;
+  projectId: string;
+  versionNo: number;
+  purpose: 'DEMO' | 'DELIVERY';
+  status: BuildVersionStatus;
+  title: string;
+  summary: string;
+  supersedesBuildId: string | null;
+  successorBuildId: string | null;
+  deliveryOfBuildId: string | null;
+  generator: string;
+  /** The reviewable artifact (preview or file), when one exists. A reference, never an invented URL. */
+  previewRef: string | null;
+  manifestRef: string | null;
+  evidence: EvidenceItem[];
+  approval: { approved: boolean; approvedAt: string | null; approvedBy: string | null; approvedByIsAuthenticated: false };
+  shown: { shown: boolean; shownAt: string | null };
+  /** Computed by the server. canShow = false always carries a reason. */
+  /** Computed by the server. canShow answers "could this be marked shown at `asOf`" (default: now). */
+  gate: { canApprove: boolean; approveBlocker: string | null; canShow: boolean; showBlocker: string | null; asOf: string };
+  producedByRun: { runId: string; agentKey: string } | null;
+  cost: CostByPayer[];
+  createdAt: string;
+}
+
+export interface BuildProjectView {
+  projectId: string;
+  title: string;
+  buildKind: string;
+  path: OpportunityPath;
+  storagePrefix: string;
+  createdAt: string;
+  createdByUserId: string | null;
+  opportunity: {
+    opportunityId: string; opportunityType: string; kind: string | null; status: string;
+    business: { businessId: string; name: string };
+    service: { catalogKey: string | null; name: string | null; price: string | null; currency: string | null };
+    sellState: SellState; deliveryState: DeliveryState; won: boolean;
+  };
+  /** The newest version that is not superseded or discarded, else null. */
+  currentVersion: BuildVersionView | null;
+  /** Every version, oldest first. */
+  versions: BuildVersionView[];
+  /** Newest first. */
+  runs: BuildRunView[];
+  /** Latest run's state, separate from any version's status. NONE when no run exists. */
+  runState: BuildRunStatus | 'NONE';
+  requirements: { requirementId: string; requirement: string; source: 'seller' | 'client'; recordedBy: string; recordedAt: string }[];
+  assets: { assetId: string; kind: string; storageRef: string; description: string; providedBy: 'seller' | 'client' }[];
+  cost: CostByPayer[];
+}
+
+export interface BuildProjectListItem {
+  projectId: string;
+  opportunityId: string;
+  title: string;
+  buildKind: string;
+  versions: number;
+  latestVersionStatus: BuildVersionStatus | null;
+  runState: BuildRunStatus | 'NONE';
+  createdAt: string;
 }
