@@ -148,7 +148,7 @@ describe('5. a service price cannot be fabricated', () => {
 describe('6. unknown historical values stay NULL', () => {
   it('seeds no effort, implementation type, prerequisites or margin', async () => {
     const rows = (await db().query(`SELECT key, implementation_type, estimated_effort_minutes, prerequisites, commercial_status FROM catalog_items`)).rows;
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     for (const r of rows) {
       expect(r.implementation_type).toBeNull();
       expect(r.estimated_effort_minutes).toBeNull();
