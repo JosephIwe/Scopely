@@ -106,7 +106,7 @@ refused operation and why.
 | `renderDraft(db, store, projectId, { baseBuildId, operations, selected })` | Applies operations in memory and returns editor HTML and readiness; stores nothing |
 | `saveEdits(db, store, projectId, { baseBuildId, operations })` | A new version from the person's operations |
 | `requestAiEdit(db, deps, projectId, { baseBuildId, request })` | A build run: request → operations → validation → new version; `lastEdit.needsInput` lists what it asks for |
-| `restoreVersion(db, store, projectId, { baseBuildId, fromBuildId })` | An earlier version's document as a new version |
+| `restoreVersion(db, store, projectId, { baseBuildId, fromBuildId, undo? })` | An earlier version's document as a new version, `{ buildId, versionNo }`. With `undo: true`, `fromBuildId` must be the version `baseBuildId` replaced (409 otherwise) |
 | `uploadImage(db, store, projectId, { bytes, description, recordedBy })` | PNG, JPEG, WebP or GIF up to 5 MB, checked by content; SVG refused; stored as a project asset |
 | `approveVersion(db, projectId, buildId, { approvedBy })` | Slice 4's approve, with its blocker; allowed without a button destination |
 | `showVersion(db, store, projectId, buildId)` | Slice 4's show, and refused (`NO_BUTTON_DESTINATION`) while the button has no destination |
@@ -127,13 +127,13 @@ or hashes.
 |---|---|
 | `GET /api/opportunities` | Opportunities with their first plain-language issue, `buildable` and `projectId` |
 | `POST /api/opportunities/:id/website` | → `{ projectId }` |
-| `GET /api/projects/:id/setup` | `BuildSetup` |
-| `GET /api/projects/:id/workspace?selected=` | The workspace screen, with `links` (state and, while active, url) |
+| `GET /api/projects/:id/setup` | `BuildSetup`, including `opportunity` (service, price and currency, or null) |
+| `GET /api/projects/:id/workspace?selected=` | The workspace screen, with `links` (state and, while active, url), each version's `kind` (`build`, `ai`, `restore`, `manual`) and `current.upgraded` (made with an earlier template version) |
 | `POST /api/projects/:id/generate` | `{ templateKey }` → `RunOutcome` |
 | `POST /api/projects/:id/render` | `{ baseBuildId, operations, selected }` → `{ html, readiness }` |
 | `POST /api/projects/:id/save` | `{ baseBuildId, operations }` → the new version |
 | `POST /api/projects/:id/ai-edit` | `{ baseBuildId, request }` (≤ 500 characters) → `RunOutcome` |
-| `POST /api/projects/:id/restore` | `{ baseBuildId, fromBuildId }` → the new version |
+| `POST /api/projects/:id/restore` | `{ baseBuildId, fromBuildId, undo? }` → `{ buildId, versionNo }` of the new version |
 | `POST /api/projects/:id/images` | raw image bytes, `x-description` (URI-encoded alt text) → the image |
 | `POST /api/projects/:id/versions/:bid/approve` | `{ approvedBy }` |
 | `POST /api/projects/:id/versions/:bid/show` | → `{ url, expiresAt }`, the prospect's link |
@@ -141,6 +141,7 @@ or hashes.
 | `POST /api/projects/:id/links/:lid/revoke` | `{ revokedBy }` → `{ ok }` |
 | `GET /p/:token` | The artifact, with a sandboxing content security policy |
 | `GET /s/:token` | The prospect's page: a "design preview, not a live website" bar around the artifact in a sandboxed frame |
+| `GET /fonts/*.woff2` | The workspace's own typefaces (Geist, Geist Mono, Instrument Serif, Newsreader; OFL) |
 
 ### Map query (`MapQuery`)
 

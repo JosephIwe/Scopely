@@ -84,6 +84,8 @@ export interface BuildSetup {
   projectId: string;
   business: { name: string; websiteUrl: string | null };
   buildType: { key: string; name: string; description: string };
+  /** The service this build is sold as, and its price when one is set (never invented). */
+  opportunity: { service: string | null; price: string | null; currency: string | null };
   templates: { key: string; name: string; description: string; sections: string[] }[];
   /** The problem, the plan, and what will and will not be used. */
   basis: BuildBasis;
@@ -101,10 +103,12 @@ export async function getBuildSetup(db: Db, projectId: string): Promise<BuildSet
   const instructions = await websiteBuilder.instruct!(ctx);
   const kind = (await db.query('SELECT name, description FROM scopely.build_kinds WHERE key = $1', [WEBSITE_KIND])).rows[0];
   const versions = (await db.query('SELECT count(*)::int AS n FROM scopely.builds WHERE project_id = $1 AND workspace_id = scopely.current_workspace_id()', [p.id])).rows[0];
+  const service = (await getBuildProject(db, p.id))!.opportunity.service;
   return {
     projectId: String(p.id),
     business: { name: ctx.business.name, websiteUrl: ctx.business.websiteUrl },
     buildType: { key: WEBSITE_KIND, name: kind.name, description: kind.description },
+    opportunity: { service: service.name ?? null, price: service.price ?? null, currency: service.currency ?? null },
     templates: listTemplates(WEBSITE_KIND).map((t) => ({ key: t.key, name: t.name, description: t.description, sections: t.sections.map((s) => s.name) })),
     basis: describeBasis(ctx, instructions),
     hasVersions: versions.n > 0,

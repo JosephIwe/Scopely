@@ -49,7 +49,7 @@ img{display:block;max-width:100%}
 a{color:inherit}
 p{margin:0}
 .wrap{width:100%;max-width:1312px;margin-inline:auto;padding-inline:64px}
-h1,h2,h3{font-family:var(--font-head);font-weight:var(--head-weight);letter-spacing:var(--tracking);margin:0;text-wrap:balance}
+h1,h2,h3{font-family:var(--font-head);font-weight:var(--head-weight);letter-spacing:var(--tracking);margin:0;text-wrap:balance;overflow-wrap:break-word}
 h1{font-size:calc(68px * var(--scale));line-height:1.02}
 h2{font-size:calc(44px * var(--scale));line-height:1.08}
 h3{font-size:calc(20px * var(--scale));line-height:1.25}
@@ -66,7 +66,7 @@ h3{font-size:calc(20px * var(--scale));line-height:1.25}
 .nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:18px}
 .wordmark{font-family:var(--font-head);font-weight:var(--head-weight);letter-spacing:var(--tracking);font-size:22px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .links{display:flex;align-items:center;gap:22px;font-size:14px;color:var(--muted)}
-.links a{text-decoration:none}
+.links a{text-decoration:none;white-space:nowrap}
 .links a:hover{color:var(--ink)}
 .menu{display:none;position:relative}
 .menu summary{list-style:none;cursor:pointer;display:flex;flex-direction:column;gap:4px;padding:8px 0}
@@ -92,8 +92,8 @@ h3{font-size:calc(20px * var(--scale));line-height:1.25}
 .hero.centered .visual{height:420px}
 .head{display:flex;flex-direction:column;gap:12px;max-width:620px;margin-bottom:36px}
 .head p{font-size:15.5px;color:var(--muted);line-height:1.55}
-.services .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--card-r);overflow:hidden}
-.services .item{display:flex;flex-direction:column;gap:10px;padding:24px;background:var(--surface)}
+.services .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line);border-radius:var(--card-r);overflow:hidden;background:var(--surface)}
+.services .item{display:flex;flex-direction:column;gap:10px;padding:24px;background:var(--surface);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
 .services .item p{font-size:14px;color:var(--muted);line-height:1.5}
 .about .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:56px;align-items:center}
 .about .grid.solo{grid-template-columns:minmax(0,760px)}
@@ -128,6 +128,7 @@ h3{font-size:calc(20px * var(--scale));line-height:1.25}
 // class the workspace sets (editor).
 const TABLET = `
 .wrap{padding-inline:40px}
+.links{gap:16px}
 .sec{padding-block:calc(76px * var(--space))}
 h1{font-size:calc(54px * var(--scale))}
 h2{font-size:calc(36px * var(--scale))}
@@ -162,7 +163,8 @@ const min = (css: string) => css.replace(/\n\s*/g, '');
 
 const ARTIFACT_CSS = min(`${BASE}@media (max-width:1000px){${TABLET}}@media (max-width:620px){${MOBILE}}`);
 
-const EDITOR_CSS = min(`${BASE}${scoped(TABLET, '.dev-tablet')}\n${scoped(TABLET, '.dev-mobile')}\n${scoped(MOBILE, '.dev-mobile')}
+// The editor also keeps the width rules, so a desktop preview squeezed by the side panels still lays out cleanly.
+const EDITOR_CSS = min(`${BASE}@media (max-width:1000px){${TABLET}}@media (max-width:620px){${MOBILE}}${scoped(TABLET, '.dev-tablet')}\n${scoped(TABLET, '.dev-mobile')}\n${scoped(MOBILE, '.dev-mobile')}
 [data-section]{cursor:pointer}
 [data-section]::after{content:attr(data-name);position:absolute;left:8px;top:8px;z-index:30;display:none;align-items:center;height:22px;padding:0 8px;border-radius:6px;
   background:#2C5BB4;color:#fff;font:500 11px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:0;pointer-events:none}
@@ -198,9 +200,20 @@ export function renderSite(doc: SiteDocument, t: SiteTemplate, images: ReadonlyM
     ? `<a class="${cls}" href="${esc(href)}"${external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${esc(doc.cta.label)}</a>`
     // A button that goes nowhere is the defect the build answers, so the artifact leaves it out; only the editor shows it.
     : editor ? `<span class="${cls} is-unset" title="Add a destination for this button">${esc(doc.cta.label)}</span>` : '';
-  const visible = doc.sections.filter((s) => s.visible);
-  const byType = (type: string) => visible.find((s) => s.type === type);
   const txt = (s: Section | undefined, k: string) => String(s?.content[k] ?? '');
+  // What is on the page: shown sections, and in the artifact only those with something in them,
+  // so no link points at a section that is not there and backgrounds alternate as they appear.
+  const hasContent = (s: Section): boolean => {
+    switch (s.type) {
+      case 'services': return (s.content.items as Item[]).length > 0;
+      case 'about': return Boolean(txt(s, 'body'));
+      case 'proof': return doc.facts.reviews !== null;
+      case 'gallery': return (s.content.images as string[]).length > 0;
+      default: return true;
+    }
+  };
+  const visible = doc.sections.filter((s) => s.visible && (editor || hasContent(s)));
+  const byType = (type: string) => visible.find((s) => s.type === type);
   const alternate = doc.theme.backgrounds === 'alternate';
   const attrs = (s: Section, i: number, cls: string) => ` class="sec ${cls}${alternate && i % 2 ? ' tint' : ''}" id="s-${s.type}" data-section="${s.type}"`
     + (editor ? ` data-name="${esc(names[s.type])}"${opts.selected === s.type ? ' data-selected' : ''}` : '');
@@ -209,7 +222,7 @@ export function renderSite(doc: SiteDocument, t: SiteTemplate, images: ReadonlyM
 
   // Site header: brand, links to the sections that are shown, and the main button.
   const navLinks = (['services', 'about', 'proof', 'contact'] as const).filter((k) => byType(k))
-    .map((k) => `<a href="#s-${k}">${esc(txt(byType(k), 'heading') || names[k])}</a>`);
+    .map((k) => { const hd = txt(byType(k), 'heading'); return `<a href="#s-${k}">${esc(hd && hd.length <= 16 ? hd : names[k])}</a>`; });
   const nav = `<header class="site-nav" id="top"><div class="wrap nav"><a class="wordmark" href="#top">${esc(brand)}</a>`
     + `<nav class="links" aria-label="Sections">${navLinks.join('')}${cta('btn sm')}</nav>`
     + `<details class="menu"><summary aria-label="Menu"><span></span><span></span></summary><div class="menu-panel">${navLinks.join('')}${cta('btn sm')}</div></details>`

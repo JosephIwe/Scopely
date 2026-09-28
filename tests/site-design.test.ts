@@ -135,6 +135,18 @@ describe('style controls', () => {
 });
 
 describe('a self-contained site', () => {
+  it('links only to sections that are on the page', async () => {
+    const d = await v2Document(); // no services written yet and no about text
+    for (const html of [renderSite(d, MERIDIAN, images, { mode: 'artifact' }),
+      renderSite(applyEdits(d, [{ op: 'update_items', section: 'services', slot: 'items', items: [{ title: 'Assessments', text: '' }] }],
+        { template: MERIDIAN, imageAssetIds: new Set(), origin: 'person' }).document, MERIDIAN, images, { mode: 'artifact' })]) {
+      const targets = [...html.matchAll(/href="#([a-z-]+)"/g)].map((m) => m[1]);
+      expect(targets.length).toBeGreaterThan(0);
+      for (const id of targets) expect(html, id).toContain(`id="${id}"`);
+    }
+  });
+
+
   it('embeds its typefaces and makes no outside request', async () => {
     const html = renderSite(await v2Document(), MERIDIAN, images, { mode: 'artifact' });
     expect(html).toMatch(/@font-face\{font-family:"Instrument Serif";[^}]*src:url\(data:font\/woff2;base64,/);
