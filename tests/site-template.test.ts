@@ -35,7 +35,7 @@ describe('the Meridian template', () => {
   it('is one reusable template that names no business, seller or place', () => {
     const text = JSON.stringify(MERIDIAN);
     expect(text).not.toMatch(/joseph|lagos|london|clinic|plumb|aesthetic/i);
-    expect(MERIDIAN.sections.map((s) => s.type)).toEqual(['hero', 'services', 'about', 'proof', 'gallery', 'contact', 'footer']);
+    expect(MERIDIAN.sections.map((s) => s.type)).toEqual(['hero', 'services', 'about', 'proof', 'gallery', 'cta', 'contact', 'footer']);
     expect(MERIDIAN.sections.find((s) => s.type === 'proof')!.factBound).toBe('reviews');
   });
 });
@@ -122,10 +122,12 @@ describe('edit operations', () => {
       { op: 'change_color', accent: 'url(x)' }, { op: 'change_font', fonts: 'comic' }, { op: 'change_layout', section: 'services', variant: 'split' },
       { op: 'update_text', section: 'nav', slot: 'x', value: 'y' }, { op: 'update_text', section: 'hero', slot: 'headline', value: 'x'.repeat(91) },
       { op: 'update_text', section: 'hero', slot: 'headline', value: '   ' }, { op: 'set_images', section: 'gallery', slot: 'images', assetIds: ['1'] },
-      { op: 'move_section', section: 'services', direction: 'up' }, { op: 'hide_section', section: 'contact' }]) {
+      { op: 'move_section', section: 'services', direction: 'up' }, { op: 'hide_section', section: 'contact' },
+      { op: 'change_style' }, { op: 'change_style', button: 'blob' }, { op: 'change_style', spacing: 1 }, { op: 'change_style', css: 'x' },
+      { op: 'change_layout', section: 'hero', variant: 'banner' }, { op: 'change_color', palette: 'graphite' }]) {
       expect(() => applyEdits(d, [{ op: 'change_font', fonts: 'classic' }, raw], env), JSON.stringify(raw)).toThrow(EditRejected);
     }
-    expect(d.theme.fonts).toBe('modern');
+    expect(d.theme.fonts).toBe('editorial');
   });
 
   it('strip invisible and bidirectional control characters from text', async () => {
@@ -144,7 +146,7 @@ describe('the deterministic interpreter', () => {
   it('maps the brief\'s example to structured operations and asks for the number it does not have', async () => {
     const r = await ask('Make the hero feel more premium and change the CTA to WhatsApp.');
     expect(r.operations).toEqual([
-      { op: 'change_color', palette: 'graphite' }, { op: 'change_font', fonts: 'editorial' }, { op: 'change_layout', section: 'hero', variant: 'centered' },
+      { op: 'change_color', palette: 'noir' }, { op: 'change_font', fonts: 'editorial' }, { op: 'change_layout', section: 'hero', variant: 'centered' },
       { op: 'update_cta', label: 'Message us on WhatsApp', action: { kind: 'unset' } },
     ]);
     expect(r.needsInput).toHaveLength(1);

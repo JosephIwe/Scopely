@@ -19,6 +19,7 @@ import {
   listProspectLinks, loadPreviewArtifact, openWebsiteProject, previewLink, renderDraft, requestAiEdit, restoreVersion, revokeProspectLink, saveEdits, showVersion, uploadImage,
   verifyPreview,
 } from '../build/site/index.js';
+import { FONT_DIR } from '../build/site/fonts.js';
 import type { ObjectStore } from '../storage/index.js';
 import { withWorkspace } from '../tenancy/index.js';
 
@@ -41,8 +42,20 @@ const STATIC: Record<string, [string, string]> = {
   '/app.css': ['app.css', 'text/css; charset=utf-8'],
 };
 
+/** The workspace's own typefaces (the same files the site template embeds). */
+const FONTS: Record<string, string> = {
+  '/fonts/geist.woff2': 'geist-latin-wght.woff2',
+  '/fonts/geist-mono-400.woff2': 'geist-mono-latin-400.woff2',
+  '/fonts/geist-mono-500.woff2': 'geist-mono-latin-500.woff2',
+  '/fonts/instrument-serif.woff2': 'instrument-serif-latin-400.woff2',
+  '/fonts/newsreader-400.woff2': 'newsreader-latin-400.woff2',
+  '/fonts/newsreader-500.woff2': 'newsreader-latin-500.woff2',
+};
+
+// font-src allows data: because the live preview is a srcdoc frame, which inherits this policy, and
+// the site embeds its typefaces as data: URLs.
 const APP_HEADERS: Record<string, string> = {
-  'content-security-policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  'content-security-policy': "default-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
   'cache-control': 'no-store',
@@ -90,6 +103,10 @@ const id = (v: string | undefined) => {
 /** What the versions list calls who made a version. */
 const madeBy = (generator: string) => generator.startsWith('agent:') ? 'Scopely' : generator.startsWith('editor:') ? 'You' : 'Operator';
 
+/** What kind of change made a version: the first build, an AI edit, a restore or undo, or a person's saved edits. */
+const versionKind = (v: { versionNo: number; generator: string; summary: string }) => v.versionNo === 1 && v.generator.startsWith('agent:') ? 'build'
+  : v.generator.startsWith('agent:') ? 'ai' : /^(Restored|Undid) version/.test(v.summary) ? 'restore' : 'manual';
+
 /** A sandboxed frame sends the origin "null", which is never this server. */
 function sameHost(origin: string, host: string | undefined): boolean {
   try { return Boolean(host) && new URL(origin).host === host; } catch { return false; }
@@ -124,12 +141,13 @@ export function createHandler(cfg: ServerConfig) {
       opportunity: { opportunityId: p.opportunity.opportunityId, business: p.opportunity.business.name, service: p.opportunity.service.name,
         price: p.opportunity.service.price, currency: p.opportunity.service.currency },
       versions: [...p.versions].reverse().map((v) => ({
-        buildId: v.buildId, versionNo: v.versionNo, status: v.status, summary: v.summary, madeBy: madeBy(v.generator), createdAt: v.createdAt,
+        buildId: v.buildId, versionNo: v.versionNo, status: v.status, summary: v.summary, madeBy: madeBy(v.generator), kind: versionKind(v), createdAt: v.createdAt,
         approvedBy: v.approval.approvedBy, approvedAt: v.approval.approvedAt, shownAt: v.shown.shownAt,
       })),
       current: w.current && {
         buildId: w.current.buildId, versionNo: w.current.versionNo, status: w.current.status, document: w.current.document,
         readiness: w.current.readiness, html: w.current.html, approveBlocker: w.current.approveBlocker, showBlocker: w.current.showBlocker,
+        upgraded: w.current.upgraded,
       },
       template: w.template,
       images: w.images,
@@ -202,7 +220,9 @@ export function createHandler(cfg: ServerConfig) {
     }
     if (m === 'POST' && c === 'restore' && !d) {
       const bd = await jsonBody(req);
-      return json(res, 200, await tx((db) => restoreVersion(db, cfg.store, pid, { baseBuildId: String(bd.baseBuildId ?? ''), fromBuildId: String(bd.fromBuildId ?? '') })));
+      const out = await tx((db) => restoreVersion(db, cfg.store, pid, { baseBuildId: String(bd.baseBuildId ?? ''), fromBuildId: String(bd.fromBuildId ?? ''), undo: bd.undo === true }));
+      log(`version ${out.buildId} project ${pid} ${bd.undo === true ? 'undo' : 'restored'}`);
+      return json(res, 200, out);
     }
     if (m === 'POST' && c === 'images' && !d) {
       const bytes = await body(req, 5 * 1024 * 1024 + 1);
@@ -278,6 +298,10 @@ export function createHandler(cfg: ServerConfig) {
       if (req.method === 'GET' && STATIC[url.pathname]) {
         const [file, type] = STATIC[url.pathname]!;
         return send(res, 200, await readFile(path.join(UI_DIR, file)), { ...APP_HEADERS, 'content-type': type });
+      }
+      if (req.method === 'GET' && FONTS[url.pathname]) {
+        return send(res, 200, await readFile(path.join(FONT_DIR, FONTS[url.pathname]!)),
+          { ...APP_HEADERS, 'content-type': 'font/woff2', 'cache-control': 'public, max-age=86400' });
       }
       const pm = /^\/(p|s)\/([A-Za-z0-9_.-]{20,700})$/.exec(url.pathname);
       if (req.method === 'GET' && pm) return await preview(res, pm[1] as 'p' | 's', pm[2]!);

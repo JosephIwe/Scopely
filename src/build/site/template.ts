@@ -1,12 +1,18 @@
-// The first website template. A template is a structured design definition, not code: which
-// sections exist and in what order they may appear, what content slots each section has and how
-// long each may be, which controls a person may use on it, the design tokens it offers, and its
-// responsive rules (which live in the renderer's stylesheet, keyed by these same names).
+// The website template. A template is a structured design definition, not code: which sections
+// exist and in what order they may appear, what content slots each section has and how long each
+// may be, which controls a person may use on it, the design tokens it offers, and its responsive
+// rules (which live in the renderer's stylesheet, keyed by these same names).
 //
 // One template only, deliberately. It is written for any local service business and names no
 // business, seller, place or niche.
+//
+// Versions: Meridian 1 is the Slice 5 look. Meridian 2 (Slice 6) restyles the same template in
+// the design handoff's "Modern Clinic" direction: a call-to-action band, four palettes, three
+// type pairings and four style controls. Version 1 stays registered, frozen, so every version
+// built with it still renders to exactly its stored bytes; a new version is always made with the
+// current template (upgradeDocument in document.ts).
 
-export type SectionType = 'hero' | 'services' | 'about' | 'proof' | 'gallery' | 'contact' | 'footer';
+export type SectionType = 'hero' | 'services' | 'about' | 'proof' | 'gallery' | 'cta' | 'contact' | 'footer';
 
 export type SlotSpec =
   | { kind: 'text'; label: string; maxLength: number; multiline?: boolean; placeholder: string }
@@ -32,9 +38,21 @@ export interface Palette {
   key: string; name: string;
   bg: string; surface: string; ink: string; muted: string; line: string;
   accent: string; accentInk: string; band: string; bandInk: string;
+  /** Version 2: the alternate section background and image placeholder tone. */
+  tint?: string;
 }
 
-export interface FontPair { key: string; name: string; heading: string; body: string; headingWeight: number; tracking: string }
+export interface FontPair {
+  key: string; name: string; heading: string; body: string; headingWeight: number; tracking: string;
+  /** Version 2: a line describing the pairing, the heading size scale, and the embedded faces (fonts.ts). */
+  description?: string; scale?: number; faces?: string[];
+}
+
+export interface StyleOption { key: string; name: string }
+
+/** Version 2's page-wide style controls. */
+export interface SiteStyles { button: StyleOption[]; spacing: StyleOption[]; image: StyleOption[]; backgrounds: StyleOption[] }
+export type StyleKey = keyof SiteStyles;
 
 export interface SiteTemplate {
   key: string;
@@ -46,13 +64,15 @@ export interface SiteTemplate {
   sections: SectionSpec[];
   palettes: Palette[];
   fonts: FontPair[];
-  defaults: { palette: string; fonts: string };
+  styles?: SiteStyles;
+  defaults: { palette: string; fonts: string } & Partial<Record<StyleKey, string>>;
 }
 
 const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 const SERIF = '"Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, ui-serif, serif';
 
-export const MERIDIAN: SiteTemplate = {
+/** Meridian 1 (Slice 5). Frozen: kept only so versions built with it render exactly as stored. */
+export const MERIDIAN_V1: SiteTemplate = {
   key: 'meridian',
   version: 1,
   name: 'Meridian',
@@ -118,16 +138,70 @@ export const MERIDIAN: SiteTemplate = {
   defaults: { palette: 'harbor', fonts: 'modern' },
 };
 
-const TEMPLATES = new Map<string, SiteTemplate>([[MERIDIAN.key, MERIDIAN]]);
+const GEIST = '"Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+
+/**
+ * Meridian 2: the Slice 6 restyle in the design handoff's "Modern Clinic" direction. Same
+ * template, same slots and rules as version 1, plus a call-to-action band and the style controls.
+ */
+export const MERIDIAN: SiteTemplate = {
+  key: 'meridian',
+  version: 2,
+  name: 'Meridian',
+  description: 'A calm, editorial site for a local service business: one clear next step on every screen, room for real photos, and nothing it cannot back up.',
+  buildKind: 'website',
+  sections: [
+    { ...MERIDIAN_V1.sections.find((s) => s.type === 'hero')!, variants: [{ key: 'split', name: 'Split' }, { key: 'centered', name: 'Centred' }] },
+    ...MERIDIAN_V1.sections.filter((s) => ['services', 'about', 'proof', 'gallery'].includes(s.type)),
+    { type: 'cta', name: 'Call to action', purpose: 'A closing invitation with the main button, on the accent colour.', movable: true, hideable: true,
+      slots: {
+        heading: { kind: 'text', label: 'Headline', maxLength: 80, placeholder: 'Take the next step' },
+        text: { kind: 'text', label: 'Supporting line', maxLength: 200, multiline: true, placeholder: 'Optional supporting line' },
+      } },
+    ...MERIDIAN_V1.sections.filter((s) => ['contact', 'footer'].includes(s.type)),
+  ],
+  palettes: [
+    { key: 'stone', name: 'Stone', bg: '#F7F4EF', surface: '#FFFFFF', ink: '#23201C', muted: '#6B6359', line: '#E2DAD0', tint: '#EFE9E0',
+      accent: '#6F533E', accentInk: '#FFFFFF', band: '#6F533E', bandInk: '#FFFFFF' },
+    { key: 'sage', name: 'Sage', bg: '#F4F6F1', surface: '#FFFFFF', ink: '#1E2620', muted: '#5E6A60', line: '#D9E0D5', tint: '#E6ECE2',
+      accent: '#3F5E48', accentInk: '#FFFFFF', band: '#3F5E48', bandInk: '#FFFFFF' },
+    { key: 'blush', name: 'Blush', bg: '#FBF6F3', surface: '#FFFFFF', ink: '#2A1F1D', muted: '#76625E', line: '#ECDAD3', tint: '#F4E7E2',
+      accent: '#9E5448', accentInk: '#FFFFFF', band: '#9E5448', bandInk: '#FFFFFF' },
+    { key: 'noir', name: 'Noir', bg: '#151413', surface: '#1E1C1A', ink: '#F1ECE4', muted: '#A8A095', line: '#2F2C29', tint: '#1B1918',
+      accent: '#D8C2A2', accentInk: '#151413', band: '#D8C2A2', bandInk: '#151413' },
+  ],
+  fonts: [
+    { key: 'editorial', name: 'Editorial', description: 'Serif headlines, clean body text', heading: '"Instrument Serif", Georgia, serif', body: GEIST,
+      headingWeight: 400, tracking: '-0.01em', scale: 1.14, faces: ['instrument', 'geist'] },
+    { key: 'modern', name: 'Modern', description: 'Confident sans-serif throughout', heading: GEIST, body: GEIST,
+      headingWeight: 600, tracking: '-0.035em', scale: 0.9, faces: ['geist'] },
+    { key: 'classic', name: 'Classic', description: 'Traditional serif throughout', heading: '"Newsreader", Georgia, serif', body: '"Newsreader", Georgia, serif',
+      headingWeight: 500, tracking: '-0.02em', scale: 0.98, faces: ['newsreader400', 'newsreader500'] },
+  ],
+  styles: {
+    button: [{ key: 'rounded', name: 'Rounded' }, { key: 'pill', name: 'Pill' }, { key: 'square', name: 'Square' }],
+    spacing: [{ key: 'compact', name: 'Compact' }, { key: 'comfortable', name: 'Comfortable' }, { key: 'airy', name: 'Airy' }],
+    image: [{ key: 'soft', name: 'Soft' }, { key: 'square', name: 'Square' }, { key: 'arch', name: 'Arch' }],
+    backgrounds: [{ key: 'plain', name: 'Plain' }, { key: 'alternate', name: 'Alternating' }],
+  },
+  defaults: { palette: 'stone', fonts: 'editorial', button: 'pill', spacing: 'comfortable', image: 'soft', backgrounds: 'alternate' },
+};
+
+/** Every registered version, newest last. Only the newest is offered for new work. */
+const TEMPLATES = new Map<string, SiteTemplate[]>([[MERIDIAN.key, [MERIDIAN_V1, MERIDIAN]]]);
 
 export function getTemplate(key: string, version?: number): SiteTemplate {
-  const t = TEMPLATES.get(key);
-  if (!t || (version !== undefined && version !== t.version)) throw new Error(`no website template ${key}${version ? `@${version}` : ''}`);
+  const all = TEMPLATES.get(key);
+  const t = version === undefined ? all?.[all.length - 1] : all?.find((x) => x.version === version);
+  if (!t) throw new Error(`no website template ${key}${version ? `@${version}` : ''}`);
   return t;
 }
 
+/** The current version of a template. */
+export const currentTemplate = (key: string): SiteTemplate => getTemplate(key);
+
 export function listTemplates(buildKind: string): SiteTemplate[] {
-  return [...TEMPLATES.values()].filter((t) => t.buildKind === buildKind);
+  return [...TEMPLATES.values()].map((v) => v[v.length - 1]!).filter((t) => t.buildKind === buildKind);
 }
 
 export function sectionSpec(t: SiteTemplate, type: string): SectionSpec {
