@@ -48,7 +48,7 @@ export function verifyPreview(key: string, token: string, nowSeconds: number): P
   return c;
 }
 
-export interface ServedArtifact { html: Buffer; brandTitle: string; status: string }
+export interface ServedArtifact { html: Buffer; brandTitle: string; status: string; buildKind: string }
 
 /**
  * Loads the artifact a token grants, inside the token's workspace. The caller owns the
@@ -57,7 +57,7 @@ export interface ServedArtifact { html: Buffer; brandTitle: string; status: stri
 export async function loadPreviewArtifact(db: Db, store: ObjectStore, c: PreviewClaims): Promise<ServedArtifact | null> {
   return withWorkspace(db, c.w, async () => {
     const b = (await db.query(
-      `SELECT b.artifact_ref, b.artifact_sha256, b.status, b.shown_at, b.title FROM scopely.builds b
+      `SELECT b.artifact_ref, b.artifact_sha256, b.status, b.shown_at, b.title, b.build_kind FROM scopely.builds b
         WHERE b.id = $1 AND b.project_id = $2 AND b.workspace_id = scopely.current_workspace_id()`, [c.b, c.p])).rows[0];
     if (!b || !b.artifact_ref || !b.artifact_sha256) return null;
     if (c.k === 'show') {
@@ -71,7 +71,7 @@ export async function loadPreviewArtifact(db: Db, store: ObjectStore, c: Preview
     if (!String(b.artifact_ref).startsWith(`${prefix}versions/`)) return null;
     try {
       const o = await new ProjectFiles(store, prefix, `${prefix}versions/`).readVerified(b.artifact_ref, b.artifact_sha256);
-      return { html: o.bytes, brandTitle: b.title, status: b.status };
+      return { html: o.bytes, brandTitle: b.title, status: b.status, buildKind: b.build_kind };
     } catch {
       return null;
     }

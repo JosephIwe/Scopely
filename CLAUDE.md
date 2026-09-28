@@ -34,6 +34,10 @@ open item in code.
     `BuildContext` (`loadBuildContext`) and can only produce a DRAFT version through
     `executeBuildRun`. A demo build is never delivery or revenue. A run never approves, shows or
     delivers, and no key is ever stored: only a `secretref:ws/<workspace>/<name>` reference.
+    **FIX builds only (A22, F2):** the `website_fix` agent may read the page captured into its own
+    project's `captures/` prefix, hash-checked. The capture is proof material, never the source of
+    truth; the `BuildContext` itself still carries no page HTML, and the corrected destination
+    comes only from a value a person typed and confirmed (A24).
 14. **Scopely is multi-user.** Every commercial row has a `workspace_id` and a new owned table
     gets one too, with the `a00_workspace_guard` trigger and a `workspace_isolation` RLS policy.
     Never add a default workspace, user, sender, niche, country, currency or price. Never name the

@@ -27,6 +27,10 @@ place where each one would land is named so it can be added without rework.
 | A18 | Undo never deletes a version: it restores the previous version as a new version, and only the latest change can be undone this way | same brief | `restoreVersion(..., { undo: true })` |
 | A19 | One website template, Meridian, restyled to the "Modern Clinic" direction as template version 2; version 1 stays registered and frozen so earlier versions keep their bytes, and a new version is always made with the current template | same brief | `MERIDIAN` / `MERIDIAN_V1` in `template.ts`, `render-v1.ts`, `upgradeDocument` |
 | A20 | The Build Workspace UI stays plain JS with no framework | same brief | `src/server/ui` |
+| A21 | The first Fix kind is the Website Fix Sprint, limited to the proven broken-contact-link findings (F1) | Osim Joe, 2026-09-28 (Slice 7 brief) | `fix_supported_issue_code`, `CHANNELS_FOR` in `src/build/fix/destination.ts` |
+| A22 | The Fix Builder may read the page captured into its own project, for FIX builds only; the BuildContext still carries no page HTML (F2) | same brief | `ScopelyFixAgent`, CLAUDE.md rule 13 |
+| A23 | Local page capture is permitted, as proof material, not the source of truth (F3) | same brief | `captureFixPage`, `SafePageFetcher`, `fix_captures` |
+| A24 | Every corrected value is confirmed by a person before anything is approved or shown to a prospect; no model or agent supplies one (F4) | same brief | `fix_corrections`, `fix_build_blocker`, `build_fix_gate`, `confirmFix` |
 
 ## Open
 

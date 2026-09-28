@@ -1,5 +1,7 @@
-// Seeds a local database with one sample workspace and one sample website opportunity, so the
-// Build Workspace can be tried end to end. Everything it writes is sample data for a fictional
+// Seeds a local database with one sample workspace, one sample website opportunity and one sample
+// fix opportunity (a broken WhatsApp link), so the Build Workspace and the Fix Builder can be tried
+// end to end. The fix business's page is served from fixtures/demo-pages by `pnpm serve`, because
+// a reserved .example domain can never be fetched. Everything it writes is sample data for a fictional
 // business on a reserved .example domain; never run it against a real workspace.
 //
 //   DATABASE_URL=... pnpm demo:seed     # prints the workspace id to pass to `pnpm serve`
@@ -33,6 +35,32 @@ try {
     const opp = await q(`INSERT INTO scopely.opportunities (business_id, opportunity_type, mapping_status, catalog_item_id)
       VALUES ($1, 'website_rebuild', 'MAPPED', $2) RETURNING id`, [biz.id, cat.id]);
     await q('INSERT INTO scopely.opportunity_evidence (opportunity_id, evidence_id) VALUES ($1, $2) RETURNING opportunity_id', [opp.id, ev.id]);
+
+    // A fix opportunity: a WhatsApp button whose number has no country code (E-WA-BROKEN), sold as
+    // the shared starter Website Fix Sprint.
+    const fixBiz = await q(`INSERT INTO scopely.businesses (name, domain, website_url) VALUES ('Harbour Lane Dental', 'harbourlane.example', 'https://harbourlane.example/')
+      RETURNING id`);
+    const links = await q(`SELECT id FROM scopely.rule_versions WHERE rule_key = 'check.contact_links' AND version = 1`);
+    const fixSnap = await q(`INSERT INTO scopely.snapshots (business_id, url, http_status, fetched_at, fetch_method, viewport, html_sha256)
+      VALUES ($1, 'https://harbourlane.example/contact', 200, '2026-09-26T10:00:00Z', 'render', 'mobile', repeat('c', 64)) RETURNING id`, [fixBiz.id]);
+    const fixObs = await q(`INSERT INTO scopely.observations (snapshot_id, check_code, rule_version_id, state, result, href, visible_text, observed_at)
+      VALUES ($1, 'contact_links.whatsapp', $2, 'OBSERVED', 'defect', 'https://api.whatsapp.com/send?phone=07700900461', 'WhatsApp us', '2026-09-26T10:00:00Z')
+      RETURNING id`, [fixSnap.id, links.id]);
+    const fixEv = await q(`INSERT INTO scopely.evidence (business_id, observation_id, issue_code, rule_version_id, claim_state, plain_issue, url, quote, observed_at, confidence)
+      VALUES ($1, $2, 'E-WA-BROKEN', $3, 'OBSERVED', 'The "WhatsApp us" button uses a number with no country code, which WhatsApp cannot open',
+              'https://harbourlane.example/contact', '<a class="wa" href="https://api.whatsapp.com/send?phone=07700900461">WhatsApp us</a>',
+              '2026-09-26T10:00:00Z', 'HIGH') RETURNING id`, [fixBiz.id, fixObs.id, links.id]);
+    // HIGH evidence is re-checked on a later visit before anything reaches the prospect (sample re-check).
+    const reSnap = await q(`INSERT INTO scopely.snapshots (business_id, url, http_status, fetched_at, fetch_method) VALUES ($1, 'https://harbourlane.example/contact', 200,
+      '2026-09-27T10:00:00Z', 'manual') RETURNING id`, [fixBiz.id]);
+    const reObs = await q(`INSERT INTO scopely.observations (snapshot_id, check_code, rule_version_id, state, result, observed_at)
+      VALUES ($1, 'contact_links.whatsapp', $2, 'OBSERVED', 'defect', '2026-09-27T10:00:00Z') RETURNING id`, [reSnap.id, links.id]);
+    await q(`INSERT INTO scopely.evidence_rechecks (evidence_id, snapshot_id, observation_id, result, recorded_by) VALUES ($1, $2, $3, 'confirmed', 'sample') RETURNING id`,
+      [fixEv.id, reSnap.id, reObs.id]);
+    const sprint = await q(`SELECT id FROM scopely.catalog_items WHERE key = 'website_fix_sprint' AND workspace_id IS NULL`);
+    const fixOpp = await q(`INSERT INTO scopely.opportunities (business_id, opportunity_type, mapping_status, catalog_item_id, currency, service_price)
+      VALUES ($1, 'broken_contact_path', 'MAPPED', $2, 'GBP', 120) RETURNING id`, [fixBiz.id, sprint.id]);
+    await q('INSERT INTO scopely.opportunity_evidence (opportunity_id, evidence_id) VALUES ($1, $2) RETURNING opportunity_id', [fixOpp.id, fixEv.id]);
   });
   await db.query('COMMIT');
   console.log(workspaceId);
