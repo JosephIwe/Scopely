@@ -56,7 +56,8 @@ export interface BuildContext {
   purpose: 'DEMO' | 'DELIVERY';
   project: { projectId: string; buildKind: string; opportunityPath: 'WEBSITE' | 'FIX'; storagePrefix: string };
   /** The version a modifying run starts from. */
-  baseVersion: { buildId: string; versionNo: number; manifestRef: string | null; artifactRef: string | null } | null;
+  baseVersion: { buildId: string; versionNo: number; manifestRef: string | null; manifestSha256: string | null; artifactRef: string | null;
+                 artifactSha256: string | null } | null;
   /** Who the build is for. Identity, not claims: name and domain as recorded, with where they came from. */
   business: {
     businessId: string;
@@ -152,10 +153,11 @@ export async function loadBuildContext(db: Db, projectId: string,
   let baseVersion: BuildContext['baseVersion'] = null;
   if (opts.baseBuildId) {
     const bv = (await db.query(
-      `SELECT id, version_no, manifest_ref, artifact_ref FROM scopely.builds
+      `SELECT id, version_no, manifest_ref, manifest_sha256, artifact_ref, artifact_sha256 FROM scopely.builds
         WHERE id = $1 AND project_id = $2 AND workspace_id = scopely.current_workspace_id()`, [opts.baseBuildId, projectId])).rows[0];
     if (!bv) throw new Error(`build ${opts.baseBuildId} is not a version of project ${projectId}`);
-    baseVersion = { buildId: String(bv.id), versionNo: bv.version_no, manifestRef: bv.manifest_ref, artifactRef: bv.artifact_ref };
+    baseVersion = { buildId: String(bv.id), versionNo: bv.version_no, manifestRef: bv.manifest_ref, manifestSha256: bv.manifest_sha256,
+                    artifactRef: bv.artifact_ref, artifactSha256: bv.artifact_sha256 };
   }
 
   const [biz, sources, ev, nobs, reqs, assets] = await Promise.all([
