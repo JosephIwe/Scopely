@@ -1,6 +1,7 @@
 // Slice 7: the Fix Builder for a broken contact link. OBSERVED PROBLEM → EVIDENCE → CAPTURE →
 // PROPOSED FIX → GENERATE → BEFORE / AFTER → HUMAN CONFIRMATION → PREVIEW → SHOW, on the Slice 4
 // to 6 primitives, with every gate of the website path kept and one added (F4).
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   FIX_AGENT_KEY, captureFixPage, confirmFix, describeHref, fixRunDeps, generateFix, getFixWorkspace, isBlockedAddress,
@@ -129,7 +130,7 @@ describe('capture: a faithful copy of the observed page, as proof material', () 
     const ws = await WS();
     const ins = (href: string, ref: string) => failure(db(), `INSERT INTO fix_captures (project_id, evidence_id, requested_url, final_url, http_status, content_type,
       storage_ref, sha256, byte_size, observed_href, href_occurrences, captured_by)
-      VALUES ($1, $2, 'https://e.test/', 'https://e.test/', 200, 'text/html', $3, repeat('a', 64), 10, $4, 1, 'op')`, [projectId, seed.evidenceId, ref, href]);
+      VALUES ($1, $2, 'https://example-clinic.test/', 'https://example-clinic.test/', 200, 'text/html', $3, repeat('a', 64), 10, $4, 1, 'op')`, [projectId, seed.evidenceId, ref, href]);
     expect(await ins('tel:+440000000', `workspaces/${ws}/projects/${projectId}/captures/x.html`)).toMatch(/records the destination that was observed/);
     expect(await ins('tel:WhatsApp:0800', `workspaces/${ws}/projects/${projectId}/versions/x.html`)).toMatch(/outside this project's storage/);
     expect(await ins('tel:WhatsApp:0800', `workspaces/${ws}/projects/${projectId}/captures/ok.html`)).toBeNull();
@@ -138,13 +139,50 @@ describe('capture: a faithful copy of the observed page, as proof material', () 
     });
   });
 
+  it('ties a capture to the page its evidence was observed on, in the database, while allowing a redirect', async () => {
+    const seed = await seedFixOpportunity(db());
+    const projectId = await openFixProject(db(), seed.opportunityId);
+    const ws = await WS();
+    const evidenceUrl = (await one<{ url: string }>(db(), 'SELECT url FROM evidence WHERE id = $1', [seed.evidenceId])).url;
+    expect(evidenceUrl).toBe('https://example-clinic.test/');
+    // Direct inserts, so nothing but the database decides.
+    const ins = (requested: string, final: string) => failure(db(), `INSERT INTO fix_captures (project_id, evidence_id, requested_url, final_url, http_status,
+      content_type, storage_ref, sha256, byte_size, observed_href, href_occurrences, captured_by)
+      VALUES ($1, $2, $3, $4, 200, 'text/html', $5, repeat('a', 64), 10, 'tel:WhatsApp:0800', 1, 'op')`,
+      [projectId, seed.evidenceId, requested, final, `workspaces/${ws}/projects/${projectId}/captures/${randomUUID()}.html`]);
+    // 1. Another page, even on the same site, is refused.
+    for (const other of ['https://unrelated.test/', 'https://example-clinic.test/contact', 'http://example-clinic.test/']) {
+      expect(await ins(other, other), other).toMatch(/requests the page the evidence was observed on/);
+    }
+    // 2. The evidence's own URL is accepted.
+    expect(await ins(evidenceUrl, evidenceUrl)).toBeNull();
+    // 3. A redirect is legitimate: requested A, landed on B.
+    expect(await ins(evidenceUrl, 'https://www.example-clinic.test/home')).toBeNull();
+  });
+
+  it('refuses a capture whose fetcher reports a different requested page, and records nothing', async () => {
+    const seed = await seedFixOpportunity(db());
+    const projectId = await openFixProject(db(), seed.opportunityId);
+    const lying = new StubFetcher();
+    lying.fetch = async (url: string) => ({ requestedUrl: 'https://unrelated.test/', finalUrl: url, status: 200, contentType: 'text/html', bytes: Buffer.from(PAGE) });
+    expect(await refused(db(), () => captureFixPage(db(), { store: newStore(), fetcher: lying }, projectId, { evidenceId: seed.evidenceId })))
+      .toMatch(/requests the page the evidence was observed on/);
+    expect((await one<{ n: number }>(db(), 'SELECT count(*)::int AS n FROM fix_captures WHERE project_id = $1', [projectId])).n).toBe(0);
+    // A redirect through the service is kept as the final URL.
+    const redirecting = new StubFetcher();
+    redirecting.fetch = async (url: string) => ({ requestedUrl: url, finalUrl: 'https://www.example-clinic.test/', status: 200, contentType: 'text/html', bytes: Buffer.from(PAGE) });
+    const cap = await captureFixPage(db(), { store: newStore(), fetcher: redirecting }, projectId, { evidenceId: seed.evidenceId });
+    expect(cap.finalUrl).toBe('https://www.example-clinic.test/');
+    expect((await one<{ r: string }>(db(), 'SELECT requested_url AS r FROM fix_captures WHERE id = $1', [cap.captureId])).r).toBe('https://example-clinic.test/');
+  });
+
   it('captures only a supported, OBSERVED finding of a website_fix project', async () => {
     const seed = await seedFixOpportunity(db());
     const projectId = await openFixProject(db(), seed.opportunityId);
     const ws = await WS();
     const ins = (evidenceId: string, project = projectId) => failure(db(), `INSERT INTO fix_captures (project_id, evidence_id, requested_url, final_url, http_status,
       content_type, storage_ref, sha256, byte_size, observed_href, href_occurrences, captured_by)
-      SELECT $1, $2, 'https://e.test/', 'https://e.test/', 200, 'text/html', $3, repeat('a', 64), 10, o.href, 1, 'op'
+      SELECT $1, $2, e.url, e.url, 200, 'text/html', $3, repeat('a', 64), 10, o.href, 1, 'op'
         FROM evidence e JOIN observations o ON o.id = e.observation_id WHERE e.id = $2`, [project, evidenceId, `workspaces/${ws}/projects/${project}/captures/c.html`]);
     const placeholder = await addEvidence(db(), seed, seed.opportunityId, { code: 'E-PLACEHOLDER-LINK', rule: await ruleOf('check.placeholder_links') });
     expect(await ins(placeholder)).toMatch(/not a finding the Fix Builder repairs/);

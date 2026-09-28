@@ -83,7 +83,7 @@ BEGIN
   IF p.build_kind IS DISTINCT FROM 'website_fix' THEN
     RAISE EXCEPTION 'FIX: only a website_fix project captures a page' USING ERRCODE = 'check_violation';
   END IF;
-  SELECT ev.issue_code, ev.claim_state, ev.recheck_result, o.href INTO e
+  SELECT ev.issue_code, ev.claim_state, ev.recheck_result, ev.url, o.href INTO e
     FROM scopely.evidence ev JOIN scopely.observations o ON o.id = ev.observation_id
    WHERE ev.id = NEW.evidence_id;
   IF NOT EXISTS (SELECT 1 FROM scopely.opportunity_evidence WHERE opportunity_id = p.opportunity_id AND evidence_id = NEW.evidence_id) THEN
@@ -100,6 +100,11 @@ BEGIN
   END IF;
   IF e.href IS NULL OR NEW.observed_href IS DISTINCT FROM e.href THEN
     RAISE EXCEPTION 'FIX: a capture records the destination that was observed, not another one' USING ERRCODE = 'check_violation';
+  END IF;
+  -- The page asked for is the evidence's own URL, exactly as the evidence records it (no second
+  -- normalisation). Where the site redirected is final_url, which may differ.
+  IF NEW.requested_url IS DISTINCT FROM e.url THEN
+    RAISE EXCEPTION 'FIX: a capture requests the page the evidence was observed on (%), not another one', e.url USING ERRCODE = 'check_violation';
   END IF;
   reason := scopely.project_storage_blocker(NEW.storage_ref, NEW.workspace_id, NEW.project_id, 'captures/');
   IF reason IS NOT NULL THEN
