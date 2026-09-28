@@ -2,7 +2,7 @@
 // test and a passing counterpart.
 import type pg from 'pg';
 import { describe, expect, it } from 'vitest';
-import { failure, one, seedChain, seedOpportunity, useDb } from './helpers.js';
+import { failure, manualMailbox, one, seedChain, seedOpportunity, useDb } from './helpers.js';
 
 const { db } = useDb();
 
@@ -28,9 +28,11 @@ async function sendable(d: pg.Client, c: Chain, email = 'owner@example-clinic.te
     VALUES ($1, 'Owner', $2, 'website', 'PUBLICLY_FOUND', 'corporate_subscriber') RETURNING id`, [c.businessId, email])).id;
 }
 
+/** A draft from the workspace's sending mailbox (created on first use). */
 async function draft(d: pg.Client, opp: string, contact: string | null, evidence: string[]) {
-  return (await one<{ id: string }>(d, `INSERT INTO messages (opportunity_id, contact_id, step, subject, body, evidence_ids, generator)
-    VALUES ($1, $2, 0, 's', 'b', $3, 'operator') RETURNING id`, [opp, contact, evidence])).id;
+  const mailbox = (await d.query('SELECT id FROM mailbox_connections ORDER BY id LIMIT 1')).rows[0]?.id ?? await manualMailbox(d);
+  return (await one<{ id: string }>(d, `INSERT INTO messages (opportunity_id, contact_id, step, subject, body, evidence_ids, generator, mailbox_connection_id)
+    VALUES ($1, $2, 0, 's', 'b', $3, 'operator', $4) RETURNING id`, [opp, contact, evidence, mailbox])).id;
 }
 
 const approve = `UPDATE messages SET approval_status = 'approved', approved_by = 'joseph', approved_at = $2 WHERE id = $1`;

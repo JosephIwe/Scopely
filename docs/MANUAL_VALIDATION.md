@@ -11,6 +11,16 @@ These are operator actions outside the code:
 1. SPF, DKIM and DMARC on josephiwe.com for `hello@josephiwe.com`.
 2. A privacy notice on josephiwe.com (see open decision B4 in `DECISIONS.md`).
 3. A local Postgres 16 and `pnpm migrate` against `DATABASE_URL`.
+4. A workspace for the campaign and its sending mailbox. This is the operator's own data, not a
+   product default:
+
+   ```
+   echo '{"slug":"josephiwe","name":"Joseph Iwe","owner":{"email":"hello@josephiwe.com"}}' | pnpm record workspace -
+   export SCOPELY_WORKSPACE_ID=<workspaceId from the output>
+   echo '{"provider":"google_workspace","email":"hello@josephiwe.com"}' | pnpm record mailbox -
+   ```
+
+   Every command below runs in `SCOPELY_WORKSPACE_ID` and refuses to run without it.
 
 ## Per prospect
 
@@ -29,7 +39,7 @@ rolls back.
 | 7. Draft the message | `pnpm record message` | Cite only this opportunity's evidence |
 | 8. Approve it | `pnpm record approve-message` | Refused for an unlawful or suppressed recipient |
 | 9. Re-check HIGH evidence | `pnpm record snapshot`, `finding`, then `pnpm record recheck` | A fresh snapshot, the same check re-run, and `confirmed`, `changed` or `gone` |
-| 10. Send it by hand from Gmail | `pnpm record message-sent` | Refused if HIGH evidence has no confirmed re-check, or any evidence is changed or gone |
+| 10. Send it by hand from the mailbox | `pnpm record message-sent` | `mailboxConnectionId` from step 4. Refused if HIGH evidence has no confirmed re-check, or any evidence is changed or gone |
 | 11. Log what happens | `pnpm record outcome` | `pitched` (with `messageId`), `replied` (+ `replyClass`), `call`, `won` (+ `amount`), `lost`, `delivered` |
 | 12. Log time and money | `pnpm record cost` | `operator_time` with `minutes`; an unknown amount stays NULL |
 
@@ -44,6 +54,7 @@ Example, step 1:
 
 ## Reading the results
 
+- Both views show this workspace only.
 - `pnpm record ledger`: one row per opportunity with niche, geography, evidence types, service,
   price, pitch message, latest reply, calls, result, deal value, delivery, costs and verification.
 - `pnpm record funnel`: per market, prospects processed, qualified, opportunities, pitched, messages

@@ -176,18 +176,23 @@ export interface OpportunityInput {
   currency?: string;
   whyItMatters?: string;
   notObservableNotes?: string;
+  /** The search run whose analysis found it; the business must be analysed in that run. */
+  searchRunId?: string;
 }
 
 export async function recordOpportunity(db: Db, o: OpportunityInput): Promise<string> {
   if (!Array.isArray(o.evidenceIds) || o.evidenceIds.length === 0) throw new Error('an opportunity needs at least one evidence record');
   const opp = await one<{ id: string }>(db,
     `INSERT INTO scopely.opportunities (business_id, market_id, opportunity_type, mapping_status, catalog_item_id, unmapped_reason,
-       service_price, currency, why_it_matters, not_observable_notes)
+       service_price, currency, why_it_matters, not_observable_notes, search_run_id)
      VALUES ($1, $2, $3, CASE WHEN $4::text IS NULL THEN 'UNMAPPED' ELSE 'MAPPED' END,
-             (SELECT id FROM scopely.catalog_items WHERE key = $4::text), $5, $6, $7, $8, $9)
+             -- the workspace's own item wins over a shared starter with the same key
+             (SELECT id FROM scopely.catalog_items WHERE key = $4::text
+                 AND (workspace_id = scopely.current_workspace_id() OR workspace_id IS NULL)
+               ORDER BY workspace_id NULLS LAST LIMIT 1), $5, $6, $7, $8, $9, $10)
      RETURNING id`,
     [o.businessId, o.marketId ?? null, o.opportunityType, o.catalogKey, o.unmappedReason ?? null,
-     o.servicePrice ?? null, o.currency ?? null, o.whyItMatters ?? null, o.notObservableNotes ?? null]);
+     o.servicePrice ?? null, o.currency ?? null, o.whyItMatters ?? null, o.notObservableNotes ?? null, o.searchRunId ?? null]);
   for (const e of o.evidenceIds) {
     await db.query('INSERT INTO scopely.opportunity_evidence (opportunity_id, evidence_id) VALUES ($1,$2)', [opp.id, e]);
   }
@@ -227,13 +232,16 @@ export interface MessageInput {
   body: string;
   evidenceIds: string[];
   generator?: string;
+  /** The workspace mailbox it will be sent from. Required before it can be marked sent. */
+  mailboxConnectionId?: string;
 }
 
 export async function recordMessage(db: Db, m: MessageInput): Promise<string> {
   return (await one<{ id: string }>(db,
-    `INSERT INTO scopely.messages (opportunity_id, contact_id, step, subject, body, evidence_ids, generator)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-    [m.opportunityId, m.contactId, m.step ?? 0, m.subject, m.body, m.evidenceIds, m.generator ?? 'operator'])).id;
+    `INSERT INTO scopely.messages (opportunity_id, contact_id, step, subject, body, evidence_ids, generator, mailbox_connection_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [m.opportunityId, m.contactId, m.step ?? 0, m.subject, m.body, m.evidenceIds, m.generator ?? 'operator',
+     m.mailboxConnectionId ?? null])).id;
 }
 
 export async function approveMessage(db: Db, messageId: string, approvedBy: string, approvedAt: string): Promise<void> {
@@ -242,9 +250,13 @@ export async function approveMessage(db: Db, messageId: string, approvedBy: stri
     [messageId, approvedBy, approvedAt]);
 }
 
-/** Records that an approved message was sent by hand. Scopely itself sends nothing. */
-export async function markMessageSent(db: Db, messageId: string, sentAt: string): Promise<void> {
-  await db.query('UPDATE scopely.messages SET sent_at = $2 WHERE id = $1', [messageId, sentAt]);
+/**
+ * Records that an approved message was sent by hand from a workspace mailbox. Scopely itself
+ * sends nothing. The sender address is captured from the mailbox, never supplied.
+ */
+export async function markMessageSent(db: Db, messageId: string, sentAt: string, mailboxConnectionId?: string): Promise<void> {
+  await db.query('UPDATE scopely.messages SET sent_at = $2, mailbox_connection_id = coalesce($3, mailbox_connection_id) WHERE id = $1',
+    [messageId, sentAt, mailboxConnectionId ?? null]);
 }
 
 export interface OutcomeInput {

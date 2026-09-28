@@ -2,7 +2,7 @@
 // and the ledger row it produces. Values here are test fixtures, not business data.
 import { describe, expect, it } from 'vitest';
 import * as r from '../src/record/index.js';
-import { one, useDb } from './helpers.js';
+import { manualMailbox, one, useDb } from './helpers.js';
 
 const { db } = useDb();
 
@@ -45,7 +45,8 @@ describe('manual recording', () => {
 
     const contact = await r.recordContact(db(), { businessId, fullName: 'Owner', email: 'owner@example-plumbing.test', emailKind: 'personal',
       source: 'companies_house_officer', label: 'PUBLICLY_FOUND', outreachBasis: 'corporate_subscriber' });
-    const msg = await r.recordMessage(db(), { opportunityId: opp, contactId: contact, subject: 's', body: 'b', evidenceIds: [f.evidenceId!] });
+    const mailbox = await manualMailbox(db());
+    const msg = await r.recordMessage(db(), { opportunityId: opp, contactId: contact, subject: 's', body: 'b', evidenceIds: [f.evidenceId!], mailboxConnectionId: mailbox });
     await r.approveMessage(db(), msg, 'joseph', '2026-10-01T10:00:00Z');
     await r.markMessageSent(db(), msg, '2026-10-01T10:30:00Z');
     await r.recordOutcome(db(), { opportunityId: opp, kind: 'pitched', occurredAt: '2026-10-01T10:30:00Z', channel: 'email', messageId: msg, recordedBy: 'joseph' });
