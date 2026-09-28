@@ -11,6 +11,7 @@ import { createServer } from 'node:http';
 import pg from 'pg';
 import { databaseUrl } from '../src/db/client.js';
 import { DEFAULT_SHOW_LINK_TTL_SECONDS } from '../src/build/site/index.js';
+import { DemoAwarePageFetcher } from '../src/build/fix/index.js';
 import { createHandler } from '../src/server/app.js';
 import { FileObjectStore } from '../src/storage/index.js';
 
@@ -35,6 +36,8 @@ const handler = createHandler({
   store: new FileObjectStore(process.env.SCOPELY_STORAGE_DIR ?? '.scopely/storage'),
   editLinkTtlSeconds: 15 * 60,
   showLinkTtlSeconds: Math.round(showHours * 3600),
+  // The Fix Builder captures pages live, except the demo's reserved .example pages (fixtures/demo-pages).
+  fetcher: new DemoAwarePageFetcher(),
 });
 const port = Number(process.env.PORT ?? 4310);
 const host = process.env.HOST ?? '127.0.0.1';

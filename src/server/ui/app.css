@@ -418,3 +418,77 @@ input[readonly] { background: #F6F3EC; color: var(--ink-2); }
 .pvbar { display: grid; grid-template-columns: 1fr auto 1fr; }
 .pvbar > .row { justify-self: end; }
 @media (max-width: 720px) { .pvbar { grid-template-columns: 1fr auto; } .pvbar .t { display: none; } }
+
+/* fix builder (Slice 7): the same tokens, one column, blue for Fix */
+.fixpage { max-width: 860px; }
+.eyebrow.fx { color: var(--blue); }
+.fxsteps { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; margin: 22px 0 0; padding: 0; font-size: 13px; font-weight: 550; color: var(--faint); }
+.fxsteps li { display: flex; align-items: center; gap: 7px; }
+.fxsteps li i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--control); }
+.fxsteps li.current { color: var(--ink); }
+.fxsteps li.current i { border-color: var(--blue); background: var(--blue); }
+.fxsteps li.done { color: var(--ink-2); }
+.fxsteps li.done i { border-color: var(--sage); background: var(--sage); }
+.fixstep { margin-top: 14px; padding: 20px 22px; }
+.fixstep.todo { background: var(--panel); }
+.fixstep.todo > :not(.fxhead) { opacity: .75; }
+.fixstep.current { border-color: #C9D5EC; box-shadow: 0 0 0 3px var(--blue-tint); }
+.fxhead { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.fxhead h2 { font-size: 16px; font-weight: 650; }
+.fxnum { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 650 11px/1 var(--font); background: var(--seg); color: var(--ink-2); flex: none; }
+.fixstep.current .fxnum { background: var(--blue); color: #fff; }
+.fixstep.done .fxnum { background: var(--sage); color: #fff; }
+.fxissue { font-size: 15px; font-weight: 550; }
+.fxmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.fxmeta s { color: var(--error); }
+.fxquote { margin-top: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 8px; overflow-wrap: anywhere; }
+.fixstep .label { font-size: 11px; }
+.fxform { display: flex; align-items: flex-end; gap: 10px; margin-top: 14px; }
+.fxform .field + .field { margin-top: 0; }
+.fxform .field:first-child:not(.grow) { flex: 0 0 190px; }
+.fxform .btn { height: 38px; flex: none; }
+.fxreads { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 14px; padding: 10px 12px; background: var(--blue-tint); border-radius: 8px; font-size: 13.5px; overflow-wrap: anywhere; }
+.fxreads .label { color: var(--blue); }
+.fxba { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+.fxside { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.fxside header { padding: 10px 14px; font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.fxside.before header { background: var(--error-tint); color: var(--error); }
+.fxside.after header { background: var(--blue-tint); color: var(--blue); }
+.fxbody { padding: 14px; }
+.fxbody .ctx { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.fxlnk { display: inline-block; margin: 8px 0; padding: 7px 14px; border-radius: 99px; font-weight: 600; font-size: 13.5px; }
+.before .fxlnk { border: 1.5px dashed var(--error); }
+.after .fxlnk { background: var(--blue); color: #fff; }
+.fxbody .opens { font: 12px/1.5 var(--mono); overflow-wrap: anywhere; }
+.fxbody .opens s { color: var(--error); }
+.fxbody .opens b { color: var(--blue); font-weight: 500; }
+.fxwhole { margin-top: 16px; }
+.fxwhole summary { cursor: pointer; font-weight: 600; color: var(--blue); font-size: 13.5px; }
+.fxstage { position: relative; margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+.fxscroll { height: 460px; overflow: auto; }
+.fxlayers { position: relative; height: 1800px; }
+.fxlayers iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; background: #fff; }
+.fxhandle { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--blue); pointer-events: none; }
+.fxtag { position: absolute; top: 10px; padding: 4px 8px; border-radius: 5px; font: 500 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
+.fxtag.l { left: 10px; background: var(--error-tint); color: var(--error); }
+.fxtag.r { right: 10px; background: var(--blue-tint); color: var(--blue); }
+.fxrange { width: 100%; margin-top: 10px; accent-color: var(--blue); }
+.fxtick { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-size: 14px; }
+.fxtick input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--blue); flex: none; }
+.fixstep .linkrow input { min-width: 0; }
+@media (max-width: 720px) {
+  .fxba { grid-template-columns: 1fr; }
+  .fxform { flex-direction: column; align-items: stretch; }
+  .fxform .field:first-child:not(.grow) { flex: none; }
+  .fixstep { padding: 16px; }
+  .fixpage { padding: 28px 16px 60px; }
+  .fxscroll { height: 360px; }
+  .fixstep .linkrow { flex-wrap: wrap; }
+}
+
+/* the prospect's page around a shown preview (/s/:token) */
+body.share { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--paper); }
+.share-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 16px; background: var(--ink); color: #fff; font-size: 13px; }
+.share-bar strong { font-weight: 650; }
+.share-bar span { color: rgba(255, 255, 255, .72); }
+.share-frame { flex: 1; width: 100%; border: 0; background: #fff; }

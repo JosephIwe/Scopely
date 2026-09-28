@@ -96,6 +96,7 @@ async function route() {
   if ((m = hsh.match(/^#\/p\/(\d+)\/setup$/))) return setupView(m[1]);
   if ((m = hsh.match(/^#\/p\/(\d+)$/))) return workspaceView(m[1]);
   leaveGuard = null;
+  if ((m = hsh.match(/^#\/f\/(\d+)$/))) return fixView(m[1]);
   return opportunitiesView();
 }
 window.addEventListener('hashchange', () => {
@@ -112,7 +113,7 @@ async function opportunitiesView() {
   $app.replaceChildren(appbar(), h('main', { class: 'page' },
     h('div', { class: 'eyebrow', text: 'Find' }),
     h('h1', { style: 'margin-top:10px', text: 'Opportunities' }),
-    h('p', { class: 'muted', style: 'margin-top:8px;max-width:640px', text: 'Businesses where Scopely found a real, fixable problem. Build a website for any opportunity mapped to a website service.' }),
+    h('p', { class: 'muted', style: 'margin-top:8px;max-width:640px', text: 'Businesses where Scopely found a real, fixable problem. Build a website for an opportunity mapped to a website service, or a fix for an observed broken contact link.' }),
     list));
   let opps;
   try { opps = await api('GET', '/opportunities'); } catch (err) {
@@ -134,7 +135,15 @@ async function opportunitiesView() {
             try { const r = await api('POST', `/opportunities/${o.opportunityId}/website`); go(`#/p/${r.projectId}/setup`); }
             catch (err) { fail(err); e.currentTarget.disabled = false; }
           } }, 'Build website')
-        : h('span', { class: 'muted small', text: o.service ? 'Not a website service' : 'No service mapped' });
+        : o.fixProjectId
+          ? h('button', { class: 'btn', onclick: () => go(`#/f/${o.fixProjectId}`) }, 'Open fix')
+          : o.fixable
+            ? h('button', { class: 'btn primary', onclick: async (e) => {
+                e.currentTarget.disabled = true;
+                try { const r = await api('POST', `/opportunities/${o.opportunityId}/fix`); go(`#/f/${r.projectId}`); }
+                catch (err) { fail(err); e.currentTarget.disabled = false; }
+              } }, 'Build fix')
+            : h('span', { class: 'muted small', text: o.service ? 'Not a website service' : 'No service mapped' });
     return h('article', { class: 'card opp' },
       h('div', { class: 'grow' },
         h('div', { class: 'row' }, h('h3', { text: o.business }), o.path === 'WEBSITE' ? h('span', { class: 'badge amber', text: 'Needs a website' }) : o.path ? h('span', { class: 'badge', text: 'Fix' }) : null),
@@ -1042,6 +1051,260 @@ async function workspaceView(pid) {
   function drawAll() { drawHead(); drawToolbar(); drawPanel(); drawInspector(); drawDrawer(); }
   drawAll();
   showPreview(cur().html);
+}
+
+// ------------------------------------------------------------------ fix builder (Slice 7)
+//
+// One observed broken contact link, repaired on a copy of the captured page with a destination a
+// person typed and confirmed. PROBLEM → PROOF → FIX → BEFORE/AFTER → CONFIRM → SHOW, top to bottom.
+// Nothing here edits a website: the server captures, corrects and gates; this page only asks.
+
+const FIX_STEPS = [['problem', 'Problem'], ['proof', 'Proof'], ['fix', 'Fix'], ['beforeAfter', 'Before / After'], ['confirm', 'Confirm'], ['show', 'Show']];
+const CHANNEL_WORD = { phone: 'Phone number', whatsapp: 'WhatsApp number', email: 'Email address' };
+const CHANNEL_HINT = {
+  phone: 'With the country code, for example +44 20 7946 0000.',
+  whatsapp: 'The WhatsApp number with its country code, for example +44 7700 900123.',
+  email: 'For example bookings@clinic.co.uk.',
+};
+
+async function fixView(pid) {
+  document.title = 'Scopely · Fix';
+  const main = h('main', { class: 'page fixpage' }, h('div', { class: 'card skeleton', style: 'height:120px' }));
+  $app.replaceChildren(appbar({ href: '#/', label: 'Back to opportunities' }), main);
+  const F = { w: null, edit: null, editFor: null, showUrl: null, split: 50 };
+
+  async function load() {
+    F.w = await api('GET', `/fix/${pid}`);
+    const c = F.w.current;
+    if (c && F.editFor !== c.buildId) {
+      try { F.edit = await api('POST', `/fix/${pid}/versions/${c.buildId}/link`, { kind: 'edit' }); F.editFor = c.buildId; } catch { F.edit = null; }
+    }
+  }
+  try { await load(); } catch (err) {
+    main.replaceChildren(h('div', { class: 'card empty' }, h('h2', { text: 'This fix could not be opened' }), h('p', { class: 'muted', text: err.message }),
+      h('p', { style: 'margin-top:14px' }, h('button', { class: 'btn', onclick: () => route(), text: 'Try again' }))));
+    return;
+  }
+  document.title = `Scopely · Fix · ${F.w.business.name}`;
+
+  const stepState = (key) => key === 'proof' ? (F.w.steps.capture === 'done' ? 'done' : 'current') : F.w.steps[key];
+  const section = (key, n, title, ...kids) => h('section', { class: `card fixstep ${stepState(key)}`, 'aria-labelledby': `fx-${key}` },
+    h('div', { class: 'fxhead' }, h('span', { class: 'fxnum', text: stepState(key) === 'done' ? '✓' : String(n) }), h('h2', { id: `fx-${key}`, text: title })), ...kids);
+
+  function draw() {
+    const w = F.w;
+    const e = w.focus;
+    main.replaceChildren(
+      h('div', { class: 'eyebrow fx', text: 'Fix · Website Fix Sprint' }),
+      h('h1', { style: 'margin-top:10px', text: `Fix ${w.business.name}’s contact link` }),
+      h('p', { class: 'muted', style: 'margin-top:8px;max-width:640px', text: 'Scopely corrects only the broken destination, on a copy of the page it captured, with the value you type and confirm. The business’s live website is never touched.' }),
+      h('ol', { class: 'fxsteps', 'aria-label': 'Progress' }, FIX_STEPS.map(([k, label]) => h('li', { class: stepState(k) }, h('i'), label))),
+      ...(e ? [problem(e), proof(e), fix(e), beforeAfter(), confirmStep(), showStep()] : [h('div', { class: 'card empty', style: 'margin-top:20px' }, h('h2', { text: 'No broken contact link to fix' }),
+          h('p', { class: 'muted', text: 'This opportunity has no observed broken contact link that still holds.' }))]));
+  }
+
+  function problem(e) {
+    return section('problem', 1, 'Problem',
+      h('p', { class: 'fxissue', text: e.plainIssue }),
+      h('div', { class: 'fxmeta' },
+        h('span', { class: 'badge blue', text: claimWord[e.claimState] }), h('span', { class: 'badge', text: confidenceWord[e.confidence] }),
+        h('span', { text: `Observed ${date(e.observedAt)}` }),
+        e.recheck ? h('span', { text: `Re-checked ${date(e.recheck.at)}: ${e.recheck.result}` }) : h('span', { text: 'Not re-checked yet' })));
+  }
+
+  function proof(e) {
+    const c = F.w.capture;
+    const kids = [
+      h('div', { class: 'label', text: 'Evidence' }),
+      h('div', { class: 'fxquote mono', text: e.quote }),
+      h('div', { class: 'fxmeta' }, h('span', { class: 'mono', text: e.url }), e.observedHref ? h('span', {}, 'Link opens ', h('s', { class: 'mono', text: e.observedHref })) : null),
+    ];
+    if (c) {
+      kids.push(h('div', { class: 'note sage', style: 'margin-top:14px' },
+        h('b', { text: 'Page captured. ' }), `A copy of ${c.finalUrl} was saved ${when(c.capturedAt)}. `,
+        c.hrefOccurrences ? `${plural(c.hrefOccurrences, 'link on it still opens', 'links on it still open')} the broken destination.` : 'No link on it opens the broken destination any more.'),
+        h('p', { class: 'hint', text: 'The capture is proof of what the page showed. The finding above is what Scopely acts on.' }));
+      if (!c.hrefOccurrences) kids.push(h('div', { class: 'note amber', style: 'margin-top:10px', text: 'There is nothing to fix on this copy. The page may already have been corrected.' }));
+      kids.push(h('button', { class: 'btn sm', style: 'margin-top:10px', onclick: (ev) => capture(ev.currentTarget) }, 'Capture again'));
+    } else {
+      kids.push(h('div', { class: 'note', style: 'margin-top:14px', id: 'fx-capturing' }, 'Capturing a copy of the page…'));
+    }
+    return section('proof', 2, 'Proof', kids);
+  }
+
+  async function capture(btn) {
+    if (btn) btn.disabled = true;
+    try {
+      await api('POST', `/fix/${pid}/capture`, { evidenceId: F.w.focus.evidenceId });
+      await load(); draw(); toast('Page captured');
+    } catch (err) {
+      if (btn) { btn.disabled = false; fail(err); return; }
+      const slot = document.getElementById('fx-capturing');
+      if (slot) slot.replaceWith(h('div', { class: 'note error', style: 'margin-top:14px' }, err.message,
+        h('div', { style: 'margin-top:8px' }, h('button', { class: 'btn sm', onclick: (ev) => { ev.currentTarget.closest('.note').replaceWith(h('div', { class: 'note', style: 'margin-top:14px', id: 'fx-capturing' }, 'Capturing a copy of the page…')); capture(); } }, 'Try again'))));
+    }
+  }
+
+  function fix(e) {
+    const w = F.w;
+    const cor = w.correction;
+    const canFix = Boolean(w.capture && w.capture.hrefOccurrences);
+    const channels = e.channels;
+    let channel = cor && channels.includes(cor.channel) ? cor.channel : channels[0];
+    const sel = h('select', { 'aria-label': 'Kind of destination', disabled: !canFix, onchange: () => { channel = sel.value; hint.textContent = CHANNEL_HINT[channel]; } },
+      channels.map((c) => h('option', { value: c, selected: c === channel }, CHANNEL_WORD[c])));
+    const input = h('input', { type: 'text', placeholder: channel === 'email' ? 'name@business.com' : '+44 …', maxlength: 200, disabled: !canFix, autocomplete: 'off',
+      value: cor ? cor.correctedHref.replace(/^tel:|^mailto:|^https:\/\/wa\.me\//, (m) => m === 'https://wa.me/' ? '+' : '') : '' });
+    const hint = h('p', { class: 'hint', text: CHANNEL_HINT[channel] });
+    const save = h('button', { class: 'btn', disabled: !canFix, onclick: async () => {
+      if (!input.value.trim()) { input.focus(); return; }
+      save.disabled = true;
+      try { await api('POST', `/fix/${pid}/corrections`, { evidenceId: e.evidenceId, channel, value: input.value }); await load(); draw(); toast('Destination saved'); }
+      catch (err) { fail(err); save.disabled = false; }
+    } }, cor ? 'Change destination' : 'Use this destination');
+    return section('fix', 3, 'Fix',
+      h('p', { class: 'muted', text: 'Type where this link should go, as the business confirmed it. Scopely never guesses a destination.' }),
+      h('div', { class: 'fxform' },
+        h('label', { class: 'field' }, h('span', { class: 'lab' }, 'Kind'), sel),
+        h('label', { class: 'field grow' }, h('span', { class: 'lab' }, 'Correct destination'), input),
+        save),
+      hint,
+      cor ? h('div', { class: 'fxreads' }, h('span', { class: 'label', text: 'Proposed' }), h('span', { text: cor.reads }), h('span', { class: 'mono muted', text: cor.correctedHref }),
+        cor.confirmedAt ? h('span', { class: 'badge sage', text: `Confirmed by ${cor.confirmedBy}` }) : h('span', { class: 'badge amber', text: 'Not confirmed' })) : null);
+  }
+
+  function building() {
+    const steps = ['Reading the captured page', 'Correcting the link', 'Preparing before and after'];
+    const items = steps.map((s) => h('li', {}, h('i'), s));
+    const fill = h('i');
+    const el = h('div', { class: 'veil' }, h('div', { class: 'gencard', role: 'status', 'aria-live': 'polite' },
+      h('h2', { text: 'Building the fix on a copy of the page…' }), h('p', { class: 'sub', text: `${F.w.business.name} · a private draft` }),
+      h('div', { class: 'bar' }, fill), h('ol', { class: 'steps' }, items),
+      h('p', { class: 'fine', text: 'Only the link’s destination changes. Nothing on the live website is touched.' })));
+    document.body.append(el);
+    let i = 0;
+    const mark = () => { items.forEach((li, j) => { li.className = j < i ? 'done' : j === i ? 'on' : ''; }); fill.style.width = `${Math.max(8, (i / steps.length) * 100)}%`; };
+    mark();
+    const timer = setInterval(() => { if (i < steps.length - 1) { i++; mark(); } }, 600);
+    return { async done() { clearInterval(timer); i = steps.length; mark(); await new Promise((r) => setTimeout(r, 300)); el.remove(); }, stop() { clearInterval(timer); el.remove(); } };
+  }
+
+  async function generate(btn) {
+    btn.disabled = true;
+    const b = building();
+    try {
+      const r = await api('POST', `/fix/${pid}/generate`);
+      if (r.status !== 'SUCCEEDED') { b.stop(); toast(r.message || 'The fix could not be built. Nothing was saved.', { bad: true }); btn.disabled = false; return; }
+      await load(); await b.done(); draw();
+      document.getElementById('fx-beforeAfter')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) { b.stop(); fail(err); btn.disabled = false; }
+  }
+
+  function beforeAfter() {
+    const w = F.w;
+    const c = w.current;
+    const ready = w.steps.beforeAfter !== 'todo';
+    if (!ready) return section('beforeAfter', 4, 'Before / After', h('p', { class: 'muted', text: 'Add the correct destination to build the fix.' }));
+    if (!c || c.stale) {
+      return section('beforeAfter', 4, 'Before / After',
+        c && c.stale ? h('div', { class: 'note amber', text: `The destination changed since version ${c.versionNo}. Build the fix again to use it.` }) : null,
+        h('button', { class: 'btn primary lg', style: 'margin-top:12px', onclick: (ev) => generate(ev.currentTarget) }, 'Build the fix'));
+    }
+    const d = c.document;
+    const cards = d.corrections.map((k) => h('div', { class: 'fxba' },
+      h('div', { class: 'fxside before' }, h('header', { text: 'Before · Observed' }),
+        h('div', { class: 'fxbody' }, k.context?.before ? h('p', { class: 'ctx', text: k.context.before }) : null,
+          h('span', { class: 'fxlnk', text: k.label || 'Contact link' }), h('p', { class: 'opens' }, 'Opens ', h('s', { text: k.observedHref })))),
+      h('div', { class: 'fxside after' }, h('header', { text: 'After · Proposed' }),
+        h('div', { class: 'fxbody' }, k.context?.before ? h('p', { class: 'ctx', text: k.context.before }) : null,
+          h('span', { class: 'fxlnk', text: k.label || 'Contact link' }), h('p', { class: 'opens' }, 'Opens ', h('b', { text: k.correctedHref })),
+          h('p', { class: 'small', text: `${c.corrections.find((x) => x.correctionId === k.correctionId)?.reads ?? ''}.` })))));
+    const n = d.corrections.reduce((s, k) => s + k.replaced, 0);
+    const kids = [
+      h('p', { class: 'muted', text: `Version ${c.versionNo}. ${n === 1 ? 'One link was' : `${n} links were`} corrected on the copy. Everything else on the page is unchanged.` }),
+      cards,
+    ];
+    if (F.edit) {
+      const after = h('iframe', { class: 'after', src: F.edit.after, title: 'After: the corrected copy', sandbox: '', loading: 'lazy', scrolling: 'no', tabindex: '-1' });
+      const before = h('iframe', { class: 'before', src: F.edit.before, title: 'Before: the page as captured', sandbox: '', loading: 'lazy', scrolling: 'no', tabindex: '-1' });
+      const handle = h('div', { class: 'fxhandle' });
+      const stage = h('div', { class: 'fxstage' }, h('div', { class: 'fxscroll' }, h('div', { class: 'fxlayers' }, before, after)), handle,
+        h('span', { class: 'fxtag l', text: 'Before · Observed' }), h('span', { class: 'fxtag r', text: 'After · Proposed' }));
+      const range = h('input', { type: 'range', min: 0, max: 100, value: F.split, 'aria-label': 'Compare before and after', class: 'fxrange' });
+      const place = () => { after.style.clipPath = `inset(0 0 0 ${F.split}%)`; handle.style.left = `${F.split}%`; };
+      range.addEventListener('input', () => { F.split = Number(range.value); place(); });
+      place();
+      kids.push(h('details', { class: 'fxwhole' }, h('summary', { text: 'Compare the whole page' }),
+        h('p', { class: 'hint', text: 'Both copies are shown without scripts or outside images, so they may look plainer than the live page.' }), stage, range));
+    }
+    return section('beforeAfter', 4, 'Before / After', kids);
+  }
+
+  function confirmStep() {
+    const w = F.w;
+    const c = w.current;
+    if (!c || c.stale) return section('confirm', 5, 'Confirm', h('p', { class: 'muted', text: 'Build the fix, then confirm the corrected destination.' }));
+    if (c.approvedAt) {
+      return section('confirm', 5, 'Confirm', h('div', { class: 'note sage' }, `Confirmed and approved by ${c.approvedBy} ${when(c.approvedAt)}. `,
+        c.corrections.map((k) => k.reads).join('; '), '.'));
+    }
+    const k = c.corrections[0];
+    const tick = h('input', { type: 'checkbox', id: 'fx-tick' });
+    const name = h('input', { type: 'text', value: remember('scopely.approver'), placeholder: 'Your name', maxlength: 120, autocomplete: 'name' });
+    const btn = h('button', { class: 'btn primary', onclick: async () => {
+      if (!tick.checked) { tick.focus(); toast('Tick the box to confirm the destination.', { bad: true }); return; }
+      if (!name.value.trim()) { name.focus(); return; }
+      remember('scopely.approver', name.value.trim());
+      btn.disabled = true;
+      try { await api('POST', `/fix/${pid}/versions/${c.buildId}/confirm`, { confirmedBy: name.value.trim(), confirmed: true }); await load(); draw(); toast(`Version ${c.versionNo} confirmed. Ready to show.`); }
+      catch (err) { fail(err); btn.disabled = false; }
+    } }, 'Confirm and approve');
+    return section('confirm', 5, 'Confirm',
+      h('label', { class: 'fxtick', for: 'fx-tick' }, tick,
+        h('span', {}, `I confirm that ${k ? k.correctedHref : 'this destination'} is the correct destination for ${w.business.name}. `,
+          h('span', { class: 'muted', text: k ? `${k.reads}.` : '' }))),
+      c.approveBlocker && !/confirm/i.test(c.approveBlocker) ? h('div', { class: 'note error', style: 'margin-top:12px', text: c.approveBlocker }) : null,
+      h('div', { class: 'fxform', style: 'margin-top:14px' }, h('label', { class: 'field grow' }, h('span', { class: 'lab' }, 'Confirming as'), name), btn),
+      h('p', { class: 'hint', text: 'Only a person can confirm. Nothing can be shown to the business until you do.' }));
+  }
+
+  function showStep() {
+    const w = F.w;
+    const c = w.current;
+    if (!c || c.stale || !c.approvedAt) return section('show', 6, 'Show', h('p', { class: 'muted', text: 'Once confirmed, share a private preview with the business owner.' }));
+    const links = (w.links || []).filter((l) => l.versionNo === c.versionNo);
+    const active = F.showUrl || links.find((l) => l.state === 'ACTIVE' && l.url)?.url || null;
+    const abs = (u) => new URL(u, location.href).href;
+    const kids = [h('p', { class: 'muted', text: 'A private preview of the fix. It isn’t a live website and search engines can’t find it. Each link works for 72 hours unless you revoke it sooner.' })];
+    if (c.status === 'APPROVED') {
+      if (c.showBlocker) kids.push(h('div', { class: 'note amber', style: 'margin-top:12px', text: c.showBlocker }));
+      kids.push(h('button', { class: 'btn dark lg', style: 'margin-top:14px', disabled: Boolean(c.showBlocker), onclick: async (ev) => {
+        const b = ev.currentTarget; b.disabled = true;
+        try { const r = await api('POST', `/fix/${pid}/versions/${c.buildId}/show`); F.showUrl = r.url; await load(); draw(); toast('Private link ready'); }
+        catch (err) { fail(err); b.disabled = false; }
+      } }, 'Create private link'));
+    } else {
+      const input = h('input', { type: 'text', readonly: true, value: active ? abs(active) : '', placeholder: 'No active link', 'aria-label': 'Private link', onfocus: (ev) => ev.target.select() });
+      kids.push(h('div', { class: 'linkrow' }, input,
+        h('button', { class: 'btn dark', disabled: !active, onclick: async () => { try { await navigator.clipboard.writeText(abs(active)); toast('Link copied'); } catch { input.focus(); toast('Select the link and copy it'); } } }, 'Copy link'),
+        h('button', { class: 'btn', disabled: !active, onclick: () => window.open(abs(active), '_blank', 'noopener') }, 'Open')));
+      kids.push(h('div', { class: 'links' }, links.map((l) => h('div', { class: 'lk' },
+        h('span', { class: `badge ${l.state === 'ACTIVE' ? 'sage' : l.state === 'REVOKED' ? 'error' : ''}`, text: LINK_STATE[l.state] }),
+        h('span', { class: 'grow muted', text: l.state === 'REVOKED' ? `Revoked ${date(l.revokedAt)}` : `${l.state === 'ACTIVE' ? 'Works until' : 'Ended'} ${date(l.expiresAt)}` }),
+        l.state === 'ACTIVE' ? h('button', { class: 'btn sm danger', onclick: async () => {
+          if (!confirm('Revoke this link? Anyone who has it will no longer be able to open the preview. The version itself does not change.')) return;
+          try { await api('POST', `/fix/${pid}/links/${l.linkId}/revoke`, { revokedBy: remember('scopely.approver') || 'seller' }); if (F.showUrl === l.url) F.showUrl = null; await load(); draw(); toast('Link revoked'); }
+          catch (err) { fail(err); }
+        } }, 'Revoke') : null))));
+      kids.push(h('button', { class: 'btn sm', style: 'margin-top:10px', onclick: async () => {
+        try { const r = await api('POST', `/fix/${pid}/versions/${c.buildId}/link`, { kind: 'show' }); F.showUrl = r.url; await load(); draw(); toast('New link ready'); } catch (err) { fail(err); }
+      } }, 'New link'));
+    }
+    return section('show', 6, 'Show', kids);
+  }
+
+  draw();
+  if (F.w.focus && !F.w.capture) capture();
 }
 
 route();

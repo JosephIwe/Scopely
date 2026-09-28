@@ -69,12 +69,15 @@ export async function openWebsiteProject(db: Db, opportunityId: string, opts: { 
   return createBuildProject(db, { opportunityId, title: `Website for ${o.name}`.slice(0, 200), createdByUserId: opts.createdByUserId ?? null });
 }
 
-async function projectRow(db: Db, projectId: string) {
+/** Build kinds whose shown versions a prospect can open through a link: websites and fixes. */
+const LINK_KINDS = [WEBSITE_KIND, 'website_fix'];
+
+async function projectRow(db: Db, projectId: string, kinds: string[] = [WEBSITE_KIND]) {
   const p = (await db.query(
     `SELECT p.*, o.catalog_item_id FROM scopely.build_projects p JOIN scopely.opportunities o ON o.id = p.opportunity_id
       WHERE p.id = $1 AND p.workspace_id = scopely.current_workspace_id()`, [projectId])).rows[0];
   if (!p) throw new SiteError(404, 'That build does not exist.');
-  if (p.build_kind !== WEBSITE_KIND) throw new SiteError(400, 'This build is not a website.');
+  if (!kinds.includes(p.build_kind)) throw new SiteError(400, 'This build is not a website.');
   return p as { id: string; workspace_id: string; opportunity_id: string; catalog_item_id: string; title: string };
 }
 
@@ -378,7 +381,7 @@ export async function showVersion(db: Db, store: ObjectStore, projectId: string,
 /** A signed, expiring link to one version's stored preview. A `show` link opens only a shown version, through a revocable link row. */
 export async function previewLink(db: Db, projectId: string, buildId: string,
   opts: { kind: 'edit' | 'show'; signingKey: string; ttlSeconds?: number; nowSeconds?: number }): Promise<{ token: string; expiresAt: string; linkId: string | null }> {
-  const p = await projectRow(db, projectId);
+  const p = await projectRow(db, projectId, LINK_KINDS);
   const b = (await db.query(`SELECT id, shown_at, artifact_ref FROM scopely.builds WHERE id = $1 AND project_id = $2 AND workspace_id = scopely.current_workspace_id()`,
     [buildId, p.id])).rows[0];
   if (!b || !b.artifact_ref) throw new SiteError(404, 'That version has no preview.');
@@ -407,7 +410,7 @@ export interface ProspectLink {
 
 /** The project's prospect links, newest first, with their state now (or at `at`). */
 export async function listProspectLinks(db: Db, projectId: string, opts: { signingKey: string; at?: string }): Promise<ProspectLink[]> {
-  const p = await projectRow(db, projectId);
+  const p = await projectRow(db, projectId, LINK_KINDS);
   const at = new Date(opts.at ?? Date.now());
   const ws = String(await requireWorkspace(db));
   const rows = (await db.query(
@@ -428,7 +431,7 @@ export async function listProspectLinks(db: Db, projectId: string, opts: { signi
 
 /** Stops a prospect link at once. The version, its approval and its shown state do not change. */
 export async function revokeProspectLink(db: Db, projectId: string, linkId: string, opts: { revokedBy: string; at?: string }): Promise<void> {
-  const p = await projectRow(db, projectId);
+  const p = await projectRow(db, projectId, LINK_KINDS);
   const by = String(opts.revokedBy ?? '').trim();
   if (!by) throw new SiteError(400, 'Say who is revoking the link.');
   const l = (await db.query(`SELECT id, revoked_at FROM scopely.preview_links WHERE id = $1 AND project_id = $2 AND workspace_id = scopely.current_workspace_id()`,

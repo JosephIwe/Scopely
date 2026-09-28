@@ -59,7 +59,7 @@ USER ─ membership ─ WORKSPACE ─┬─ MAILBOX CONNECTIONS
 | Re-check | The same check on a later snapshot before the finding reaches a prospect | `evidence_rechecks` (append-only) | Built, Manual |
 | OPPORTUNITY | A sellable problem resting on at least one evidence row. A business can hold several | `opportunities`, `opportunity_evidence`, `OPPORTUNITY_FOUND` / `NO_OPPORTUNITY` | Built |
 | Service | The catalog item the opportunity maps to, or `UNMAPPED` with a reason | `catalog_items`, `opportunity_price_guard` | Built |
-| BUILD/FIX | A `DEMO` before the pitch, or the `DELIVERY` after a win | `build_kinds`, `builds`, `build_evidence`, `src/build` | Boundary. No builder is implemented |
+| BUILD/FIX | A `DEMO` before the pitch, or the `DELIVERY` after a win | `build_kinds`, `builds`, `build_evidence`, `src/build` | Built for two kinds: `website` (Slice 5/6, `src/build/site`) and `website_fix` for broken contact links (Slice 7, `src/build/fix`). Other kinds are Boundary |
 | SELL | An approved message to a lawful contact, sent from one of the workspace's mailboxes | `contacts`, `suppression`, `messages`, `mailbox_connections`, `outcomes` | Built, Manual. Automated sending is Deferred |
 | DELIVER | Work done by the seller, or confirmed by the client for `CLIENT_REQUIRED` items | `outcomes` (`delivered`), `builds` (`DELIVERY`) | Built, Manual |
 | VERIFY | The original check passes on a snapshot taken after the evidence | `verifications` | Built, Manual |
@@ -315,6 +315,50 @@ always re-renders to the same bytes; a new version is made with the current temp
   inside the token's workspace and checks the artifact's hash. The artifact is served with a
   sandboxing content security policy; a `show` link opens a page that says it is a design
   preview, not a live website.
+
+### Fix Builder: broken contact links (Slice 7)
+
+The first Fix kind is the Website Fix Sprint, limited to the contact-link findings Scopely has
+already proven (A21): the VALIDATED codes of `check.contact_links` (`E-TEL-BROKEN`,
+`E-WA-BROKEN`, `E-LINK-TARGET-MISMATCH`, `E-EMAIL-INVALID`). It is separate from the website path:
+its own project (`build_kind = website_fix`), its own screen (`#/f/:projectId`), and the Slice 4
+projects, runs, versions, approval, show and preview links underneath.
+
+PROBLEM → EVIDENCE → CAPTURE → PROPOSED FIX → GENERATE → BEFORE / AFTER → CONFIRMATION → PREVIEW → SHOW
+
+- **Problem and evidence.** `openFixProject` needs an opportunity mapped to a `website_fix` service
+  with at least one supported, OBSERVED finding that still holds. The evidence row (URL, quote,
+  observed time, confidence, rule version, workspace and opportunity) stays the source of truth.
+- **Capture (A23, F3).** Opening the screen captures the page once: an SSRF-safe fetch (http/https
+  only, default ports, no credentials, every resolved address checked against private and
+  reserved ranges, pinned DNS, at most 3 re-checked redirects, 10 s, 2 MB, `text/html` only) written
+  write-once to the project's `captures/` prefix and recorded in `fix_captures` with the requested
+  and final URL, status, content type, hash, size, the observed destination and how many links on
+  the page still carry it. A capture never changes, an agent cannot make one, and a finding a
+  re-check found changed or gone cannot be captured. One `cost_events` row (`fetch`) meters it.
+  Reserved `.example` hosts are served from `fixtures/demo-pages/` by `pnpm serve` for the demo.
+- **Proposed fix (A24, F4).** A person types the corrected destination in `fix_corrections`: a
+  phone (`tel:+E164`, the country code is required and never guessed), a WhatsApp number
+  (`https://wa.me/<digits>`) or an email (`mailto:`), only of a kind that repairs the finding's
+  code, never the broken value itself. It starts unconfirmed, never changes (a new value withdraws
+  the old one), and an agent cannot supply or confirm one.
+- **Generate.** `generateFix` queues a run of `ScopelyFixAgent` (deterministic, no model). The
+  agent reads the capture by hash from its own project (A22, F2), replaces the href of only the
+  links whose destination is the observed broken one, keeps every other byte, and writes the
+  corrected copy, `fix.json` and the prospect's preview as a DRAFT version. `build_fix_corrections`
+  records which corrected values the version applies.
+- **Before / after.** The seller sees the link before and after, and can compare both whole page
+  copies through the version's edit link (`/p/:token?view=before|after`, sandboxed, no scripts).
+- **Confirmation.** `confirmFix` needs the person to tick that the destination is correct and give
+  their name; it confirms the version's corrected values and approves it in one step. The
+  database refuses to approve or show a fix version made from a capture unless every corrected
+  value it applies is confirmed and none is withdrawn (`fix_build_blocker`, the `build_fix_gate`
+  trigger, and both gate functions). Slice 2's operator `website_fix` builds, which have no
+  capture, are unchanged.
+- **Preview and show.** Showing keeps every Slice 4 gate (approval, cited evidence, a confirmed
+  re-check for HIGH evidence). The prospect's page states what was observed, shows the link
+  before and after, and says that nothing on the live website has been changed. Links are signed,
+  last 72 hours and can be revoked (A15).
 
 ## Selling from the seller's own mailbox
 

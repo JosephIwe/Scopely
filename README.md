@@ -46,8 +46,14 @@ says which stages are built, manual, a boundary only, or deferred.
   background styles). Saving makes a new version; Undo restores the previous version as a new
   version. Versions built with Meridian 1 keep rendering to their stored bytes; their next
   version is made with Meridian 2.
+- **Slice 7 (Fix Builder):** the first Fix kind, the Website Fix Sprint for proven broken contact
+  links. Scopely captures a copy of the page (SSRF-safe, one page, proof material), a person types
+  the corrected phone, WhatsApp or email destination, a deterministic agent corrects only those
+  links on a copy, and the seller compares before and after, confirms the value, and shows the
+  prospect a signed, expiring, revocable preview. Nothing can be approved or shown before a person
+  confirms the corrected value. See `docs/PRODUCT_MODEL.md` (Fix Builder).
 
-There is **no crawler, no model call, no sending and no cloud resource**. The AI edit in Slice 5 is
+There is **no crawler, no model call, no sending and no cloud resource**. The only outbound request is the Fix Builder's one-page capture (A23). The AI edit in Slice 5 is
 a deterministic interpreter behind the same seam a model-backed one will use. Nothing here contacts a business:
 `messages.sent_at` records a send made by hand.
 
@@ -128,7 +134,7 @@ pnpm test                             # creates a throwaway database, migrates t
 pnpm check                            # typecheck + test
 pnpm record workspace <file.json>     # provision a workspace
 SCOPELY_WORKSPACE_ID=<id> pnpm record <command> <file.json|->   # see docs/MANUAL_VALIDATION.md
-pnpm demo:seed                        # a sample workspace with one website opportunity; prints its id
+pnpm demo:seed                        # a sample workspace with one website and one fix opportunity; prints its id
 SCOPELY_WORKSPACE_ID=<id> pnpm serve  # the Build Workspace on http://127.0.0.1:4310
 ```
 

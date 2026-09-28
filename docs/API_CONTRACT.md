@@ -115,6 +115,19 @@ refused operation and why.
 | `revokeProspectLink(db, projectId, linkId, { revokedBy })` | Stops a link at once; the version does not change |
 | `getSiteWorkspace(db, store, projectId, { selected })` | `SiteWorkspace`: project, current version (document, editor HTML, readiness, blockers), history, template, images |
 
+### Fix builds (Slice 7, `src/build/fix/service.ts`)
+
+| Function | Does |
+|---|---|
+| `openFixProject(db, opportunityId)` | Opens (or reuses) the fix project of a `website_fix` opportunity with a supported finding that holds |
+| `captureFixPage(db, { store, fetcher }, projectId, { evidenceId })` | Captures the finding's page into `captures/` and records it |
+| `proposeCorrection(db, projectId, { evidenceId, channel, value })` | Records a person's corrected destination, unconfirmed |
+| `generateFix(db, { store }, projectId)` | Runs the fix agent on the capture with the active corrected values → `RunOutcome` |
+| `confirmFix(db, projectId, buildId, { confirmedBy, confirmed })` | Confirms and approves; refused without the tick or on a stale version |
+| `showFixVersion(db, projectId, buildId)` | Marks the version shown after every gate passes |
+| `getFixWorkspace(db, store, projectId)` | The screen's data |
+| `readFixPage(db, store, projectId, buildId, 'before' \| 'after')` | The hash-checked page copy |
+
 ### Build Workspace HTTP (`pnpm serve`, `src/server/app.ts`)
 
 JSON over HTTP, acting in the one workspace the server was started with (B10). Every non-GET
@@ -125,7 +138,7 @@ or hashes.
 
 | Route | Body → result |
 |---|---|
-| `GET /api/opportunities` | Opportunities with their first plain-language issue, `buildable` and `projectId` |
+| `GET /api/opportunities` | Opportunities with their first plain-language issue, `buildable` and `projectId`, and for a Fix opportunity `fixable` and `fixProjectId` |
 | `POST /api/opportunities/:id/website` | → `{ projectId }` |
 | `GET /api/projects/:id/setup` | `BuildSetup`, including `opportunity` (service, price and currency, or null) |
 | `GET /api/projects/:id/workspace?selected=` | The workspace screen, with `links` (state and, while active, url), each version's `kind` (`build`, `ai`, `restore`, `manual`) and `current.upgraded` (made with an earlier template version) |
@@ -141,6 +154,16 @@ or hashes.
 | `POST /api/projects/:id/links/:lid/revoke` | `{ revokedBy }` → `{ ok }` |
 | `GET /p/:token` | The artifact, with a sandboxing content security policy |
 | `GET /s/:token` | The prospect's page: a "design preview, not a live website" bar around the artifact in a sandboxed frame |
+| `POST /api/opportunities/:id/fix` | → `{ projectId }` (Slice 7; reuses the open fix project) |
+| `GET /api/fix/:id` | `FixWorkspace`: business, service, evidence, `focus`, `capture`, `correction`, `current` (document, applied corrections, `confirmed`, `stale`, blockers), `versions`, `steps` and `links` |
+| `POST /api/fix/:id/capture` | `{ evidenceId }` → `FixCapture`; `409` with a plain message when the page cannot be captured, and nothing is recorded |
+| `POST /api/fix/:id/corrections` | `{ evidenceId, channel: 'phone' \| 'whatsapp' \| 'email', value }` → `FixCorrection` (unconfirmed) |
+| `POST /api/fix/:id/generate` | → `RunOutcome` |
+| `POST /api/fix/:id/versions/:bid/confirm` | `{ confirmedBy, confirmed: true }` → confirms the version's corrected values and approves it |
+| `POST /api/fix/:id/versions/:bid/show` | → `{ url, expiresAt }` |
+| `POST /api/fix/:id/versions/:bid/link` | `{ kind: 'edit' \| 'show' }` → `{ url, expiresAt }`, and for `edit` also `before` and `after` |
+| `POST /api/fix/:id/links/:lid/revoke` | `{ revokedBy }` → `{ ok }` |
+| `GET /p/:token?view=before\|after` | A fix version's captured page or corrected copy, edit links only, under the artifact policy |
 | `GET /fonts/*.woff2` | The workspace's own typefaces (Geist, Geist Mono, Instrument Serif, Newsreader; OFL) |
 
 ### Map query (`MapQuery`)

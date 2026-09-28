@@ -20,6 +20,9 @@ import {
   verifyPreview,
 } from '../build/site/index.js';
 import { FONT_DIR } from '../build/site/fonts.js';
+import {
+  type PageFetcher, SafePageFetcher, captureFixPage, confirmFix, generateFix, getFixWorkspace, openFixProject, proposeCorrection, readFixPage, showFixVersion,
+} from '../build/fix/index.js';
 import type { ObjectStore } from '../storage/index.js';
 import { withWorkspace } from '../tenancy/index.js';
 
@@ -32,6 +35,8 @@ export interface ServerConfig {
   editLinkTtlSeconds: number;
   showLinkTtlSeconds: number;
   interpreter?: EditInterpreter;
+  /** How the Fix Builder captures a page (F3). Defaults to the SSRF-safe live fetcher. */
+  fetcher?: PageFetcher;
   log?: (line: string) => void;
 }
 
@@ -114,6 +119,7 @@ function sameHost(origin: string, host: string | undefined): boolean {
 
 export function createHandler(cfg: ServerConfig) {
   const log = cfg.log ?? ((l: string) => process.stdout.write(`${l}\n`));
+  const fetcher = cfg.fetcher ?? new SafePageFetcher();
 
   /** Runs `fn` in one transaction acting in the server's workspace. */
   async function tx<T>(fn: (db: pg.PoolClient) => Promise<T>): Promise<T> {
@@ -170,15 +176,23 @@ export function createHandler(cfg: ServerConfig) {
         const issues = await db.query(`SELECT DISTINCT ON (oe.opportunity_id) oe.opportunity_id, e.plain_issue FROM scopely.opportunity_evidence oe
                       JOIN scopely.evidence e ON e.id = oe.evidence_id WHERE oe.opportunity_id = ANY ($1) AND e.workspace_id = scopely.current_workspace_id()
                      ORDER BY oe.opportunity_id, e.id`, [ids]);
-        const projects = await db.query(`SELECT opportunity_id, min(id) AS project_id FROM scopely.build_projects WHERE build_kind = 'website' AND opportunity_id = ANY ($1)
-                      AND workspace_id = scopely.current_workspace_id() GROUP BY opportunity_id`, [ids]);
+        const projects = await db.query(`SELECT opportunity_id, build_kind, min(id) AS project_id FROM scopely.build_projects WHERE build_kind IN ('website', 'website_fix')
+                      AND opportunity_id = ANY ($1) AND workspace_id = scopely.current_workspace_id() GROUP BY opportunity_id, build_kind`, [ids]);
+        // A fix opportunity is buildable when it holds a broken contact link the Fix Builder repairs (F1).
+        const fixable = await db.query(`SELECT DISTINCT oe.opportunity_id FROM scopely.opportunity_evidence oe JOIN scopely.evidence e ON e.id = oe.evidence_id
+                      JOIN scopely.observations o ON o.id = e.observation_id
+                     WHERE oe.opportunity_id = ANY ($1) AND e.workspace_id = scopely.current_workspace_id() AND scopely.fix_supported_issue_code(e.issue_code)
+                       AND e.claim_state = 'OBSERVED' AND e.recheck_result IS DISTINCT FROM 'changed' AND e.recheck_result IS DISTINCT FROM 'gone' AND o.href IS NOT NULL`, [ids]);
+        const canFix = new Set(fixable.rows.map((r) => String(r.opportunity_id)));
         const issue = new Map(issues.rows.map((r) => [String(r.opportunity_id), r.plain_issue]));
-        const proj = new Map(projects.rows.map((r) => [String(r.opportunity_id), String(r.project_id)]));
+        const proj = new Map(projects.rows.filter((r) => r.build_kind === 'website').map((r) => [String(r.opportunity_id), String(r.project_id)]));
+        const fixProj = new Map(projects.rows.filter((r) => r.build_kind === 'website_fix').map((r) => [String(r.opportunity_id), String(r.project_id)]));
         return feed.map((f) => ({
           opportunityId: f.opportunityId, business: f.business.name, domain: f.business.domain, path: f.path, kind: f.kind,
           service: f.service.name, price: f.service.price, currency: f.service.currency, evidenceCount: f.evidence.count,
           topConfidence: f.evidence.topConfidence, issue: issue.get(f.opportunityId) ?? null, buildState: f.buildState,
           buildable: f.kind === 'website' && f.service.mappingStatus === 'MAPPED', projectId: proj.get(f.opportunityId) ?? null,
+          fixable: f.kind === 'website_fix' && f.service.mappingStatus === 'MAPPED' && canFix.has(f.opportunityId), fixProjectId: fixProj.get(f.opportunityId) ?? null,
         }));
       }));
     }
@@ -187,6 +201,12 @@ export function createHandler(cfg: ServerConfig) {
       const oid = id(b);
       return json(res, 200, { projectId: await tx((db) => openWebsiteProject(db, oid)) });
     }
+    // POST /api/opportunities/:id/fix
+    if (m === 'POST' && a === 'opportunities' && c === 'fix' && !d) {
+      const oid = id(b);
+      return json(res, 200, { projectId: await tx((db) => openFixProject(db, oid)) });
+    }
+    if (a === 'fix') return fixApi(req, res, parts);
     if (a !== 'projects') throw new HttpError(404, 'Not found.');
     const pid = id(b);
     if (m === 'GET' && c === 'setup' && !d) return json(res, 200, await tx((db) => getBuildSetup(db, pid)));
@@ -264,12 +284,105 @@ export function createHandler(cfg: ServerConfig) {
     throw new HttpError(404, 'Not found.');
   }
 
+  /** The Fix Builder: /api/fix/:projectId/... */
+  async function fixApi(req: IncomingMessage, res: ServerResponse, parts: string[]) {
+    const m = req.method;
+    const [, b, c, d, e] = parts;
+    const pid = id(b);
+    if (m === 'GET' && !c) {
+      return json(res, 200, await tx(async (db) => {
+        const w = await getFixWorkspace(db, cfg.store, pid);
+        const links = (await listProspectLinks(db, pid, { signingKey: cfg.signingKey })).map((l) => ({
+          linkId: l.linkId, versionNo: l.versionNo, state: l.state, createdAt: l.createdAt, expiresAt: l.expiresAt,
+          revokedAt: l.revokedAt, revokedBy: l.revokedBy, url: l.token ? `/s/${l.token}` : null,
+        }));
+        // The document's storage keys and hashes stay on the server.
+        const cur = w.current && { ...w.current, document: { ...w.current.document, capture: undefined, after: undefined } };
+        return { ...w, current: cur, links };
+      }));
+    }
+    if (m !== 'POST') throw new HttpError(404, 'Not found.');
+    if (c === 'capture' && !d) {
+      const bd = await jsonBody(req);
+      const out = await tx((db) => captureFixPage(db, { store: cfg.store, fetcher }, pid, { evidenceId: String(bd.evidenceId ?? ''), capturedBy: 'Scopely' }));
+      log(`capture ${out.captureId} project ${pid}`);
+      return json(res, 200, out);
+    }
+    if (c === 'corrections' && !d) {
+      const bd = await jsonBody(req);
+      const out = await tx((db) => proposeCorrection(db, pid, { evidenceId: String(bd.evidenceId ?? ''), channel: String(bd.channel ?? ''),
+        value: String(bd.value ?? ''), proposedBy: 'seller' }));
+      log(`correction ${out.correctionId} project ${pid}`);
+      return json(res, 200, out);
+    }
+    if (c === 'generate' && !d) {
+      const out = await tx((db) => generateFix(db, { store: cfg.store }, pid));
+      log(`run ${out.runId} project ${pid} ${out.status}${out.errorCode ? ` ${out.errorCode}` : ''}`);
+      return json(res, 200, out);
+    }
+    if (c === 'versions') {
+      const bid = id(d);
+      if (e === 'confirm') {
+        const bd = await jsonBody(req);
+        await tx((db) => confirmFix(db, pid, bid, { confirmedBy: String(bd.confirmedBy ?? ''), confirmed: bd.confirmed === true }));
+        log(`version ${bid} confirmed and approved`);
+        return json(res, 200, { ok: true });
+      }
+      if (e === 'show') {
+        const link = await tx(async (db) => {
+          await showFixVersion(db, pid, bid);
+          return previewLink(db, pid, bid, { kind: 'show', signingKey: cfg.signingKey, ttlSeconds: cfg.showLinkTtlSeconds });
+        });
+        log(`version ${bid} shown, link ${link.linkId}`);
+        return json(res, 200, { url: `/s/${link.token}`, expiresAt: link.expiresAt });
+      }
+      if (e === 'link') {
+        const bd = await jsonBody(req);
+        if (bd.kind === 'show') {
+          const link = await tx((db) => previewLink(db, pid, bid, { kind: 'show', signingKey: cfg.signingKey, ttlSeconds: cfg.showLinkTtlSeconds }));
+          if (link.linkId) log(`link ${link.linkId} created for version ${bid}`);
+          return json(res, 200, { url: `/s/${link.token}`, expiresAt: link.expiresAt });
+        }
+        const link = await tx((db) => previewLink(db, pid, bid, { kind: 'edit', signingKey: cfg.signingKey, ttlSeconds: cfg.editLinkTtlSeconds }));
+        return json(res, 200, { url: `/p/${link.token}`, before: `/p/${link.token}?view=before`, after: `/p/${link.token}?view=after`, expiresAt: link.expiresAt });
+      }
+    }
+    if (c === 'links' && e === 'revoke') {
+      const lid = id(d);
+      const bd = await jsonBody(req);
+      await tx((db) => revokeProspectLink(db, pid, lid, { revokedBy: String(bd.revokedBy ?? '') }));
+      log(`link ${lid} revoked`);
+      return json(res, 200, { ok: true });
+    }
+    throw new HttpError(404, 'Not found.');
+  }
+
+  /** The seller's view of a fix version's captured page or corrected copy, through an edit link only. */
+  async function fixPage(res: ServerResponse, claims: NonNullable<ReturnType<typeof verifyPreview>>, view: 'before' | 'after', gone: () => void) {
+    if (claims.k !== 'edit') return gone();
+    const db = await cfg.pool.connect();
+    let page: Buffer | null = null;
+    try {
+      await db.query('BEGIN READ ONLY');
+      page = await withWorkspace(db, claims.w, () => readFixPage(db, cfg.store, claims.p, claims.b, view));
+      await db.query('COMMIT');
+    } catch {
+      await db.query('ROLLBACK').catch(() => undefined);
+      page = null;
+    } finally {
+      db.release();
+    }
+    if (!page) return gone();
+    return send(res, 200, page, ARTIFACT_HEADERS);
+  }
+
   /** GET /p/:token (the artifact) and /s/:token (the prospect's page around it). */
-  async function preview(res: ServerResponse, kind: 'p' | 's', token: string) {
+  async function preview(res: ServerResponse, kind: 'p' | 's', token: string, view: string | null = null) {
     const claims = verifyPreview(cfg.signingKey, token, Math.floor(Date.now() / 1000));
     const gone = () => send(res, 404, '<!doctype html><title>Preview unavailable</title><p style="font:16px system-ui;margin:40px">This preview link has expired or is not valid.</p>',
       { ...APP_HEADERS, 'content-type': 'text/html; charset=utf-8' });
     if (!claims || (kind === 's' && claims.k !== 'show')) return gone();
+    if (kind === 'p' && (view === 'before' || view === 'after')) return fixPage(res, claims, view, gone);
     const db = await cfg.pool.connect();
     let art;
     try {
@@ -286,7 +399,9 @@ export function createHandler(cfg: ServerConfig) {
     if (kind === 'p') return send(res, 200, art.html, ARTIFACT_HEADERS);
     const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><title>Design preview</title><link rel="stylesheet" href="/app.css"></head>
-<body class="share"><div class="share-bar"><strong>Design preview</strong><span>This is a proposal, not a live website. Nothing here is published.</span></div>
+<body class="share"><div class="share-bar">${art.buildKind === 'website_fix'
+    ? '<strong>Proposed fix</strong><span>A preview of a change to one link. Nothing on your live website has been changed.</span>'
+    : '<strong>Design preview</strong><span>This is a proposal, not a live website. Nothing here is published.</span>'}</div>
 <iframe class="share-frame" src="/p/${token}" title="Design preview" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe></body></html>`;
     return send(res, 200, page, { ...APP_HEADERS, 'content-type': 'text/html; charset=utf-8' });
   }
@@ -304,7 +419,7 @@ export function createHandler(cfg: ServerConfig) {
           { ...APP_HEADERS, 'content-type': 'font/woff2', 'cache-control': 'public, max-age=86400' });
       }
       const pm = /^\/(p|s)\/([A-Za-z0-9_.-]{20,700})$/.exec(url.pathname);
-      if (req.method === 'GET' && pm) return await preview(res, pm[1] as 'p' | 's', pm[2]!);
+      if (req.method === 'GET' && pm) return await preview(res, pm[1] as 'p' | 's', pm[2]!, url.searchParams.get('view'));
       if (url.pathname.startsWith('/api/')) {
         if (req.method !== 'GET') {
           // No cross-site writes: a browser form or another site's script cannot set this header.

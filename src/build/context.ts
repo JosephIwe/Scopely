@@ -10,6 +10,9 @@
 //     changed or gone drops it), with its re-check state;
 //   * what could not be observed is passed as structured NOT_OBSERVABLE observations, never as a claim;
 //   * no page HTML, snapshot body, visible page text, contact detail or credential is ever loaded.
+//     The one exception is outside this context and for FIX builds only (A22, F2): the website_fix
+//     agent reads the page captured into its own project's captures/ prefix, by hash, as proof
+//     material. The evidence here stays the source of truth.
 // The whole context is checked for credential-like keys and values before it is returned.
 import type { Db } from '../tenancy/index.js';
 
