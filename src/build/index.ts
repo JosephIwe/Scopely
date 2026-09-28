@@ -77,9 +77,10 @@ export async function loadBuildInput(db: Db, opportunityId: string): Promise<Bui
        JOIN scopely.businesses b ON b.id = o.business_id
        LEFT JOIN scopely.markets m ON m.id = coalesce(o.market_id, b.market_id)
        LEFT JOIN scopely.catalog_items ci ON ci.id = o.catalog_item_id
-      WHERE o.id = $1`, [opportunityId]);
+      WHERE o.id = $1 AND o.workspace_id = scopely.current_workspace_id()`, [opportunityId]);
   const o = r.rows[0];
-  if (!o) throw new Error(`opportunity ${opportunityId} does not exist`);
+  // Another workspace's opportunity reads as missing: a builder never sees another seller's data.
+  if (!o) throw new Error(`opportunity ${opportunityId} does not exist in this workspace`);
   if (o.mapping_status !== 'MAPPED') throw new Error(`opportunity ${opportunityId} is UNMAPPED; there is no service to build`);
   if (!o.build_kind) throw new Error(`catalog item ${o.key} has no build kind; it cannot be built`);
   const ev = await db.query(

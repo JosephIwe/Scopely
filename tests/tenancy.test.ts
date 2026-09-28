@@ -6,9 +6,10 @@ import path from 'node:path';
 import type pg from 'pg';
 import { describe, expect, it } from 'vitest';
 import { listOpportunities } from '../src/api/queries.js';
-import { createSearch, startSearchRun } from '../src/discovery/index.js';
+import { loadBuildInput } from '../src/build/index.js';
+import { createSearch, DiscoveryRegistry, runDiscovery, startSearchRun } from '../src/discovery/index.js';
 import {
-  asApp, catalogId, enterNewWorkspace, failure, manualMailbox, one, seedChain, seedOpportunity, useDb, useWorkspace,
+  asApp, catalogId, enterNewWorkspace, failure, manualMailbox, one, refused, seedChain, seedOpportunity, useDb, useWorkspace,
 } from './helpers.js';
 
 const { db } = useDb();
@@ -264,6 +265,20 @@ describe('builds and their costs stay inside one workspace', () => {
     const b = (await one<{ ws: string }>(db(), 'SELECT workspace_id::text AS ws FROM builds WHERE id = $1', [bBuild])).ws;
     expect(await failure(db(), 'UPDATE builds SET workspace_id = $2 WHERE id = $1', [aBuild, b])).toMatch(/cannot move/);
     expect(await failure(db(), 'UPDATE cost_events SET workspace_id = $2 WHERE build_id IS NULL AND business_id = $1', [A.businessId, b])).toMatch(/cannot move/);
+  });
+});
+
+describe('a builder or discovery provider never sees another workspace\'s data', () => {
+  it('reads another workspace\'s opportunity as missing when loading build input, and its run as missing when discovering', async () => {
+    const A = await populate(db(), 'alpha');
+    expect((await loadBuildInput(db(), A.opp)).opportunityId).toBe(String(A.opp));
+    await enterNewWorkspace(db(), 'beta');
+    expect(await refused(db(), () => loadBuildInput(db(), A.opp))).toMatch(/does not exist in this workspace/);
+    const seen: unknown[] = [];
+    const registry = new DiscoveryRegistry();
+    registry.register({ provider: 'probe', sourceType: 'manual', async *discover(criteria) { seen.push(criteria); } });
+    expect(await refused(db(), () => runDiscovery(db(), registry, A.runId, 'probe'))).toMatch(/does not exist in this workspace/);
+    expect(seen).toEqual([]);
   });
 });
 

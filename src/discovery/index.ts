@@ -79,8 +79,10 @@ export async function completeSearchRun(db: Db, runId: string, at: string, statu
 
 /** Pulls from a registered source into the run, up to the run's discovery limit. */
 export async function runDiscovery(db: Db, registry: DiscoveryRegistry, runId: string, provider: string): Promise<number> {
-  const run = (await db.query('SELECT criteria, max_discovered_per_run FROM scopely.search_runs WHERE id = $1', [runId])).rows[0];
-  if (!run) throw new Error(`search run ${runId} does not exist`);
+  // Another workspace's run reads as missing, so its criteria never reach this workspace's provider.
+  const run = (await db.query(`SELECT criteria, max_discovered_per_run FROM scopely.search_runs
+                                WHERE id = $1 AND workspace_id = scopely.current_workspace_id()`, [runId])).rows[0];
+  if (!run) throw new Error(`search run ${runId} does not exist in this workspace`);
   let n = 0;
   for await (const d of registry.get(provider).discover(criteriaFromRow(run.criteria), run.max_discovered_per_run)) {
     await recordDiscoveredBusiness(db, runId, d);
