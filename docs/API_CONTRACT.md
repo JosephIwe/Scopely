@@ -138,7 +138,10 @@ or hashes.
 
 | Route | Body → result |
 |---|---|
-| `GET /api/opportunities` | Opportunities with their first plain-language issue, `buildable` and `projectId`, and for a Fix opportunity `fixable` and `fixProjectId` |
+| `GET /api/opportunities` | Opportunities with their first plain-language issue, `buildable` and `projectId`, and for a Fix opportunity `fixable` and `fixProjectId`. Slice 8 adds `stage` (`OPPORTUNITIES`, `BUILD`, `SELL`, `DELIVER`, `VERIFY`, from `stageOf`), `captured`, `sellState`, `deliveryState`, `vertical`, `city`, `websiteStatus`, `rating`, `reviewCount` and `observed` (the strongest finding's visible text, quote, page, claim state and date) |
+| `GET /api/workspace` | `{ name, authenticated: false }` (Slice 8; authentication is B10) |
+| `GET /api/opportunities/:id` | `CaseFile` (Slice 8, `src/api/case-file.ts`): situation, the opportunity's own evidence, business, service, build (with `showLink`, the active prospect link, and for a fix its `steps`, capture and correction), buyer contacts with `emailBlocker` from `contact_outreach_blocker`, outreach cautions (`recheckNeeded`, `noLongerHolds`) and sell (states, dates, the seller-entered `agreedAmount`, the append-only ledger and which records `can` be added). `404` in another workspace |
+| `POST /api/opportunities/:id/outcomes` | `{ kind: 'pitched' \| 'replied' \| 'call' \| 'won' \| 'lost' \| 'voided', occurredOn: 'YYYY-MM-DD', recordedBy, channel?, replyClass?, amount?, currency?, notes?, correctsOutcomeId? }` → `{ outcomeId }` (Slice 8, `recordManualOutcome`). A pitch needs a channel, a reply its class, a win an amount in the opportunity's currency (typed only when it has none), a correction the record it voids and a reason. `delivered` is never recorded here. The ledger's refusals come back as `409` with a plain message. Nothing is sent |
 | `POST /api/opportunities/:id/website` | → `{ projectId }` |
 | `GET /api/projects/:id/setup` | `BuildSetup`, including `opportunity` (service, price and currency, or null) |
 | `GET /api/projects/:id/workspace?selected=` | The workspace screen, with `links` (state and, while active, url), each version's `kind` (`build`, `ai`, `restore`, `manual`) and `current.upgraded` (made with an earlier template version) |

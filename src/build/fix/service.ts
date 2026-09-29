@@ -410,7 +410,8 @@ export async function readFixPage(db: Db, store: ObjectStore, projectId: string,
 export type StepState = 'done' | 'current' | 'todo';
 
 export interface FixWorkspace {
-  project: { projectId: string; title: string };
+  /** opportunityId: where the Case File lives (Slice 8). */
+  project: { projectId: string; title: string; opportunityId: string };
   business: { name: string; domain: string | null; websiteUrl: string | null };
   service: { name: string | null; price: string | null; currency: string | null };
   evidence: FixEvidence[];
@@ -472,7 +473,7 @@ export async function getFixWorkspace(db: Db, store: ObjectStore, projectId: str
     show: !confirmed ? 'todo' : shown ? 'done' : 'current',
   };
   return {
-    project: { projectId: String(p.id), title: p.title },
+    project: { projectId: String(p.id), title: p.title, opportunityId: String(p.opportunity_id) },
     business: { name: biz.name, domain: biz.domain, websiteUrl: biz.website_url },
     service: { name: view.opportunity.service.name ?? null, price: view.opportunity.service.price ?? null, currency: view.opportunity.service.currency ?? null },
     evidence, focus, capture, correction, current,

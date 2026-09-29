@@ -31,6 +31,10 @@ place where each one would land is named so it can be added without rework.
 | A22 | The Fix Builder may read the page captured into its own project, for FIX builds only; the BuildContext still carries no page HTML (F2) | same brief | `ScopelyFixAgent`, CLAUDE.md rule 13 |
 | A23 | Local page capture is permitted, as proof material, not the source of truth (F3) | same brief | `captureFixPage`, `SafePageFetcher`, `fix_captures` |
 | A24 | Every corrected value is confirmed by a person before anything is approved or shown to a prospect; no model or agent supplies one (F4) | same brief | `fix_corrections`, `fix_build_blocker`, `build_fix_gate`, `confirmFix` |
+| A25 | The product shell stays plain JS modules; no React (U1) | Osim Joe, 2026-09-29 (Slice 8 brief) | `src/server/ui/shell.js`, `case-file.js` |
+| A26 | The product lives under `/app`; `/` is reserved for the landing page (U2) | same brief | `STATIC` in `src/server/app.ts`, `landing.html` |
+| A27 | The map is deferred: no provider, tiles or coordinates, only an insertion point (U3) | same brief | `src/server/ui/map-slot.js` |
+| A28 | Pitches and outcomes are recorded by hand in the Case File; Scopely sends nothing (U4) | same brief | `recordManualOutcome`, `POST /api/opportunities/:id/outcomes` |
 
 ## Open
 

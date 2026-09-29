@@ -144,7 +144,7 @@ export async function getBusinessDetail(db: Db, businessId: string): Promise<Bus
     db.query(`SELECT * FROM scopely.v_opportunity_feed WHERE business_id = $1 AND ${WS} ORDER BY opportunity_id`, [businessId]),
   ]);
   return {
-    businessId: String(b.id), name: b.name, domain: b.domain, websiteUrl: b.website_url,
+    businessId: String(b.id), name: b.name, domain: b.domain, websiteUrl: b.website_url, phone: b.phone,
     vertical: b.vertical, subvertical: b.subvertical, specialty: b.specialty,
     location: { addressLine: b.address_line, city: b.city, region: b.region, postalCode: b.postal_code, countryCode: b.country_code,
                 latitude: s(b.latitude), longitude: s(b.longitude), geoSource: b.geo_source },

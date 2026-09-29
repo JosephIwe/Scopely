@@ -2,77 +2,10 @@
 // change is an edit operation sent to the server, which validates it, applies it to the stored
 // site document and returns the rendered preview. Saving makes a new version; nothing autosaves.
 
-const $app = document.getElementById('app');
-const $toasts = document.getElementById('toasts');
-
-// ------------------------------------------------------------------ helpers
-
-function h(tag, props, ...kids) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(props || {})) {
-    if (v === undefined || v === null || v === false) continue;
-    if (k === 'class') el.className = v;
-    else if (k === 'text') el.textContent = v;
-    else if (k === 'html') el.innerHTML = v; // only ever used with the constant icon strings below
-    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
-    else if (k === 'style') el.setAttribute('style', v);
-    else if (v === true) el.setAttribute(k, '');
-    else el.setAttribute(k, String(v));
-  }
-  for (const kid of kids.flat(Infinity)) {
-    if (kid === null || kid === undefined || kid === false) continue;
-    el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
-  }
-  return el;
-}
-
-async function api(method, path, body, headers) {
-  const init = { method, headers: { 'x-scopely-request': '1', ...(headers || {}) } };
-  if (body instanceof Blob) init.body = body;
-  else if (body !== undefined) { init.body = JSON.stringify(body); init.headers['content-type'] = 'application/json'; }
-  let res;
-  try { res = await fetch(`/api${path}`, init); } catch { throw new Error('Scopely cannot be reached. Check your connection and try again.'); }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || 'Something went wrong.'), { status: res.status });
-  return data;
-}
-
-/** A dark toast at the bottom of the screen, with an optional action (Undo). */
-function toast(msg, opts = {}) {
-  const t = h('div', { class: `toast ${opts.bad ? 'bad' : ''}`, role: 'status' }, h('span', { text: msg }),
-    opts.action ? h('button', { onclick: () => { t.remove(); opts.action.run(); } }, opts.action.label) : null);
-  $toasts.replaceChildren(t); // one at a time, newest wins
-  setTimeout(() => t.remove(), opts.action ? 9000 : opts.bad ? 6500 : 3200);
-}
-const fail = (err) => toast(err.message, { bad: true });
-
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const date = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
-const when = (iso) => {
-  const d = new Date(iso);
-  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  return d.toDateString() === new Date().toDateString() ? `Today ${time}` : `${date(iso)} ${time}`;
-};
-const cap = (s) => s ? s[0].toUpperCase() + s.slice(1) : s;
-const confidenceWord = { HIGH: 'High confidence', MEDIUM: 'Medium confidence', LOW: 'Low confidence' };
-const claimWord = { OBSERVED: 'Observed', INFERRED: 'Inferred' };
-const money = (currency, price) => {
-  if (price === null || price === undefined) return 'Price not set';
-  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(price)); } catch { return `${currency} ${price}`; }
-};
-const slugOf = (name) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'site';
-const remember = (k, v) => { try { if (v === undefined) return localStorage.getItem(k) || ''; localStorage.setItem(k, v); } catch { /* optional */ } return ''; };
-
-const I = {
-  back: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 10H4M9 5l-5 5 5 5"/></svg>',
-  close: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m5 5 10 10M15 5 5 15"/></svg>',
-  up: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 16V4M5 9l5-5 5 5"/></svg>',
-  down: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M5 11l5 5 5-5"/></svg>',
-  eye: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.8 10S4.8 4.5 10 4.5 18.2 10 18.2 10 15.2 15.5 10 15.5 1.8 10 1.8 10Z"/><circle cx="10" cy="10" r="2.5"/></svg>',
-  eyeoff: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 3l14 14M8.3 5A8.6 8.6 0 0 1 10 4.5c5.2 0 8.2 5.5 8.2 5.5a14 14 0 0 1-2.4 3M5.4 6.6A13.6 13.6 0 0 0 1.8 10s3 5.5 8.2 5.5c1.3 0 2.5-.3 3.5-.8"/></svg>',
-  lock: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>',
-};
-const icon = (name) => h('span', { html: I[name], style: 'display:inline-flex' });
+import {
+  $app, I, api, cap, claimWord, confidenceWord, date, fail, go, h, icon, money, plural, remember, slugOf, toast, when,
+} from './lib.js';
+import { shellView } from './shell.js';
 
 function appbar(back) {
   return h('header', { class: 'appbar' },
@@ -87,8 +20,6 @@ let onEscape = null;
 window.addEventListener('beforeunload', (e) => { if (leaveGuard && leaveGuard()) { e.preventDefault(); e.returnValue = ''; } });
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && onEscape && onEscape()) e.preventDefault(); });
 
-function go(hash) { location.hash = hash; }
-
 async function route() {
   const hsh = location.hash || '#/';
   let m;
@@ -97,65 +28,14 @@ async function route() {
   if ((m = hsh.match(/^#\/p\/(\d+)$/))) return workspaceView(m[1]);
   leaveGuard = null;
   if ((m = hsh.match(/^#\/f\/(\d+)$/))) return fixView(m[1]);
-  return opportunitiesView();
+  // Slice 8: the product shell, its stage feeds and the Case File.
+  return shellView(hsh, { setEscape: (fn) => { onEscape = fn; } });
 }
 window.addEventListener('hashchange', () => {
   if (leaveGuard && leaveGuard() && !confirm('You have unsaved changes. Leave without saving?')) return;
   leaveGuard = null;
   route();
 });
-
-// ------------------------------------------------------------------ opportunities
-
-async function opportunitiesView() {
-  document.title = 'Scopely · Opportunities';
-  const list = h('div', { class: 'opps' }, [1, 2, 3].map(() => h('div', { class: 'card skeleton', style: 'height:96px' })));
-  $app.replaceChildren(appbar(), h('main', { class: 'page' },
-    h('div', { class: 'eyebrow', text: 'Find' }),
-    h('h1', { style: 'margin-top:10px', text: 'Opportunities' }),
-    h('p', { class: 'muted', style: 'margin-top:8px;max-width:640px', text: 'Businesses where Scopely found a real, fixable problem. Build a website for an opportunity mapped to a website service, or a fix for an observed broken contact link.' }),
-    list));
-  let opps;
-  try { opps = await api('GET', '/opportunities'); } catch (err) {
-    list.replaceWith(h('div', { class: 'card empty', style: 'margin-top:24px' }, h('h2', { text: 'Opportunities could not be loaded' }), h('p', { class: 'muted', text: err.message }),
-      h('p', { style: 'margin-top:14px' }, h('button', { class: 'btn', onclick: () => route(), text: 'Try again' }))));
-    return;
-  }
-  if (!opps.length) {
-    list.replaceWith(h('div', { class: 'card empty', style: 'margin-top:24px' }, h('h2', { text: 'No opportunities yet' }),
-      h('p', { class: 'muted', text: 'When a search finds a business with an observed problem you can sell a fix for, it appears here.' })));
-    return;
-  }
-  list.replaceChildren(...opps.map((o) => {
-    const action = o.projectId
-      ? h('button', { class: 'btn', onclick: () => go(`#/p/${o.projectId}`) }, 'Open website')
-      : o.buildable
-        ? h('button', { class: 'btn primary', onclick: async (e) => {
-            e.currentTarget.disabled = true;
-            try { const r = await api('POST', `/opportunities/${o.opportunityId}/website`); go(`#/p/${r.projectId}/setup`); }
-            catch (err) { fail(err); e.currentTarget.disabled = false; }
-          } }, 'Build website')
-        : o.fixProjectId
-          ? h('button', { class: 'btn', onclick: () => go(`#/f/${o.fixProjectId}`) }, 'Open fix')
-          : o.fixable
-            ? h('button', { class: 'btn primary', onclick: async (e) => {
-                e.currentTarget.disabled = true;
-                try { const r = await api('POST', `/opportunities/${o.opportunityId}/fix`); go(`#/f/${r.projectId}`); }
-                catch (err) { fail(err); e.currentTarget.disabled = false; }
-              } }, 'Build fix')
-            : h('span', { class: 'muted small', text: o.service ? 'Not a website service' : 'No service mapped' });
-    return h('article', { class: 'card opp' },
-      h('div', { class: 'grow' },
-        h('div', { class: 'row' }, h('h3', { text: o.business }), o.path === 'WEBSITE' ? h('span', { class: 'badge amber', text: 'Needs a website' }) : o.path ? h('span', { class: 'badge', text: 'Fix' }) : null),
-        o.issue ? h('p', { class: 'issue', text: o.issue }) : null,
-        h('div', { class: 'meta' },
-          o.service ? h('span', {}, o.service, ' · ', money(o.currency, o.price)) : null,
-          h('span', { text: plural(o.evidenceCount, 'finding', 'findings') }),
-          o.topConfidence ? h('span', { text: confidenceWord[o.topConfidence] }) : null,
-          o.domain ? h('span', { class: 'mono', text: o.domain }) : null)),
-      action);
-  }));
-}
 
 // ------------------------------------------------------------------ build website: template select and generation
 
@@ -193,9 +73,10 @@ function generating(business, templateName) {
 async function setupView(pid) {
   leaveGuard = null;
   document.title = 'Scopely · Build website';
-  const shell = (...kids) => $app.replaceChildren(appbar({ href: '#/', label: 'Back to opportunities' }), h('main', { class: 'page' }, ...kids));
-  shell(h('div', { class: 'boot', style: 'height:50vh' }, h('div', { class: 'spinner' })));
   let s;
+  const back = () => (s ? { href: `#/o/${s.opportunityId}`, label: 'Back to case file' } : { href: '#/', label: 'Back to opportunities' });
+  const shell = (...kids) => $app.replaceChildren(appbar(back()), h('main', { class: 'page' }, ...kids));
+  shell(h('div', { class: 'boot', style: 'height:50vh' }, h('div', { class: 'spinner' })));
   try { s = await api('GET', `/projects/${pid}/setup`); } catch (err) {
     shell(h('div', { class: 'card empty' }, h('h2', { text: 'This build cannot start yet' }), h('p', { class: 'muted', text: err.message })));
     return;
@@ -482,7 +363,7 @@ async function workspaceView(pid) {
     if (c.status === 'DRAFT' || dirty()) primary = h('button', { class: 'btn primary', disabled: S.busy, onclick: () => openDialog('approve') }, dirty() && c.status === 'DRAFT' ? 'Approve' : dirty() ? `Approve version ${nextNo()}` : 'Approve');
     else primary = h('button', { class: 'btn dark', disabled: S.busy, onclick: () => openDialog('show') }, c.status === 'APPROVED' ? 'Show to owner' : 'Show again');
     $head.replaceChildren(
-      h('button', { class: 'backbtn', title: 'Back to opportunities', 'aria-label': 'Back to opportunities', onclick: () => go('#/') }, icon('back')),
+      h('button', { class: 'backbtn', title: 'Back to case file', 'aria-label': 'Back to case file', onclick: () => go(`#/o/${S.view.opportunity.opportunityId}`) }, icon('back')),
       h('div', { class: 'crumb' }, h('small', { text: `${business} · Needs a website` }), h('strong', { text: `Website · ${tpl.name}` })),
       h('span', { class: 'vsep' }),
       h('button', { class: 'verbtn', 'aria-haspopup': 'dialog', 'aria-expanded': String(S.popover), onclick: (e) => { S.popover = !S.popover; drawLayer(e.currentTarget); } },
@@ -1072,6 +953,7 @@ async function fixView(pid) {
   const main = h('main', { class: 'page fixpage' }, h('div', { class: 'card skeleton', style: 'height:120px' }));
   $app.replaceChildren(appbar({ href: '#/', label: 'Back to opportunities' }), main);
   const F = { w: null, edit: null, editFor: null, showUrl: null, split: 50 };
+  const toCaseFile = () => $app.replaceChildren(appbar({ href: `#/o/${F.w.project.opportunityId}`, label: 'Back to case file' }), main);
 
   async function load() {
     F.w = await api('GET', `/fix/${pid}`);
@@ -1086,6 +968,7 @@ async function fixView(pid) {
     return;
   }
   document.title = `Scopely · Fix · ${F.w.business.name}`;
+  toCaseFile();
 
   const stepState = (key) => key === 'proof' ? (F.w.steps.capture === 'done' ? 'done' : 'current') : F.w.steps[key];
   const section = (key, n, title, ...kids) => h('section', { class: `card fixstep ${stepState(key)}`, 'aria-labelledby': `fx-${key}` },

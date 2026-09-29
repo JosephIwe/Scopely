@@ -85,6 +85,8 @@ async function projectRow(db: Db, projectId: string, kinds: string[] = [WEBSITE_
 
 export interface BuildSetup {
   projectId: string;
+  /** The opportunity whose Case File this build belongs to (Slice 8). */
+  opportunityId: string;
   business: { name: string; websiteUrl: string | null };
   buildType: { key: string; name: string; description: string };
   /** The service this build is sold as, and its price when one is set (never invented). */
@@ -109,6 +111,7 @@ export async function getBuildSetup(db: Db, projectId: string): Promise<BuildSet
   const service = (await getBuildProject(db, p.id))!.opportunity.service;
   return {
     projectId: String(p.id),
+    opportunityId: String(p.opportunity_id),
     business: { name: ctx.business.name, websiteUrl: ctx.business.websiteUrl },
     buildType: { key: WEBSITE_KIND, name: kind.name, description: kind.description },
     opportunity: { service: service.name ?? null, price: service.price ?? null, currency: service.currency ?? null },
