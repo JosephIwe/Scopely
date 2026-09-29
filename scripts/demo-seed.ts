@@ -35,6 +35,11 @@ try {
     const opp = await q(`INSERT INTO scopely.opportunities (business_id, opportunity_type, mapping_status, catalog_item_id)
       VALUES ($1, 'website_rebuild', 'MAPPED', $2) RETURNING id`, [biz.id, cat.id]);
     await q('INSERT INTO scopely.opportunity_evidence (opportunity_id, evidence_id) VALUES ($1, $2) RETURNING opportunity_id', [opp.id, ev.id]);
+    // A sample buyer contact for the Case File (Slice 8). Its outreach basis is unknown, so the
+    // database's own gate says it may not be emailed, which the Case File shows.
+    await q(`INSERT INTO scopely.contacts (business_id, full_name, role, is_decision_maker, email, email_kind, source, source_url, label, outreach_basis)
+      VALUES ($1, 'Sam Alder', 'Practice manager', true, 'sam@alderfinch.example', 'role', 'website_contact_page', 'https://alderfinch.example/contact',
+              'PUBLICLY_FOUND', 'unknown') RETURNING id`, [biz.id]);
 
     // A fix opportunity: a WhatsApp button whose number has no country code (E-WA-BROKEN), sold as
     // the shared starter Website Fix Sprint.

@@ -88,6 +88,8 @@ export interface BusinessDetail {
   name: string;
   domain: string | null;
   websiteUrl: string | null;
+  /** The business's public phone number, as a source listed it. */
+  phone: string | null;
   vertical: string | null;
   subvertical: string | null;
   specialty: string | null;
@@ -331,4 +333,98 @@ export interface BuildProjectListItem {
   latestVersionStatus: BuildVersionStatus | null;
   runState: BuildRunStatus | 'NONE';
   createdAt: string;
+}
+
+// ------------------------------------------------------------------ product shell and case file (Slice 8)
+
+/** Where an opportunity sits in the lifecycle. Discover is every opportunity, not a stage of one. */
+export type FeedStage = 'OPPORTUNITIES' | 'BUILD' | 'SELL' | 'DELIVER' | 'VERIFY';
+
+export interface OpportunityBuildInfo {
+  /** A website build can start (a mapped service on the website path). */
+  buildable: boolean;
+  projectId: string | null;
+  /** A fix build can start (an OBSERVED broken contact link that still holds, F1). */
+  fixable: boolean;
+  fixProjectId: string | null;
+}
+
+export interface CaseFileContact {
+  contactId: string;
+  name: string | null;
+  role: string | null;
+  isDecisionMaker: boolean;
+  email: string | null;
+  emailKind: 'role' | 'personal' | null;
+  label: 'VERIFIED' | 'PUBLICLY_FOUND' | 'UNVERIFIED';
+  source: string;
+  sourceUrl: string | null;
+  outreachBasis: 'corporate_subscriber' | 'consent' | 'not_permitted' | 'unknown' | null;
+  /** Why this contact may not be emailed (the database's contact_outreach_blocker), or null. */
+  emailBlocker: string | null;
+}
+
+export interface CaseFileOutcome {
+  outcomeId: string;
+  kind: 'pitched' | 'replied' | 'call' | 'won' | 'lost' | 'delivered' | 'voided';
+  occurredAt: string;
+  channel: string | null;
+  replyClass: string | null;
+  /** A won outcome's agreed amount, as the seller entered it. Never a payment. */
+  amount: string | null;
+  currency: string | null;
+  notes: string | null;
+  recordedBy: string;
+  correctsOutcomeId: string | null;
+  /** A later voided outcome names this one. */
+  voided: boolean;
+  recordedAt: string;
+}
+
+export interface CaseFile {
+  opportunityId: string;
+  path: OpportunityPath | null;
+  kind: string | null;
+  opportunityType: string;
+  status: string;
+  stage: FeedStage;
+  createdAt: string;
+  situation: { whyItMatters: string | null; notObservable: string | null };
+  /** This opportunity's own evidence, strongest first. */
+  evidence: (EvidenceItem & { observedHref: string | null; visibleText: string | null })[];
+  business: Pick<BusinessDetail, 'businessId' | 'name' | 'domain' | 'websiteUrl' | 'phone' | 'vertical' | 'subvertical' | 'specialty'
+    | 'location' | 'website' | 'company' | 'firmographics'> & { sources: { provider: string | null; sourceType: string; foundAt: string }[] };
+  service: { mappingStatus: 'MAPPED' | 'UNMAPPED'; catalogKey: string | null; name: string | null; price: string | null; currency: string | null;
+             unmappedReason: string | null };
+  build: {
+    builder: 'website' | 'fix' | null;
+    projectId: string | null;
+    canStart: boolean;
+    /** Why no builder can open, or null. */
+    blocker: string | null;
+    buildState: BuildState;
+    runState: string;
+    versions: number;
+    current: { buildId: string; versionNo: number; status: string; summary: string; createdAt: string;
+               approvedAt: string | null; approvedBy: string | null; shownAt: string | null } | null;
+  };
+  buyer: { contacts: CaseFileContact[] };
+  outreach: {
+    /** HIGH findings not yet re-checked on a new snapshot (rule 12): re-check before they reach a prospect. */
+    recheckNeeded: { evidenceId: string; plainIssue: string }[];
+    /** Findings a re-check found changed or gone: never cite them. */
+    noLongerHolds: { evidenceId: string; plainIssue: string; result: 'changed' | 'gone' }[];
+  };
+  sell: {
+    sellState: SellState;
+    deliveryState: DeliveryState;
+    pitchedAt: string | null; replyAt: string | null; wonAt: string | null; lostAt: string | null;
+    /** The won outcome's amount, entered by the seller. Not a payment. */
+    agreedAmount: string | null;
+    currency: string | null;
+    /** The append-only ledger, oldest first. */
+    outcomes: CaseFileOutcome[];
+    terminalOutcomeId: string | null;
+    can: { pitched: boolean; replied: boolean; call: boolean; won: boolean; lost: boolean; voided: boolean };
+  };
 }

@@ -13,7 +13,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
+import { getCaseFile, opportunityBuildInfo, stageOf } from '../api/case-file.js';
 import { listOpportunities } from '../api/queries.js';
+import { OutcomeRejected, recordManualOutcome } from '../sell/outcomes.js';
 import {
   ARTIFACT_HEADERS, type EditInterpreter, EditRejected, SiteError, approveVersion, generateSite, getBuildSetup, getSiteWorkspace,
   listProspectLinks, loadPreviewArtifact, openWebsiteProject, previewLink, renderDraft, requestAiEdit, restoreVersion, revokeProspectLink, saveEdits, showVersion, uploadImage,
@@ -41,10 +43,20 @@ export interface ServerConfig {
 }
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
+// U2: the root is the landing page's place; the product lives under /app. The landing page itself
+// is not built yet, so / is a plain boundary page that points to /app.
 const STATIC: Record<string, [string, string]> = {
-  '/': ['index.html', 'text/html; charset=utf-8'],
+  '/': ['landing.html', 'text/html; charset=utf-8'],
+  '/landing.js': ['landing.js', 'text/javascript; charset=utf-8'],
+  '/app': ['index.html', 'text/html; charset=utf-8'],
+  '/app/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/app.css': ['app.css', 'text/css; charset=utf-8'],
+  '/lib.js': ['lib.js', 'text/javascript; charset=utf-8'],
+  '/shell.js': ['shell.js', 'text/javascript; charset=utf-8'],
+  '/case-file.js': ['case-file.js', 'text/javascript; charset=utf-8'],
+  '/map-slot.js': ['map-slot.js', 'text/javascript; charset=utf-8'],
+  '/shell.css': ['shell.css', 'text/css; charset=utf-8'],
 };
 
 /** The workspace's own typefaces (the same files the site template embeds). */
@@ -167,34 +179,83 @@ export function createHandler(cfg: ServerConfig) {
   async function api(req: IncomingMessage, res: ServerResponse, parts: string[], url: URL) {
     const m = req.method;
     const [a, b, c, d, e] = parts;
+    // GET /api/workspace: who the app is acting for. Authentication is B10, so it says so.
+    if (m === 'GET' && a === 'workspace' && !b) {
+      return json(res, 200, await tx(async (db) => {
+        const w = (await db.query('SELECT name FROM scopely.workspaces WHERE id = scopely.current_workspace_id()')).rows[0];
+        if (!w) throw new HttpError(404, 'Not found.');
+        return { name: w.name, authenticated: false };
+      }));
+    }
     // GET /api/opportunities
     if (m === 'GET' && a === 'opportunities' && !b) {
       return json(res, 200, await tx(async (db) => {
         const feed = await listOpportunities(db, { limit: 200 });
         const ids = feed.map((f) => f.opportunityId);
         // One client runs one query at a time.
-        const issues = await db.query(`SELECT DISTINCT ON (oe.opportunity_id) oe.opportunity_id, e.plain_issue FROM scopely.opportunity_evidence oe
-                      JOIN scopely.evidence e ON e.id = oe.evidence_id WHERE oe.opportunity_id = ANY ($1) AND e.workspace_id = scopely.current_workspace_id()
-                     ORDER BY oe.opportunity_id, e.id`, [ids]);
-        const projects = await db.query(`SELECT opportunity_id, build_kind, min(id) AS project_id FROM scopely.build_projects WHERE build_kind IN ('website', 'website_fix')
-                      AND opportunity_id = ANY ($1) AND workspace_id = scopely.current_workspace_id() GROUP BY opportunity_id, build_kind`, [ids]);
-        // A fix opportunity is buildable when it holds a broken contact link the Fix Builder repairs (F1).
-        const fixable = await db.query(`SELECT DISTINCT oe.opportunity_id FROM scopely.opportunity_evidence oe JOIN scopely.evidence e ON e.id = oe.evidence_id
-                      JOIN scopely.observations o ON o.id = e.observation_id
-                     WHERE oe.opportunity_id = ANY ($1) AND e.workspace_id = scopely.current_workspace_id() AND scopely.fix_supported_issue_code(e.issue_code)
-                       AND e.claim_state = 'OBSERVED' AND e.recheck_result IS DISTINCT FROM 'changed' AND e.recheck_result IS DISTINCT FROM 'gone' AND o.href IS NOT NULL`, [ids]);
-        const canFix = new Set(fixable.rows.map((r) => String(r.opportunity_id)));
-        const issue = new Map(issues.rows.map((r) => [String(r.opportunity_id), r.plain_issue]));
-        const proj = new Map(projects.rows.filter((r) => r.build_kind === 'website').map((r) => [String(r.opportunity_id), String(r.project_id)]));
-        const fixProj = new Map(projects.rows.filter((r) => r.build_kind === 'website_fix').map((r) => [String(r.opportunity_id), String(r.project_id)]));
-        return feed.map((f) => ({
-          opportunityId: f.opportunityId, business: f.business.name, domain: f.business.domain, path: f.path, kind: f.kind,
-          service: f.service.name, price: f.service.price, currency: f.service.currency, evidenceCount: f.evidence.count,
-          topConfidence: f.evidence.topConfidence, issue: issue.get(f.opportunityId) ?? null, buildState: f.buildState,
-          buildable: f.kind === 'website' && f.service.mappingStatus === 'MAPPED', projectId: proj.get(f.opportunityId) ?? null,
-          fixable: f.kind === 'website_fix' && f.service.mappingStatus === 'MAPPED' && canFix.has(f.opportunityId), fixProjectId: fixProj.get(f.opportunityId) ?? null,
-        }));
+        const issues = await db.query(`SELECT DISTINCT ON (oe.opportunity_id) oe.opportunity_id, e.plain_issue, e.quote, e.url, e.claim_state, e.observed_at,
+                             o.visible_text FROM scopely.opportunity_evidence oe
+                      JOIN scopely.evidence e ON e.id = oe.evidence_id JOIN scopely.observations o ON o.id = e.observation_id
+                     WHERE oe.opportunity_id = ANY ($1) AND e.workspace_id = scopely.current_workspace_id()
+                     ORDER BY oe.opportunity_id, CASE e.confidence WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END, e.id`, [ids]);
+        const reviews = await db.query(`SELECT id, rating, review_count FROM scopely.businesses WHERE id = ANY ($1) AND workspace_id = scopely.current_workspace_id()`,
+          [feed.map((f) => f.business.businessId)]);
+        const info = await opportunityBuildInfo(db, ids);
+        const captures = await db.query(`SELECT DISTINCT p.opportunity_id FROM scopely.fix_captures c JOIN scopely.build_projects p ON p.id = c.project_id
+                      WHERE p.opportunity_id = ANY ($1) AND c.workspace_id = scopely.current_workspace_id()`, [ids]);
+        const captured = new Set(captures.rows.map((r) => String(r.opportunity_id)));
+        const issue = new Map(issues.rows.map((r) => [String(r.opportunity_id), r]));
+        const rev = new Map(reviews.rows.map((r) => [String(r.id), r]));
+        return feed.map((f) => {
+          const i = issue.get(f.opportunityId);
+          const r = rev.get(f.business.businessId);
+          const bi = info.get(f.opportunityId) ?? { buildable: false, projectId: null, fixable: false, fixProjectId: null };
+          return {
+            opportunityId: f.opportunityId, business: f.business.name, domain: f.business.domain, path: f.path, kind: f.kind,
+            service: f.service.name, price: f.service.price, currency: f.service.currency, evidenceCount: f.evidence.count,
+            topConfidence: f.evidence.topConfidence, issue: i?.plain_issue ?? null, buildState: f.buildState,
+            buildable: bi.buildable, projectId: bi.projectId, fixable: bi.fixable, fixProjectId: bi.fixProjectId,
+            // Slice 8: what the feed and its filters show. All stored values.
+            stage: stageOf(f), captured: captured.has(f.opportunityId), sellState: f.sellState, deliveryState: f.deliveryState,
+            vertical: f.business.vertical, city: f.business.city, websiteStatus: f.business.websiteStatus,
+            rating: r?.rating === null || r?.rating === undefined ? null : String(r.rating), reviewCount: r?.review_count ?? null,
+            observed: i ? { text: i.visible_text ?? null, quote: i.quote, url: i.url, claimState: i.claim_state, observedAt: new Date(i.observed_at).toISOString() } : null,
+          };
+        });
       }));
+    }
+    // GET /api/opportunities/:id: the Case File
+    if (m === 'GET' && a === 'opportunities' && !c) {
+      const oid = id(b);
+      return json(res, 200, await tx(async (db) => {
+        const cf = await getCaseFile(db, oid);
+        if (!cf) throw new HttpError(404, 'Not found.');
+        // The prospect link the seller can cite, when one is active. Never an edit link.
+        let showLink: { url: string; versionNo: number; expiresAt: string } | null = null;
+        if (cf.build.projectId) {
+          const l = (await listProspectLinks(db, cf.build.projectId, { signingKey: cfg.signingKey })).find((x) => x.state === 'ACTIVE' && x.token);
+          if (l) showLink = { url: `/s/${l.token}`, versionNo: l.versionNo, expiresAt: l.expiresAt };
+        }
+        let fix = null;
+        if (cf.build.builder === 'fix' && cf.build.projectId) {
+          const w = await getFixWorkspace(db, cfg.store, cf.build.projectId);
+          fix = { steps: w.steps, captured: w.capture ? { capturedAt: w.capture.capturedAt, finalUrl: w.capture.finalUrl } : null,
+            correction: w.correction ? { reads: w.correction.reads, confirmedAt: w.correction.confirmedAt } : null };
+        }
+        return { ...cf, build: { ...cf.build, showLink, fix } };
+      }));
+    }
+    // POST /api/opportunities/:id/outcomes: a manual SELL record (U4). Nothing is sent.
+    if (m === 'POST' && a === 'opportunities' && c === 'outcomes' && !d) {
+      const oid = id(b);
+      const bd = await jsonBody(req);
+      const outcomeId = await tx((db) => recordManualOutcome(db, oid, {
+        kind: String(bd.kind ?? ''), occurredOn: String(bd.occurredOn ?? ''), recordedBy: String(bd.recordedBy ?? ''),
+        channel: bd.channel ?? null, replyClass: bd.replyClass ?? null, amount: bd.amount ?? null, currency: bd.currency ?? null,
+        notes: bd.notes ?? null, correctsOutcomeId: bd.correctsOutcomeId ?? null,
+      }));
+      log(`outcome ${outcomeId} opportunity ${oid} ${String(bd.kind)}`);
+      return json(res, 200, { outcomeId });
     }
     // POST /api/opportunities/:id/website
     if (m === 'POST' && a === 'opportunities' && c === 'website' && !d) {
@@ -433,6 +494,7 @@ export function createHandler(cfg: ServerConfig) {
     } catch (err) {
       if (err instanceof HttpError) return json(res, err.status, { error: err.message });
       if (err instanceof SiteError) return json(res, err.status, { error: err.message });
+      if (err instanceof OutcomeRejected) return json(res, err.status, { error: err.message });
       if (err instanceof EditRejected) return json(res, 400, { error: err.reason, index: err.index });
       log(`error ${req.method} ${url.pathname.replace(/\/[A-Za-z0-9_.-]{20,}$/, '/…')} ${(err as { code?: string }).code ?? ''}`);
       return json(res, 500, { error: 'Something went wrong. Nothing was changed.' });
