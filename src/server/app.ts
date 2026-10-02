@@ -16,6 +16,7 @@ import type pg from 'pg';
 import { getCaseFile, opportunityBuildInfo, stageOf } from '../api/case-file.js';
 import { listOpportunities } from '../api/queries.js';
 import { OutcomeRejected, recordManualOutcome } from '../sell/outcomes.js';
+import { ProspectRejected, recordCaseRecheck, recordCompanyRegister, saveCaseContact, suppressFromCaseFile } from '../sell/prospect.js';
 import {
   ARTIFACT_HEADERS, type EditInterpreter, EditRejected, SiteError, approveVersion, generateSite, getBuildSetup, getSiteWorkspace,
   listProspectLinks, loadPreviewArtifact, openWebsiteProject, previewLink, renderDraft, requestAiEdit, restoreVersion, revokeProspectLink, saveEdits, showVersion, uploadImage,
@@ -257,6 +258,44 @@ export function createHandler(cfg: ServerConfig) {
       log(`outcome ${outcomeId} opportunity ${oid} ${String(bd.kind)}`);
       return json(res, 200, { outcomeId });
     }
+    // Slice 9, Prospect Readiness: the Case File's writers. Each acts on this opportunity only.
+    // POST /api/opportunities/:id/evidence/:eid/recheck: a person's re-check of a cited finding.
+    if (m === 'POST' && a === 'opportunities' && c === 'evidence' && d && e === 'recheck' && !parts[5]) {
+      const oid = id(b);
+      const eid = id(d);
+      const bd = await jsonBody(req);
+      const out = await tx((db) => recordCaseRecheck(db, oid, eid, { result: String(bd.result ?? ''), recordedBy: String(bd.recordedBy ?? ''), notes: bd.notes ?? null }));
+      log(`recheck ${out.recheckId} evidence ${eid} opportunity ${oid} ${String(bd.result)}`);
+      return json(res, 200, out);
+    }
+    // POST /api/opportunities/:id/contacts, and /contacts/:cid to correct one.
+    if (m === 'POST' && a === 'opportunities' && c === 'contacts' && !e) {
+      const oid = id(b);
+      const cid = d === undefined ? undefined : id(d);
+      const bd = await jsonBody(req);
+      const contactId = await tx((db) => saveCaseContact(db, oid, {
+        fullName: bd.fullName ?? null, role: bd.role ?? null, isDecisionMaker: bd.isDecisionMaker === true, email: bd.email ?? null,
+        emailKind: bd.emailKind ?? null, source: bd.source ?? null, sourceUrl: bd.sourceUrl ?? null, label: bd.label ?? null, outreachBasis: bd.outreachBasis ?? null,
+      }, cid));
+      log(`contact ${contactId} opportunity ${oid} ${cid ? 'updated' : 'added'}`);
+      return json(res, 200, { contactId });
+    }
+    // POST /api/opportunities/:id/company: the company register facts the seller looked up.
+    if (m === 'POST' && a === 'opportunities' && c === 'company' && !d) {
+      const oid = id(b);
+      const bd = await jsonBody(req);
+      await tx((db) => recordCompanyRegister(db, oid, { register: bd.register ?? null, number: bd.number ?? null, type: bd.type ?? null, status: bd.status ?? null }));
+      log(`company register opportunity ${oid}`);
+      return json(res, 200, { ok: true });
+    }
+    // POST /api/opportunities/:id/suppressions: stop contacting an address, the domain or the business.
+    if (m === 'POST' && a === 'opportunities' && c === 'suppressions' && !d) {
+      const oid = id(b);
+      const bd = await jsonBody(req);
+      const suppressionId = await tx((db) => suppressFromCaseFile(db, oid, { target: String(bd.target ?? ''), contactId: bd.contactId ?? null, reason: String(bd.reason ?? '') }));
+      log(`suppression ${suppressionId} opportunity ${oid} ${String(bd.target)}`);
+      return json(res, 200, { suppressionId });
+    }
     // POST /api/opportunities/:id/website
     if (m === 'POST' && a === 'opportunities' && c === 'website' && !d) {
       const oid = id(b);
@@ -495,6 +534,7 @@ export function createHandler(cfg: ServerConfig) {
       if (err instanceof HttpError) return json(res, err.status, { error: err.message });
       if (err instanceof SiteError) return json(res, err.status, { error: err.message });
       if (err instanceof OutcomeRejected) return json(res, err.status, { error: err.message });
+      if (err instanceof ProspectRejected) return json(res, err.status, { error: err.message });
       if (err instanceof EditRejected) return json(res, 400, { error: err.reason, index: err.index });
       log(`error ${req.method} ${url.pathname.replace(/\/[A-Za-z0-9_.-]{20,}$/, '/…')} ${(err as { code?: string }).code ?? ''}`);
       return json(res, 500, { error: 'Something went wrong. Nothing was changed.' });

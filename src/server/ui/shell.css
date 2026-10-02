@@ -204,6 +204,37 @@
 .shell .chain i.ok { background: var(--sage); border-color: var(--sage); color: #fff; }
 .shell .chain small { color: var(--muted); font-family: var(--mono); font-size: 11px; }
 
+/* ---------------------------------------------------------------- prospect readiness (Slice 9) */
+.shell .badge.b-sup { background: var(--error-tint); color: var(--error); }
+.shell .ready { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.shell .ready.r-ready { border-color: var(--sage); box-shadow: 0 0 0 1px var(--sage-tint); }
+.shell .ready.r-suppressed { border-color: var(--error); }
+.shell .ready > .row { justify-content: space-between; }
+.shell .ready .hint { margin: 0; }
+.shell .rchecks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.shell .rchecks li { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; font-size: 13px; }
+.shell .rchecks i { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 10px; font-weight: 700; margin-top: 1px; }
+.shell .rchecks li.done i { background: var(--sage); color: #fff; }
+.shell .rchecks li.missing i { background: var(--amber-tint); color: var(--amber-text); }
+.shell .rchecks li.blocked i { background: var(--error-tint); color: var(--error); }
+.shell .rchecks span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.shell .rchecks small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.shell .lnk { align-self: flex-start; padding: 0; border: 0; background: none; font: inherit; font-weight: 550; color: var(--ink); cursor: pointer; text-align: left; }
+.shell .lnk:hover { text-decoration: underline; }
+.shell .act > summary { display: inline-flex; align-items: center; height: 30px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+  font-size: 12.5px; cursor: pointer; list-style: none; color: var(--ink); }
+.shell .act > summary::-webkit-details-marker { display: none; }
+.shell .act > summary:hover { background: var(--paper); }
+.shell .act[open] > summary { margin-bottom: 8px; background: var(--paper); }
+.shell .evAct { padding: 0 12px; }
+.shell .acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.shell .acts > .act[open] { flex-basis: 100%; }
+.shell .check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.shell .recf select { width: 100%; }
+.shell .supl { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.shell .supl li { padding: 9px 14px; border-top: 1px solid var(--line-soft); font-size: 13px; overflow-wrap: anywhere; }
+.shell .supl li:first-child { border-top: 0; }
+
 /* ---------------------------------------------------------------- responsive (design: ≤1180, ≤860) */
 @media (max-width: 1180px) {
   .shell .mp-card p:not(.mp-count) { display: none; }
