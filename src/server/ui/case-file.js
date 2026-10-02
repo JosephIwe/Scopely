@@ -4,6 +4,11 @@
 // It shows what the server returned and nothing else: an unknown value reads as not known, a
 // later stage reads as planned, and nothing on this page sends anything to anyone (U4). The
 // builders open unchanged from section 05.
+//
+// Slice 9 (Prospect Readiness) adds the writers a seller needs to make the opportunity actionable,
+// each next to what it changes: a re-check under each finding (02), the company register facts (03),
+// contacts and suppression (07), and a readiness summary under the business name that says, from the
+// server's gates, what is missing and what is ready.
 import { api, date, fail, go, h, money, remember, toast, when } from './lib.js';
 
 const WEBSITE_STATUS = {
@@ -26,6 +31,59 @@ const sec = (num, title, opts, ...kids) => h('section', { class: 'sec', id: `cf-
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const abs = (u) => new URL(u, location.href).href;
 
+// Slice 9 vocabularies, in the seller's words. Values are the stored ones.
+const RECHECK = [['confirmed', 'Still there'], ['gone', 'No longer there'], ['changed', 'Changed']];
+const SOURCES = [['website_contact_page', 'The business’s website'], ['business_listing', 'A business listing'], ['company_register', 'The company register'],
+  ['conversation', 'They gave it to me'], ['referral', 'A referral'], ['other', 'Somewhere else']];
+const LABELS = [['UNVERIFIED', 'Not verified'], ['PUBLICLY_FOUND', 'Publicly found'], ['VERIFIED', 'Verified with the business']];
+const BASES = [['unknown', 'Not known'], ['corporate_subscriber', 'Corporate subscriber (a company’s address)'], ['consent', 'They consented'], ['not_permitted', 'Not permitted']];
+const COMPANY_TYPES = [['ltd', 'Private limited company (Ltd)'], ['llp', 'Limited liability partnership (LLP)'], ['plc', 'Public limited company (PLC)'],
+  ['private-limited-guarant-nsc', 'Limited by guarantee'], ['private-unlimited', 'Private unlimited company'], ['sole_trader', 'Sole trader'], ['partnership', 'Partnership'], ['other', 'Another type']];
+const COMPANY_STATUSES = [['active', 'Active'], ['dissolved', 'Dissolved'], ['liquidation', 'In liquidation'], ['administration', 'In administration'],
+  ['receivership', 'In receivership'], ['voluntary-arrangement', 'Voluntary arrangement'], ['insolvency-proceedings', 'Insolvency proceedings'], ['converted-closed', 'Converted or closed']];
+const REGISTERS = [['', 'Not recorded'], ['uk_companies_house', 'Companies House (UK)'], ['other', 'Another register']];
+const REASONS = [['opt_out', 'Asked not to be contacted'], ['dnc', 'Do not contact'], ['bounce', 'Email bounced'], ['complaint', 'Complained'], ['contacted', 'Already contacted']];
+const READY_WORD = { READY: 'READY', NOT_READY: 'NOT READY', SUPPRESSED: 'SUPPRESSED' };
+const CHECK_SECTION = { evidence: '02', company: '03', contact: '07', lawful_basis: '07', suppression: '07' };
+const word = (list, v) => list.find(([k]) => k === v)?.[1] ?? v;
+
+const field = (label, el, hint) => h('label', { class: 'field' }, h('span', { class: 'lab', text: label }), el, hint ? h('span', { class: 'hint', text: hint }) : null);
+const select = (label, list, value) => h('select', { 'aria-label': label }, list.map(([k, l]) => h('option', { value: k, selected: k === (value ?? '') }, l)));
+const input = (label, value, attrs = {}) => h('input', { type: 'text', 'aria-label': label, value: value ?? '', autocomplete: 'off', ...attrs });
+const byInput = () => h('input', { type: 'text', value: remember('scopely.approver'), placeholder: 'Your name', maxlength: 120, autocomplete: 'name', 'aria-label': 'Recording as' });
+
+/** Re-reads the Case File and keeps the reader where they were. */
+async function refresh(ctx) {
+  const at = document.querySelector('.cf .scroll')?.scrollTop ?? 0;
+  await ctx.reload();
+  const sc = document.querySelector('.cf .scroll');
+  if (sc) sc.scrollTop = at;
+}
+
+/** A closed form under a summary line: one writer, one Record button, the server's refusal in a toast. */
+function writer(summary, rows, label, submit, ctx, note) {
+  const btn = h('button', { class: 'btn dark', type: 'button' }, label);
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const done = await submit();
+      if (done === false) { btn.disabled = false; return; }
+      toast(typeof done === 'string' ? done : 'Recorded');
+      await refresh(ctx);
+    } catch (err) { fail(err); btn.disabled = false; }
+  });
+  const body = h('div', { class: 'recf' });
+  const draw = () => body.replaceChildren(...(typeof rows === 'function' ? rows() : rows));
+  draw();
+  return Object.assign(h('details', { class: 'act' }, h('summary', { text: summary }),
+    h('div', { class: 'record' }, body, h('div', { class: 'row' }, btn, note ? h('span', { class: 'note', text: note }) : null))), { redraw: draw });
+}
+
+const needBy = (by) => {
+  if (by.value.trim()) { remember('scopely.approver', by.value.trim()); return true; }
+  by.focus(); toast('Say who is recording this.', { bad: true }); return false;
+};
+
 async function copy(text, what) {
   try { await navigator.clipboard.writeText(text); toast(`${what} copied`); } catch { toast('Copy did not work in this browser. Select the text instead.', { bad: true }); }
 }
@@ -42,10 +100,29 @@ export function renderCaseFile(cf, ctx) {
     h('div', { class: 'scroll' },
       h('header', { class: 'sec intro' },
         h('span', { class: 'eyebrow', text: [cf.business.vertical, cf.business.location.city].filter(Boolean).join(' · ') || 'Business' }),
-        h('h2', { class: 'bizName', text: cf.business.name })),
-      situation(cf, top), evidence(cf), business(cf), service(cf), build(cf), beforeAfter(cf), buyer(cf), sell(cf, ctx), deliver(cf)));
+        h('h2', { class: 'bizName', text: cf.business.name }), readiness(cf)),
+      situation(cf, top), evidence(cf, ctx), business(cf, ctx), service(cf), build(cf), beforeAfter(cf), buyer(cf, ctx), sell(cf, ctx), deliver(cf)));
   return root;
 }
+
+// ---------------------------------------------------------------- prospect readiness (Slice 9)
+
+/** What the server's gates say is missing before the seller may act. Each line jumps to where it is fixed. */
+function readiness(cf) {
+  const r = cf.readiness;
+  const jump = (key) => () => document.getElementById(`cf-${CHECK_SECTION[key]}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return h('div', { class: `ready r-${r.status.toLowerCase()}`, role: 'status', 'aria-label': 'Prospect readiness' },
+    h('div', { class: 'row' }, h('span', { class: 'eyebrow', text: 'Prospect readiness' }),
+      h('span', { class: `badge ${r.status === 'READY' ? 'b-ver' : r.status === 'SUPPRESSED' ? 'b-sup' : 'b-rev'}`, text: READY_WORD[r.status] })),
+    r.status === 'READY' ? h('p', { class: 'hint', text: 'Ready for seller action. Contact the business from your own inbox, phone or in person, then record what you did in 08.' }) : null,
+    h('ul', { class: 'rchecks' }, r.checks.map((c) => h('li', { class: c.state },
+      h('i', { 'aria-hidden': 'true', text: c.state === 'done' ? '✓' : c.state === 'blocked' ? '✕' : '!' }),
+      h('span', {}, h('button', { type: 'button', class: 'lnk', onclick: jump(c.key) }, c.label), detailOf(cf, c) ? h('small', { text: detailOf(cf, c) }) : null)))));
+}
+
+/** A recorded company type and status in the register's words; every other detail as the server wrote it. */
+const detailOf = (cf, c) => c.key === 'company' && c.state === 'done'
+  ? [word(COMPANY_TYPES, cf.business.company.type), word(COMPANY_STATUSES, cf.business.company.status)].filter(Boolean).join(' · ') : c.detail;
 
 // ---------------------------------------------------------------- 01 opportunity / situation
 
@@ -70,7 +147,27 @@ function recheckLine(e) {
   return h('span', { class: 'bad', text: `Re-checked ${date(e.recheck.at)} · ${e.recheck.result === 'gone' ? 'no longer there' : 'changed'}` });
 }
 
-function evidence(cf) {
+/** A person's visit to the finding's own page (Slice 9). Scopely fetches nothing. */
+function recheckWriter(cf, e, ctx) {
+  const options = e.claimState === 'OBSERVED' ? RECHECK : RECHECK.filter(([k]) => k === 'changed');
+  let result = options[0][0];
+  const notes = h('textarea', { rows: 2, maxlength: 2000, 'aria-label': 'What changed' });
+  const by = byInput();
+  const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'What you saw' });
+  const w = writer('Record a re-check', () => {
+    seg.replaceChildren(...options.map(([k, l]) => h('button', { type: 'button', 'aria-pressed': String(k === result), onclick: () => { result = k; w.redraw(); } }, l)));
+    return [h('p', { class: 'hint', text: `Open ${e.url} now and look for the problem. Record what you saw; Scopely records it as your visit and fetches nothing.` }),
+      field('What you saw', seg), result === 'changed' ? field('What changed', notes) : null, field('Recording as', by)].filter(Boolean);
+  }, 'Record re-check', async () => {
+    if (result === 'changed' && !notes.value.trim()) { notes.focus(); toast('Say what changed.', { bad: true }); return false; }
+    if (!needBy(by)) return false;
+    await api('POST', `/opportunities/${cf.opportunityId}/evidence/${e.evidenceId}/recheck`, { result, recordedBy: by.value.trim(), notes: result === 'changed' ? notes.value : null });
+    return 'Re-check recorded';
+  }, ctx, 'Re-checks are permanent. A later re-check replaces this one in the gates.');
+  return w;
+}
+
+function evidence(cf, ctx) {
   if (!cf.evidence.length) return sec('02', 'Evidence', null, h('p', { class: 'unk', text: 'No evidence is linked to this opportunity.' }));
   const items = cf.evidence.map((e) => {
     const inferred = e.claimState !== 'OBSERVED';
@@ -87,7 +184,8 @@ function evidence(cf) {
         ['Re-check', recheckLine(e)],
         ['Rule', h('span', { class: 'mono', text: `${e.rule.key} v${e.rule.version}` })],
       ]),
-      h('details', { class: 'raw' }, h('summary', { text: 'Show evidence' }), h('pre', { class: 'mono', text: e.quote })));
+      h('details', { class: 'raw' }, h('summary', { text: 'Show evidence' }), h('pre', { class: 'mono', text: e.quote })),
+      h('div', { class: 'evAct' }, recheckWriter(cf, e, ctx)));
   });
   return sec('02', cf.path === 'FIX' ? 'Evidence · proof' : 'Evidence', null, ...items,
     h('p', { class: 'hint', text: 'Observed means Scopely saw it on the page. Inferred claims are never presented as observed.' }));
@@ -95,7 +193,29 @@ function evidence(cf) {
 
 // ---------------------------------------------------------------- 03 business
 
-function business(cf) {
+/** The company register facts the seller looked up (Slice 9). Nothing is looked up for them. */
+function companyWriter(cf, ctx) {
+  const c = cf.business.company;
+  const register = select('Register', REGISTERS, c.register);
+  const number = input('Company number', c.number, { maxlength: 20, placeholder: 'e.g. 01234567' });
+  const type = select('Company type', [['', 'Choose…'], ...COMPANY_TYPES], c.type);
+  const status = select('Company status', [['', 'Choose…'], ...COMPANY_STATUSES], c.status);
+  const unregistered = () => ['sole_trader', 'partnership'].includes(type.value);
+  const w = writer(c.type || c.status ? 'Update company status' : 'Record company status', () => [
+    h('p', { class: 'hint', text: 'Copy these from the register entry you checked. Scopely does not look them up.' }),
+    field('Company type', type), unregistered() ? null : field('Status', status), unregistered() ? null : field('Register', register),
+    unregistered() ? null : field('Company number (optional)', number)].filter(Boolean), 'Record', async () => {
+    if (!type.value) { type.focus(); toast('Choose the company type.', { bad: true }); return false; }
+    const none = unregistered();
+    await api('POST', `/opportunities/${cf.opportunityId}/company`, { type: type.value, status: none ? null : status.value || null,
+      register: none ? null : register.value || null, number: none ? null : number.value || null });
+    return 'Company status recorded';
+  }, ctx);
+  type.addEventListener('change', () => w.redraw());
+  return w;
+}
+
+function business(cf, ctx) {
   const b = cf.business;
   const f = b.firmographics;
   const loc = [b.location.addressLine, b.location.city, b.location.region, b.location.postalCode, b.location.countryCode].filter(Boolean).join(', ');
@@ -114,11 +234,11 @@ function business(cf) {
     ['Phone', b.phone ? h('span', { class: 'mono', text: b.phone }) : null],
     ['Listing', f.reviews.count !== null && f.reviews.rating !== null
       ? `${Number(f.reviews.rating)} ★ · ${f.reviews.count} reviews${f.reviews.source ? ` · ${humanize(f.reviews.source)}` : ''}${f.reviews.asOf ? `, ${date(f.reviews.asOf)}` : ''}` : null],
-    ['Company', [b.company.type, b.company.number, b.company.status].filter(Boolean).join(' · ') || null],
+    ['Company', [word(COMPANY_TYPES, b.company.type), b.company.number, word(COMPANY_STATUSES, b.company.status)].filter(Boolean).join(' · ') || null],
     ['Employees', emp ? `${emp}${basis(f.employees)}` : null],
     ['Revenue', rev ? `${rev}${basis(f.revenue)}` : null],
     ['Source', b.sources.length ? b.sources.map((x) => `${humanize(x.provider || x.sourceType)} (${date(x.foundAt)})`).join(', ') : null],
-  ]), h('p', { class: 'hint', text: 'Estimated figures say so. Anything not known is left blank rather than guessed.' }));
+  ]), companyWriter(cf, ctx), h('p', { class: 'hint', text: 'Estimated figures say so. Anything not known is left blank rather than guessed.' }));
 }
 
 // ---------------------------------------------------------------- 04 proposed service
@@ -239,24 +359,70 @@ function beforeAfter(cf) {
 
 // ---------------------------------------------------------------- 07 buyer / outreach preparation
 
-function buyer(cf) {
+/** Adds a contact the seller has, or corrects one (Slice 9). Only what they typed; nothing is looked up. */
+function contactWriter(cf, ctx, c) {
+  const name = input('Name', c?.name, { maxlength: 120, autocomplete: 'off' });
+  const role = input('Role', c?.role, { maxlength: 120 });
+  const dm = h('input', { type: 'checkbox', checked: Boolean(c?.isDecisionMaker), 'aria-label': 'Decision maker' });
+  const email = h('input', { type: 'email', value: c?.email ?? '', maxlength: 254, autocomplete: 'off', 'aria-label': 'Email address' });
+  const kind = select('Email kind', [['', 'Not known'], ['role', 'A role address (info@, bookings@)'], ['personal', 'A person’s own address']], c?.emailKind);
+  const source = select('Source', [['', 'Choose…'], ...SOURCES, ...(c && !SOURCES.some(([k]) => k === c.source) ? [[c.source, humanize(c.source)]] : [])], c?.source);
+  const sourceUrl = h('input', { type: 'url', value: c?.sourceUrl ?? '', maxlength: 500, placeholder: 'https://', 'aria-label': 'Source link' });
+  const label = select('How sure', LABELS, c?.label ?? 'UNVERIFIED');
+  const basis = select('Lawful basis', BASES, c?.outreachBasis ?? 'unknown');
+  return writer(c ? 'Edit' : 'Add a contact', [
+    field('Name', name), field('Role (optional)', role), h('label', { class: 'check' }, dm, h('span', { text: 'Decision maker' })),
+    field('Email address', email), field('Email kind', kind), field('Where you got it', source), field('Source link (optional)', sourceUrl),
+    field('How sure you are', label, 'Verified only when the business itself confirmed it.'),
+    field('What lets you contact them', basis, 'In the UK, cold email to a company address needs an active Ltd or LLP; record the company status in 03.'),
+  ], c ? 'Save' : 'Add contact', async () => {
+    if (!name.value.trim() && !email.value.trim()) { name.focus(); toast('Enter a name or an email address.', { bad: true }); return false; }
+    if (!source.value) { source.focus(); toast('Say where you got this contact.', { bad: true }); return false; }
+    await api('POST', `/opportunities/${cf.opportunityId}/contacts${c ? `/${c.contactId}` : ''}`, {
+      fullName: name.value, role: role.value, isDecisionMaker: dm.checked, email: email.value, emailKind: kind.value || null,
+      source: source.value, sourceUrl: sourceUrl.value || null, label: label.value, outreachBasis: basis.value });
+    return c ? 'Contact saved' : 'Contact added';
+  }, ctx);
+}
+
+/** Puts an email address, the domain or the whole business on this workspace's suppression list (Slice 9). */
+function suppressWriter(cf, ctx, target, contactId, summary) {
+  const reason = select('Reason', REASONS, 'opt_out');
+  return writer(summary, [field('Why', reason)], 'Stop contacting', async () => {
+    await api('POST', `/opportunities/${cf.opportunityId}/suppressions`, { target, contactId: contactId ?? null, reason: reason.value });
+    return 'Added to your suppression list';
+  }, ctx, 'Suppression is permanent in this workspace and blocks outreach at once.');
+}
+
+function buyer(cf, ctx) {
   const s = sec('07', 'Buyer · outreach preparation', null);
   const contacts = cf.buyer.contacts;
+  const r = cf.readiness;
+  // The first thing still missing that is not about this contact: the evidence, or a whole-business suppression.
+  const notYet = r.checks.find((x) => x.state !== 'done' && (x.key === 'evidence' || x.key === 'suppression'));
   s.append(h('div', { class: 'label', text: 'Who can buy it' }));
   if (!contacts.length) {
     s.append(h('p', { class: 'unk', text: 'No buyer identified yet. Scopely has no contact on record for this business.' }));
   } else {
-    s.append(h('div', { class: 'contacts' }, contacts.map((c) => h('div', { class: 'contact' },
-      h('div', { class: 'row' }, h('b', { text: c.name || 'Name not known' }), c.role ? h('span', { class: 'muted', text: c.role }) : null,
-        c.isDecisionMaker ? h('span', { class: 'badge b-obs', text: 'DECISION MAKER' }) : null),
-      c.email ? h('div', { class: 'row' }, h('span', { class: 'mono', text: c.email }), h('span', { class: `badge ${c.label === 'VERIFIED' ? 'b-obs' : 'b-rev'}`, text: LABEL[c.label] })) : null,
-      h('p', { class: 'hint', text: `Source: ${humanize(c.source)}${c.sourceUrl ? ` · ${c.sourceUrl}` : ''} · Outreach basis: ${BASIS[c.outreachBasis] ?? 'Not known'}` }),
-      c.email ? (c.emailBlocker
-        ? h('div', { class: 'note amber' }, h('b', { text: 'Do not email this contact. ' }), c.emailBlocker)
-        : h('div', { class: 'row' },
-          h('a', { class: 'btn sm', href: `mailto:${encodeURIComponent(c.email).replace('%40', '@')}` }, 'Write in your email app'),
-          h('button', { class: 'btn sm', onclick: () => copy(c.email, 'Email address') }, 'Copy address'))) : null))));
+    s.append(h('div', { class: 'contacts' }, contacts.map((c) => {
+      const suppressed = cf.buyer.suppressions.some((x) => x.target === 'email' && c.email && x.value?.toLowerCase() === c.email.toLowerCase());
+      return h('div', { class: 'contact' },
+        h('div', { class: 'row' }, h('b', { text: c.name || 'Name not known' }), c.role ? h('span', { class: 'muted', text: c.role }) : null,
+          c.isDecisionMaker ? h('span', { class: 'badge b-obs', text: 'DECISION MAKER' }) : null),
+        c.email ? h('div', { class: 'row' }, h('span', { class: 'mono', text: c.email }), h('span', { class: `badge ${c.label === 'VERIFIED' ? 'b-obs' : 'b-rev'}`, text: LABEL[c.label] })) : null,
+        h('p', { class: 'hint', text: `Source: ${word(SOURCES, c.source) === c.source ? humanize(c.source) : word(SOURCES, c.source)}${c.sourceUrl ? ` · ${c.sourceUrl}` : ''} · Outreach basis: ${BASIS[c.outreachBasis] ?? 'Not known'}` }),
+        c.email ? (c.emailBlocker
+          ? h('div', { class: 'note amber' }, h('b', { text: 'Do not email this contact. ' }), c.emailBlocker)
+          : r.readyContactIds.includes(c.contactId)
+            ? h('div', { class: 'row' },
+              h('a', { class: 'btn sm', href: `mailto:${encodeURIComponent(c.email).replace('%40', '@')}` }, 'Write in your email app'),
+              h('button', { class: 'btn sm', onclick: () => copy(c.email, 'Email address') }, 'Copy address'))
+            : h('div', { class: 'note amber' }, h('b', { text: 'Not yet. ' }), notYet ? `${notYet.label}: ${notYet.detail ?? ''}` : 'This prospect is not ready.')) : null,
+        h('div', { class: 'acts' }, contactWriter(cf, ctx, c),
+          c.email && !suppressed && !cf.buyer.suppressions.some((x) => x.target === 'business') ? suppressWriter(cf, ctx, 'email', c.contactId, 'Stop contacting this address') : null));
+    })));
   }
+  s.append(contactWriter(cf, ctx, null));
   const phone = cf.business.phone;
   if (phone) {
     s.append(h('div', { class: 'contact' }, h('div', { class: 'row' }, h('b', { text: 'Business phone' }), h('span', { class: 'mono', text: phone })),
@@ -285,6 +451,19 @@ function buyer(cf) {
   for (const r of cf.outreach.noLongerHolds) {
     s.append(h('div', { class: 'note error' }, h('b', { text: 'Do not cite this. ' }), `“${r.plainIssue}” was ${r.result === 'gone' ? 'no longer there' : 'changed'} when re-checked.`));
   }
+  s.append(h('div', { class: 'label', style: 'margin-top:6px', text: 'Suppression' }));
+  const sup = cf.buyer.suppressions;
+  if (sup.length) {
+    s.append(h('ul', { class: 'supl' }, sup.map((x) => h('li', {},
+      h('b', { text: x.target === 'business' ? 'This business' : x.target === 'domain' ? `Domain ${x.value}` : x.value }),
+      h('span', { class: 'muted', text: ` · ${word(REASONS, x.reason)} · ${date(x.addedAt)}` })))));
+  } else {
+    s.append(h('p', { class: 'muted', text: 'Nothing about this business is on your suppression list.' }));
+  }
+  const whole = sup.some((x) => x.target === 'business');
+  const domainOn = sup.some((x) => x.target === 'domain' && x.value?.toLowerCase() === (cf.business.domain ?? '').toLowerCase());
+  s.append(h('div', { class: 'acts' }, whole ? null : suppressWriter(cf, ctx, 'business', null, 'Stop contacting this business'),
+    cf.business.domain && !domainOn && !whole ? suppressWriter(cf, ctx, 'domain', null, `Stop contacting ${cf.business.domain}`) : null));
   s.append(h('p', { class: 'note', text: 'Scopely doesn’t send messages. Contact the business from your own inbox, phone or in person, then record what you did in 08.' }));
   return s;
 }
@@ -338,6 +517,7 @@ function recorder(cf, ctx) {
   const on = h('input', { type: 'date', value: today(), max: today(), 'aria-label': 'Date' });
   const channel = h('select', { 'aria-label': 'Channel' }, h('option', { value: '' }, 'Choose…'), CHANNELS.map(([k, l]) => h('option', { value: k }, l)));
   const reply = h('select', { 'aria-label': 'Reply' }, h('option', { value: '' }, 'Choose…'), REPLIES.map(([k, l]) => h('option', { value: k }, l)));
+  reply.addEventListener('change', () => drawFields());
   const amount = h('input', { type: 'text', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off', 'aria-label': 'Agreed amount' });
   const currency = h('input', { type: 'text', maxlength: 3, placeholder: 'GBP', autocomplete: 'off', 'aria-label': 'Currency', value: x.currency ?? '', readonly: Boolean(x.currency) });
   const notes = h('textarea', { rows: 3, maxlength: 2000, 'aria-label': 'Notes' });
@@ -347,7 +527,7 @@ function recorder(cf, ctx) {
   function drawFields() {
     const rows = [field(kind === 'voided' ? 'Date of the correction' : 'Date', on)];
     if (kind === 'pitched' || kind === 'replied' || kind === 'call') rows.push(field(kind === 'pitched' ? 'How you pitched' : 'Channel (optional)', channel));
-    if (kind === 'replied') rows.push(field('What they said', reply));
+    if (kind === 'replied') rows.push(field('What they said', reply, reply.value === 'opt_out' ? 'Recording this adds the business to your suppression list. Nothing more is needed.' : null));
     if (kind === 'won') {
       rows.push(h('div', { class: 'amt' }, field('Agreed amount', amount), field('Currency', currency, x.currency ? 'The opportunity’s currency.' : null)),
         h('p', { class: 'hint', text: 'The amount you agreed with the business. It is not a payment and Scopely does not invoice.' }));
@@ -366,8 +546,8 @@ function recorder(cf, ctx) {
         amount: kind === 'won' ? amount.value : null, currency: kind === 'won' ? currency.value : null, notes: notes.value || null,
         correctsOutcomeId: kind === 'voided' ? x.terminalOutcomeId : null,
       });
-      toast('Recorded');
-      await ctx.reload();
+      toast(kind === 'replied' && reply.value === 'opt_out' ? 'Recorded. The business is now on your suppression list.' : 'Recorded');
+      await refresh(ctx);
     } catch (err) { fail(err); save.disabled = false; }
   } }, 'Record');
   drawSeg(); drawFields();

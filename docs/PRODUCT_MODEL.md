@@ -56,7 +56,7 @@ USER ─ membership ─ WORKSPACE ─┬─ MAILBOX CONNECTIONS
 | SELECT | The seller picks which qualified businesses to analyse, inside the run's analysis cap and credit budget | `SELECTED`, `estimated_credits`, `search_run_business_guard` | Built |
 | ANALYZE | Fetch, render and check the selected businesses. Only queued businesses can have analysis cost metered against them | `ANALYSIS_QUEUED` → `ANALYZED`, `snapshots`, `observations`, `cost_events` | Built, Manual. Fetch/render worker is Deferred |
 | Evidence | A defect or gap stated with URL, verbatim quote, capture time, confidence and rule version | `evidence`, `issue_codes` | Built |
-| Re-check | The same check on a later snapshot before the finding reaches a prospect | `evidence_rechecks` (append-only) | Built, Manual |
+| Re-check | The same check on a later snapshot before the finding reaches a prospect | `evidence_rechecks` (append-only) | Built, Manual. Recorded from the Case File since Slice 9 (`recordCaseRecheck`) |
 | OPPORTUNITY | A sellable problem resting on at least one evidence row. A business can hold several | `opportunities`, `opportunity_evidence`, `OPPORTUNITY_FOUND` / `NO_OPPORTUNITY` | Built |
 | Service | The catalog item the opportunity maps to, or `UNMAPPED` with a reason | `catalog_items`, `opportunity_price_guard` | Built |
 | BUILD/FIX | A `DEMO` before the pitch, or the `DELIVERY` after a win | `build_kinds`, `builds`, `build_evidence`, `src/build` | Built for two kinds: `website` (Slice 5/6, `src/build/site`) and `website_fix` for broken contact links (Slice 7, `src/build/fix`). Other kinds are Boundary |
@@ -370,7 +370,32 @@ PROBLEM → EVIDENCE → CAPTURE → PROPOSED FIX → GENERATE → BEFORE / AFTE
 - **Lawful basis is data.** `outreach_basis_rules` holds the per-country rule; GB corporate-subscriber
   outreach needs an active Ltd or LLP (PLC is open decision B3).
 - **Suppression is per workspace** and can target an email, a domain or a business. One seller's
-  opt-out list never reaches another's.
+  opt-out list never reaches another's. An explicit `opt_out` reply suppresses its business in the
+  same write (A29, migration 013); `not_interested`, `wrong_person` and every other outcome do not.
+
+### Prospect Readiness (Slice 9)
+
+The Case File turns an opportunity into a prospect the seller may act on, with writers for what the
+gates already read, all scoped to the opportunity they are made from (`src/sell/prospect.ts`):
+
+- **Re-check.** A person visits the evidence's own URL (never one the request names) and records
+  still there, no longer there, or changed (with a note). It is a new `snapshots` row
+  (`fetch_method = 'manual'`, the request's time), an `OBSERVED` observation of the same check and
+  rule version (the original gap/defect result, or `ok`), and an `evidence_rechecks` row, so
+  `evidence_recheck_guard` judges it. An `INFERRED` finding can only be recorded as changed.
+- **Contact.** Name and/or email, role, decision maker, email kind, `source` (required), source
+  link, `label` and `outreach_basis` (`unknown` allowed), as the seller typed them. `mx_ok` stays
+  unknown; nothing is looked up. A contact can be corrected in place.
+- **Company register.** `company_type` and `company_status` (Companies House vocabulary, which the
+  GB rule reads), with the register and number when known. Nothing is looked up; there is no
+  source or as-of column for these facts.
+- **Suppression.** A contact's address, the business's domain or the business, with a reason from
+  the existing vocabulary.
+- **Readiness** (A30). Checks: evidence, contact, lawful basis, company status (only where the
+  country has a rule for the basis), suppression. Each is done, missing or blocked. READY needs
+  `evidence_send_blocker` to pass now for the findings that still hold and one contact to pass
+  `contact_outreach_blocker`; SUPPRESSED when the business, its domain or every contact's address is
+  suppressed. The Case File offers "Write in your email app" only for a contact of a READY prospect.
 - No Gmail or Microsoft API is built. Sending is manual and recorded.
 
 ## Budgets and metering

@@ -38,6 +38,7 @@ const commands: Record<string, (db: Db, input: any) => Promise<unknown>> = {
   recheck: (db, i) => r.recordRecheck(db, i),
   opportunity: (db, i) => r.recordOpportunity(db, i),
   contact: (db, i) => r.recordContact(db, i),
+  suppression: (db, i) => r.recordSuppression(db, i),
   message: (db, i) => r.recordMessage(db, i),
   'approve-message': (db, i) => r.approveMessage(db, i.messageId, i.approvedBy, i.approvedAt),
   'message-sent': (db, i) => r.markMessageSent(db, i.messageId, i.sentAt, i.mailboxConnectionId),

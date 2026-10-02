@@ -381,6 +381,44 @@ export interface CaseFileOutcome {
   recordedAt: string;
 }
 
+/** One entry of the workspace's suppression list that applies to this business or its contacts. */
+export interface CaseFileSuppression {
+  suppressionId: string;
+  target: 'business' | 'domain' | 'email';
+  /** The domain or email address; null for a whole business. */
+  value: string | null;
+  reason: string;
+  addedAt: string;
+}
+
+export type ReadinessCheckKey = 'evidence' | 'contact' | 'lawful_basis' | 'company' | 'suppression';
+
+/**
+ * One requirement for acting on a prospect. done: met. missing: the seller can supply it from the
+ * Case File. blocked: what is recorded rules it out (a finding no longer holds, not permitted,
+ * an ineligible company, suppressed).
+ */
+export interface ReadinessCheck {
+  key: ReadinessCheckKey;
+  state: 'done' | 'missing' | 'blocked';
+  label: string;
+  detail: string | null;
+}
+
+/**
+ * READY only when the evidence passes evidence_send_blocker now and at least one contact passes
+ * contact_outreach_blocker (basis, the country's company rule, suppression): the same functions the
+ * message approval and send gates use. Nothing here is a new rule.
+ */
+export interface ProspectReadiness {
+  status: 'READY' | 'NOT_READY' | 'SUPPRESSED';
+  checks: ReadinessCheck[];
+  /** Contacts the seller may email now. */
+  readyContactIds: string[];
+  /** evidence_send_blocker for the findings that still hold, or null. */
+  evidenceBlocker: string | null;
+}
+
 export interface CaseFile {
   opportunityId: string;
   path: OpportunityPath | null;
@@ -408,7 +446,9 @@ export interface CaseFile {
     current: { buildId: string; versionNo: number; status: string; summary: string; createdAt: string;
                approvedAt: string | null; approvedBy: string | null; shownAt: string | null } | null;
   };
-  buyer: { contacts: CaseFileContact[] };
+  buyer: { contacts: CaseFileContact[]; suppressions: CaseFileSuppression[] };
+  /** Slice 9: whether the seller may act on this prospect now, from the database's own gates. */
+  readiness: ProspectReadiness;
   outreach: {
     /** HIGH findings not yet re-checked on a new snapshot (rule 12): re-check before they reach a prospect. */
     recheckNeeded: { evidenceId: string; plainIssue: string }[];

@@ -52,6 +52,15 @@ says which stages are built, manual, a boundary only, or deferred.
   links on a copy, and the seller compares before and after, confirms the value, and shows the
   prospect a signed, expiring, revocable preview. Nothing can be approved or shown before a person
   confirms the corrected value. See `docs/PRODUCT_MODEL.md` (Fix Builder).
+- **Slice 8 (product shell and Case File):** the app under `/app` with stage navigation, the
+  opportunity feed and a Case File per opportunity; pitches and outcomes are recorded by hand (A28).
+- **Slice 9 (Prospect Readiness):** from the Case File a seller records a re-check of a cited
+  finding (a person's visit to the evidence's own page, `fetch_method = 'manual'`), a buyer contact
+  with its source and lawful basis, the company register type and status, and suppression of an
+  address, a domain or the business. An explicit opt-out reply suppresses the business in the same
+  write (migration 013, A29). The Case File says what is missing and turns READY only when the
+  existing `evidence_send_blocker` and `contact_outreach_blocker` gates both pass. Nothing is looked
+  up or fetched.
 
 There is **no crawler, no model call, no sending and no cloud resource**. The only outbound request is the Fix Builder's one-page capture (A23). The AI edit in Slice 5 is
 a deterministic interpreter behind the same seam a model-backed one will use. Nothing here contacts a business:

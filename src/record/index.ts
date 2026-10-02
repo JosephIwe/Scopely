@@ -224,6 +224,39 @@ export async function recordContact(db: Db, c: ContactInput): Promise<string> {
      c.source, c.sourceUrl ?? null, c.label, c.mxOk ?? null, c.outreachBasis])).id;
 }
 
+/** The reasons the suppression list uses (001). */
+export const SUPPRESSION_REASONS = ['opt_out', 'bounce', 'complaint', 'contacted', 'dnc'] as const;
+
+export interface SuppressionInput {
+  /** Exactly one target: an email address, a domain, or a business of this workspace. */
+  email?: string;
+  domain?: string;
+  businessId?: string;
+  reason: (typeof SUPPRESSION_REASONS)[number];
+}
+
+/**
+ * Adds one entry to the current workspace's suppression list. contact_outreach_blocker reads it, so
+ * message approval and sending refuse at once. Adding a target already on the list changes nothing
+ * and returns the existing entry's id.
+ */
+export async function recordSuppression(db: Db, s: SuppressionInput): Promise<string> {
+  const targets = [s.email, s.domain, s.businessId].filter((v) => v !== undefined && v !== null && v !== '');
+  if (targets.length !== 1) throw new Error('a suppression names exactly one email, domain or business');
+  if (!(SUPPRESSION_REASONS as readonly string[]).includes(s.reason)) throw new Error(`unknown suppression reason ${s.reason}`);
+  const email = s.email?.trim().toLowerCase() ?? null;
+  const domain = s.domain?.trim().toLowerCase() ?? null;
+  const business = s.businessId ?? null;
+  const added = await db.query<{ id: string }>(
+    `INSERT INTO scopely.suppression (email, domain, business_id, reason) VALUES ($1,$2,$3,$4)
+     ON CONFLICT DO NOTHING RETURNING id`, [email, domain, business, s.reason]);
+  if (added.rows[0]) return added.rows[0].id;
+  return (await one<{ id: string }>(db,
+    `SELECT id FROM scopely.suppression WHERE workspace_id = scopely.current_workspace_id()
+        AND ((email IS NOT NULL AND lower(email) = $1) OR (domain IS NOT NULL AND lower(domain) = $2) OR business_id = $3)`,
+    [email, domain, business])).id;
+}
+
 export interface MessageInput {
   opportunityId: string;
   contactId: string;

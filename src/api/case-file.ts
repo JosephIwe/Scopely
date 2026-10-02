@@ -8,7 +8,8 @@
 import type { Db } from '../tenancy/index.js';
 import { getBusinessDetail } from './queries.js';
 import type {
-  BuildState, CaseFile, CaseFileContact, CaseFileOutcome, DeliveryState, EvidenceItem, FeedStage, OpportunityBuildInfo, SellState,
+  BuildState, CaseFile, CaseFileContact, CaseFileOutcome, CaseFileSuppression, DeliveryState, EvidenceItem, FeedStage, OpportunityBuildInfo,
+  ProspectReadiness, ReadinessCheck, SellState,
 } from './types.js';
 
 const WS = 'workspace_id = scopely.current_workspace_id()';
@@ -87,6 +88,80 @@ function evidenceItem(e: Record<string, any>): EvidenceItem & { observedHref: st
 }
 
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * Prospect Readiness (Slice 9): what is missing before the seller may act on this prospect, judged
+ * by the gates the database already has. The decision is theirs: READY needs evidence_send_blocker
+ * to pass now for every finding that still holds (a changed or gone finding is dropped, as the gate
+ * requires) and at least one contact to pass contact_outreach_blocker. The other checks only explain
+ * which part is missing, so a screen never recomputes a gate.
+ */
+async function prospectReadiness(db: Db, opportunityId: string, businessId: string,
+  contacts: { id: string; email: string | null; outreach_basis: string | null; blocker: string | null; suppressed: boolean }[],
+  suppressions: CaseFileSuppression[], highUnchecked: number): Promise<ProspectReadiness> {
+  // Judged now, the same time the show and send gates use.
+  const ev = (await db.query(
+    `SELECT count(*)::int AS holding, scopely.evidence_send_blocker(array_agg(e.id), now()) AS blocker
+       FROM scopely.opportunity_evidence oe JOIN scopely.evidence e ON e.id = oe.evidence_id
+      WHERE oe.opportunity_id = $1 AND e.${WS}
+        AND e.recheck_result IS DISTINCT FROM 'changed' AND e.recheck_result IS DISTINCT FROM 'gone'`, [opportunityId])).rows[0];
+  const rules = (await db.query(
+    `SELECT r.outreach_basis, r.requirement, b.company_type, b.company_status,
+            (lower(btrim(coalesce(b.company_type, ''))) = ANY (r.allowed_company_types)
+             AND lower(btrim(coalesce(b.company_status, ''))) = r.required_company_status) AS met
+       FROM scopely.businesses b JOIN scopely.outreach_basis_rules r ON r.active AND r.country_code = b.country_code
+      WHERE b.id = $1 AND b.${WS}`, [businessId])).rows;
+
+  const checks: ReadinessCheck[] = [];
+  const holding = Number(ev.holding);
+  const evidenceBlocker: string | null = holding === 0 ? 'no finding on this opportunity still holds' : ev.blocker;
+  checks.push(holding === 0
+    ? { key: 'evidence', state: 'blocked', label: 'No finding still holds', detail: 'Every finding was re-checked as changed or gone. Do not pitch on this evidence.' }
+    : evidenceBlocker
+      ? { key: 'evidence', state: 'missing', label: 'Evidence needs re-check',
+          detail: highUnchecked ? `${plural(highUnchecked, 'high-confidence finding has', 'high-confidence findings have')} not been re-checked on a new visit.` : evidenceBlocker }
+      : { key: 'evidence', state: 'done', label: 'Evidence re-checked and holds', detail: null });
+
+  const withEmail = contacts.filter((c) => c.email);
+  checks.push(withEmail.length
+    ? { key: 'contact', state: 'done', label: 'Contact recorded', detail: plural(withEmail.length, 'contact with an email address', 'contacts with an email address') }
+    : { key: 'contact', state: 'missing', label: 'Contact missing', detail: contacts.length ? 'No contact has an email address.' : 'No buyer contact is recorded for this business.' });
+
+  const lawful = withEmail.filter((c) => c.outreach_basis === 'corporate_subscriber' || c.outreach_basis === 'consent');
+  checks.push(lawful.length
+    ? { key: 'lawful_basis', state: 'done', label: 'Lawful basis recorded', detail: null }
+    : withEmail.length && withEmail.every((c) => c.outreach_basis === 'not_permitted')
+      ? { key: 'lawful_basis', state: 'blocked', label: 'Not permitted to contact', detail: 'Every contact is recorded as not permitted.' }
+      : { key: 'lawful_basis', state: 'missing', label: 'Lawful basis missing', detail: 'Record what lets you contact them: corporate subscriber or consent.' });
+
+  const ready = contacts.filter((c) => c.email && c.blocker === null).map((c) => c.id);
+  // The country's company rule matters for the bases it covers: the bases recorded so far, or, before
+  // any is recorded, every basis it has a rule for.
+  const bases = new Set(lawful.map((c) => c.outreach_basis));
+  const readyBases = new Set(contacts.filter((c) => ready.includes(c.id)).map((c) => c.outreach_basis));
+  const rule = rules.find((r) => (ready.length ? readyBases.has(r.outreach_basis) : bases.size === 0 || bases.has(r.outreach_basis)));
+  if (rule) {
+    const got = [rule.company_type, rule.company_status].filter(Boolean).join(' · ');
+    checks.push(rule.met
+      ? { key: 'company', state: 'done', label: 'Company status recorded', detail: got }
+      : !rule.company_type || !rule.company_status
+        ? { key: 'company', state: 'missing', label: 'Company status missing', detail: `${rule.requirement}. Record the company type and status from the register.` }
+        : { key: 'company', state: 'blocked', label: 'Company not eligible', detail: `${rule.requirement}; the register says ${got}.` });
+  }
+
+  const whole = suppressions.find((x) => x.target === 'business' || x.target === 'domain');
+  const allSuppressed = withEmail.length > 0 && withEmail.every((c) => c.suppressed);
+  checks.push(whole
+    ? { key: 'suppression', state: 'blocked', label: 'Suppressed', detail: whole.target === 'business' ? 'This business is on your suppression list.' : 'This business’s domain is on your suppression list.' }
+    : allSuppressed
+      ? { key: 'suppression', state: 'blocked', label: 'Suppressed', detail: 'Every contact’s email address is on your suppression list.' }
+      : { key: 'suppression', state: 'done', label: 'Not suppressed', detail: null });
+
+  const status = whole || allSuppressed ? 'SUPPRESSED' : evidenceBlocker === null && ready.length > 0 ? 'READY' : 'NOT_READY';
+  return { status, checks, readyContactIds: status === 'READY' ? ready : [], evidenceBlocker };
+}
+
 /** One opportunity's Case File, or null when it is not in this workspace. */
 export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFile | null> {
   const o = (await db.query(
@@ -110,13 +185,35 @@ export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFi
        FROM scopely.builds b WHERE b.project_id = $1 AND b.${WS} AND b.status NOT IN ('DISCARDED', 'SUPERSEDED')
       ORDER BY b.version_no DESC LIMIT 1`, [projectId])).rows[0] : undefined;
   const contacts = await db.query(
-    `SELECT c.*, scopely.contact_outreach_blocker(c.id, c.business_id) AS blocker FROM scopely.contacts c
+    `SELECT c.*, scopely.contact_outreach_blocker(c.id, c.business_id) AS blocker,
+            EXISTS (SELECT 1 FROM scopely.suppression s WHERE s.${WS} AND c.email IS NOT NULL
+                       AND ((s.email IS NOT NULL AND lower(s.email) = lower(c.email))
+                            OR (s.domain IS NOT NULL AND lower(s.domain) = lower(split_part(c.email, '@', 2))))) AS suppressed
+       FROM scopely.contacts c
       WHERE c.business_id = $1 AND c.${WS} ORDER BY c.is_decision_maker DESC, c.id`, [o.business_id]);
+  // The workspace's suppression entries that reach this business: the business, its domain, or a contact's address or domain.
+  const suppression = await db.query(
+    `SELECT s.* FROM scopely.suppression s
+      WHERE s.${WS} AND (s.business_id = $1
+         OR (s.domain IS NOT NULL AND lower(s.domain) = lower(coalesce($2, '')))
+         OR EXISTS (SELECT 1 FROM scopely.contacts c WHERE c.business_id = $1 AND c.${WS} AND c.email IS NOT NULL
+                       AND ((s.email IS NOT NULL AND lower(s.email) = lower(c.email))
+                            OR (s.domain IS NOT NULL AND lower(s.domain) = lower(split_part(c.email, '@', 2))))))
+      ORDER BY s.added_at, s.id`, [o.business_id, business.domain]);
   const outcomes = await db.query(
     `SELECT t.*, EXISTS (SELECT 1 FROM scopely.outcomes v WHERE v.corrects_outcome_id = t.id) AS voided_by_later
        FROM scopely.outcomes t WHERE t.opportunity_id = $1 AND t.${WS} ORDER BY t.occurred_at, t.id`, [opportunityId]);
 
   const items = evidence.rows.map(evidenceItem);
+  const suppressions: CaseFileSuppression[] = suppression.rows.map((x) => ({
+    suppressionId: String(x.id), target: x.business_id !== null ? 'business' : x.domain !== null ? 'domain' : 'email',
+    value: x.business_id !== null ? null : x.domain ?? x.email, reason: x.reason, addedAt: iso(x.added_at)!,
+  }));
+  const recheckNeeded = items.filter((e) => e.confidence === 'HIGH' && e.recheck?.result !== 'confirmed' && e.recheck?.result !== 'changed' && e.recheck?.result !== 'gone')
+    .map((e) => ({ evidenceId: e.evidenceId, plainIssue: e.plainIssue }));
+  const readiness = await prospectReadiness(db, opportunityId, String(o.business_id),
+    contacts.rows.map((c) => ({ id: String(c.id), email: c.email, outreach_basis: c.outreach_basis, blocker: c.blocker, suppressed: c.suppressed })),
+    suppressions, recheckNeeded.length);
   const outcomeViews: CaseFileOutcome[] = outcomes.rows.map((r) => ({
     outcomeId: String(r.id), kind: r.kind, occurredAt: iso(r.occurred_at)!, channel: r.channel, replyClass: r.reply_class,
     amount: s(r.amount), currency: r.currency, notes: r.notes, recordedBy: r.recorded_by, correctsOutcomeId: s(r.corrects_outcome_id),
@@ -159,11 +256,11 @@ export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFi
         approvedAt: iso(latest.approved_at), approvedBy: latest.approved_by, shownAt: iso(latest.shown_at),
       } : null,
     },
-    buyer: { contacts: contactViews },
+    buyer: { contacts: contactViews, suppressions },
+    readiness,
     outreach: {
       // Rule 12: a HIGH finding is re-checked on a new snapshot before it reaches a prospect.
-      recheckNeeded: items.filter((e) => e.confidence === 'HIGH' && e.recheck?.result !== 'confirmed' && e.recheck?.result !== 'changed' && e.recheck?.result !== 'gone')
-        .map((e) => ({ evidenceId: e.evidenceId, plainIssue: e.plainIssue })),
+      recheckNeeded,
       noLongerHolds: items.filter((e) => e.recheck?.result === 'changed' || e.recheck?.result === 'gone')
         .map((e) => ({ evidenceId: e.evidenceId, plainIssue: e.plainIssue, result: e.recheck!.result as 'changed' | 'gone' })),
     },

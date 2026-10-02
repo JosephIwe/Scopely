@@ -35,6 +35,8 @@ place where each one would land is named so it can be added without rework.
 | A26 | The product lives under `/app`; `/` is reserved for the landing page (U2) | same brief | `STATIC` in `src/server/app.ts`, `landing.html` |
 | A27 | The map is deferred: no provider, tiles or coordinates, only an insertion point (U3) | same brief | `src/server/ui/map-slot.js` |
 | A28 | Pitches and outcomes are recorded by hand in the Case File; Scopely sends nothing (U4) | same brief | `recordManualOutcome`, `POST /api/opportunities/:id/outcomes` |
+| A29 | An explicit `opt_out` reply suppresses the business automatically, with no second confirmation; no other outcome suppresses | Osim Joe, 2026-10-02 (Slice 9 brief) | `outcome_opt_out_suppression` (migration 013) |
+| A30 | Prospect Readiness is read from the existing gates: READY needs `evidence_send_blocker` to pass now for every finding that still holds and one contact to pass `contact_outreach_blocker`; there is no separate state machine | same brief | `prospectReadiness` in `src/api/case-file.ts` |
 
 ## Open
 
