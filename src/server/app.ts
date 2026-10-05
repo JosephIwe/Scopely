@@ -29,6 +29,8 @@ import {
 import type { ObjectStore } from '../storage/index.js';
 import type { SecretResolver } from '../build/agents.js';
 import { getRunDiscovery } from '../api/discovery.js';
+import { getRunBusinessAnalysis } from '../api/analysis.js';
+import { AnalysisRefused, DemoAwareProbe, type Probe, analyzeRunBusiness } from '../analysis/index.js';
 import { createSearch, selectForAnalysis, startSearchRun } from '../discovery/index.js';
 import { DiscoveryProviderRegistry, DiscoveryRefused, runProviderDiscovery } from '../providers/index.js';
 import { FindRejected, searchInputFromBody, selectionFromBody, selectionRefusal } from './discovery-api.js';
@@ -48,6 +50,8 @@ export interface ServerConfig {
   log?: (line: string) => void;
   /** Slice 10: business discovery providers and the server-side secret resolver for live ones. */
   discovery?: { providers: DiscoveryProviderRegistry; secrets?: SecretResolver };
+  /** Slice 11: how an analysis requests a business's pages. Defaults to the SSRF-safe probe (demo hosts from fixtures). */
+  probe?: Probe;
 }
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
@@ -142,6 +146,7 @@ function sameHost(origin: string, host: string | undefined): boolean {
 export function createHandler(cfg: ServerConfig) {
   const log = cfg.log ?? ((l: string) => process.stdout.write(`${l}\n`));
   const fetcher = cfg.fetcher ?? new SafePageFetcher();
+  const probe = cfg.probe ?? new DemoAwareProbe();
 
   /** Runs `fn` in one transaction acting in the server's workspace. */
   async function tx<T>(fn: (db: pg.PoolClient) => Promise<T>): Promise<T> {
@@ -519,7 +524,7 @@ export function createHandler(cfg: ServerConfig) {
   // Slice 10, Find: searches, provider discovery runs and selection for analysis.
   async function findApi(req: IncomingMessage, res: ServerResponse, parts: string[]) {
     const m = req.method;
-    const [a, b, c, d] = parts;
+    const [a, b, c, d, e] = parts;
     const providers = cfg.discovery?.providers ?? new DiscoveryProviderRegistry();
     // GET /api/discovery: the providers this server offers and the workspace's searches. Whether a
     // live provider is connected is all the screen learns about its credentials.
@@ -598,6 +603,31 @@ export function createHandler(cfg: ServerConfig) {
       log(`run ${rid} selected ${sel.businessIds.length}`);
       return json(res, 200, { selected: sel.businessIds.length });
     }
+    // Slice 11. POST /api/runs/:id/businesses/:bid/analyze: Scopely analyses one selected business
+    // (one request per business, so the screen can show progress). A second call returns the first
+    // result without fetching again.
+    if (m === 'POST' && a === 'runs' && c === 'businesses' && e === 'analyze' && parts.length === 5) {
+      const rid = id(b);
+      const bid = id(d);
+      const bd = await jsonBody(req);
+      const out = await tx(async (db) => {
+        if (!(await getRunDiscovery(db, rid))) throw new HttpError(404, 'Not found.');
+        const r = await analyzeRunBusiness(db, { probe }, rid, bid, String(bd.requestedBy ?? ''));
+        return { ...r, analysis: await getRunBusinessAnalysis(db, rid, bid) };
+      });
+      log(`run ${rid} business ${bid} analysis ${out.analysisId} ${out.analysedNow ? 'new' : 'existing'} ${out.state} opportunities=${out.opportunityIds.length}`);
+      return json(res, 200, out);
+    }
+    // GET /api/runs/:id/businesses/:bid/analysis: what that analysis observed and opened.
+    if (m === 'GET' && a === 'runs' && c === 'businesses' && e === 'analysis' && parts.length === 5) {
+      const rid = id(b);
+      const bid = id(d);
+      return json(res, 200, await tx(async (db) => {
+        const v = await getRunBusinessAnalysis(db, rid, bid);
+        if (!v) throw new HttpError(404, 'Not found.');
+        return v;
+      }));
+    }
     throw new HttpError(404, 'Not found.');
   }
 
@@ -631,6 +661,7 @@ export function createHandler(cfg: ServerConfig) {
       if (err instanceof OutcomeRejected) return json(res, err.status, { error: err.message });
       if (err instanceof ProspectRejected) return json(res, err.status, { error: err.message });
       if (err instanceof FindRejected) return json(res, err.status, { error: err.message });
+      if (err instanceof AnalysisRefused) return json(res, err.status, { error: err.message });
       if (err instanceof DiscoveryRefused) return json(res, 422, { error: err.message, reason: err.reason });
       if (err instanceof EditRejected) return json(res, 400, { error: err.reason, index: err.index });
       log(`error ${req.method} ${url.pathname.replace(/\/[A-Za-z0-9_.-]{20,}$/, '/…')} ${(err as { code?: string }).code ?? ''}`);

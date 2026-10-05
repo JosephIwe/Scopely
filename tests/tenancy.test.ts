@@ -41,7 +41,7 @@ async function populate(d: pg.Client, label: string) {
 
 const OWNED = ['businesses', 'sources', 'snapshots', 'observations', 'evidence', 'evidence_rechecks', 'contacts', 'suppression',
   'opportunities', 'opportunity_evidence', 'outcomes', 'verifications', 'messages', 'cost_events', 'builds', 'build_evidence',
-  'mailbox_connections', 'searches', 'search_runs', 'search_run_businesses'];
+  'mailbox_connections', 'searches', 'search_runs', 'search_run_businesses', 'business_analyses'];
 
 describe('row-level security isolates workspaces for the application role', () => {
   it('shows each workspace only its own businesses, searches, contacts, opportunities, messages, costs and mailboxes', async () => {

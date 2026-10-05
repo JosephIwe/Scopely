@@ -61,3 +61,23 @@
   .fd-table th:nth-child(4), .fd-table td:nth-child(4) { display: none; }
 }
 .fd-err { margin-top: 10px; color: var(--error); }
+/* Analysis (Slice 11). */
+.fd-ana { margin-top: 8px; }
+.fd-ana .row { flex-wrap: wrap; gap: 8px; }
+.fd-count { display: grid; gap: 2px; min-width: 0; }
+.fd-progress { color: var(--blue); }
+.fd-progress:empty { display: none; }
+.fd-detail { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel); min-width: 0; }
+.fd-group { margin-top: 12px; }
+.fd-group h3 { font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.fd-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fd-group li { min-width: 0; overflow-wrap: anywhere; }
+.fd-quote { display: block; margin: 4px 0; padding: 6px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line-soft);
+  font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
+.fd-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; background: var(--faint); vertical-align: middle; }
+.fd-dot.ok { background: var(--sage-text); }
+.fd-dot.gap, .fd-dot.defect { background: var(--amber-text); }
+@media (max-width: 560px) {
+  .fd-selbar .btn { flex: 1; }
+  .fd-count { flex-basis: 100%; }
+}

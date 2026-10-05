@@ -67,8 +67,14 @@ says which stages are built, manual, a boundary only, or deferred.
   `provider_operations` with its latency, result count, cost as reported and normalized error
   (A31). Clay is the first adapter. Live calls use only the workspace's own key (A32); without one,
   `pnpm serve` replays Clay responses recorded on 2026-10-05 and says so on screen.
+- **Slice 11 (analysis):** the Find screen analyses the selected businesses. Scopely requests each
+  known homepage once (SSRF-safe, no form submitted), reads the served HTML for contact links,
+  booking links and page facts, and records each as OBSERVED, INFERRED or NOT_OBSERVABLE (A34).
+  OBSERVED defects become evidence, and opportunities open only through the catalog (A35). The
+  seller reads what Scopely saw and opens the Case File. Reserved `.example` hosts are answered from
+  `fixtures/demo-pages` instead of the network.
 
-There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23) and, when switched on, live Clay discovery on the workspace's own key (A32). The AI edit in Slice 5 is
+There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23), the analysis of a selected business's homepage and booking links (A34) and, when switched on, live Clay discovery on the workspace's own key (A32). The AI edit in Slice 5 is
 a deterministic interpreter behind the same seam a model-backed one will use. Nothing here contacts a business:
 `messages.sent_at` records a send made by hand.
 
