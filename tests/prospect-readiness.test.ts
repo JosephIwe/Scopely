@@ -46,7 +46,8 @@ async function start(workspaceId?: string) {
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
-const LAWFUL = { fullName: 'Sam Alder', role: 'Director', isDecisionMaker: true, email: 'sam@example-clinic.test', emailKind: 'personal',
+// Slice 12: a decision maker carries what shows it (016).
+const LAWFUL = { fullName: 'Sam Alder', role: 'Director', isDecisionMaker: true, decisionMakerBasis: 'Listed as a director at Companies House', email: 'sam@example-clinic.test', emailKind: 'personal',
   source: 'company_register', label: 'PUBLICLY_FOUND', outreachBasis: 'corporate_subscriber' };
 
 /** A GB website opportunity on one HIGH finding that has not been re-checked, and a server over it. */

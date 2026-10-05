@@ -6,6 +6,8 @@
 //   * null means NOT KNOWN and must be shown as unknown, never as 0.
 // docs/API_CONTRACT.md describes each shape and the request that returns it.
 
+import type { BuyerAssessment } from '../prospects/buyer.js';
+
 export type OpportunityPath = 'WEBSITE' | 'FIX';
 export type RunBusinessState = 'DISCOVERED' | 'QUALIFIED' | 'REJECTED' | 'NEEDS_REVIEW' | 'SELECTED' | 'ANALYSIS_QUEUED'
   | 'ANALYZED' | 'OPPORTUNITY_FOUND' | 'NO_OPPORTUNITY';
@@ -362,6 +364,73 @@ export interface CaseFileContact {
   outreachBasis: 'corporate_subscriber' | 'consent' | 'not_permitted' | 'unknown' | null;
   /** Why this contact may not be emailed (the database's contact_outreach_blocker), or null. */
   emailBlocker: string | null;
+  /** Slice 12: what they are to the business and what shows it; null when not known. */
+  relationship: 'owner' | 'director' | 'partner' | 'employee' | 'other' | null;
+  relationshipBasis: string | null;
+  /** What was seen that says they decide. Present whenever isDecisionMaker is (for rows from Slice 12 on). */
+  decisionMakerBasis: string | null;
+  /** Who checked the contact, how and when; null when nobody has. */
+  verification: { basis: string | null; by: string | null; at: string | null } | null;
+  /** When the source showed this person, when it said. */
+  observedAt: string | null;
+  /** The confidence the source itself stated; null when it stated none. Never computed by Scopely. */
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | null;
+  /** The provider call that returned this person, or null when a person recorded them. */
+  provenance: { provider: string; operationId: string; transport: 'live' | 'recorded'; at: string } | null;
+  /** Everything any source said about how to reach them, each with its own source and label. */
+  facts: ContactFactView[];
+  /** Where sources disagree on a value a person has only one of (title, profiles). */
+  conflicts: { kind: string; values: string[] }[];
+  /** Why this person, for this opportunity: a reading of what is on file, every reason with its source. */
+  assessment: BuyerAssessment;
+}
+
+/** One fact a source gave about a person or the business (contact_facts, Slice 12). */
+export interface ContactFactView {
+  factId: string;
+  kind: 'title' | 'email' | 'phone' | 'whatsapp' | 'linkedin' | 'instagram' | 'x' | 'contact_page';
+  value: string;
+  /** 'seller' for a fact a person recorded, else the provider. */
+  source: string;
+  sourceUrl: string | null;
+  observedAt: string;
+  label: 'VERIFIED' | 'PUBLICLY_FOUND' | 'UNVERIFIED';
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | null;
+  fromProvider: boolean;
+  recordedBy: string | null;
+  verification: { basis: string; by: string; at: string } | null;
+}
+
+/**
+ * A way to reach the business itself, with where it came from: a link Scopely saw on the business's
+ * own page (analysis, OBSERVED), a fact a person or provider recorded, or the listing's phone.
+ */
+export interface BusinessChannel {
+  kind: 'email' | 'phone' | 'whatsapp' | 'linkedin' | 'instagram' | 'x' | 'contact_page';
+  value: string;
+  origin: 'analysis' | 'fact' | 'listing';
+  /** A link on their site that does not work as written: shown as proof, never as a way to reach them. */
+  broken: boolean;
+  label: 'VERIFIED' | 'PUBLICLY_FOUND' | 'UNVERIFIED';
+  source: string;
+  sourceUrl: string | null;
+  observedAt: string | null;
+  factId: string | null;
+}
+
+/** One prospect lookup (provider_operations, capability prospect_intelligence) for this business. */
+export interface ProspectLookupView {
+  operationId: string;
+  provider: string;
+  transport: 'live' | 'recorded';
+  at: string;
+  status: 'SUCCEEDED' | 'FAILED';
+  /** People the provider returned; null when the call failed. */
+  found: number | null;
+  /** What a person sees about a failure. */
+  error: string | null;
+  /** The provider's cost as it reported it; NOT_REPORTED means it said nothing, never zero. */
+  cost: { basis: 'REPORTED' | 'NOT_REPORTED'; credits: string | null; amount: string | null; currency: string | null };
 }
 
 export interface CaseFileOutcome {
@@ -446,7 +515,14 @@ export interface CaseFile {
     current: { buildId: string; versionNo: number; status: string; summary: string; createdAt: string;
                approvedAt: string | null; approvedBy: string | null; shownAt: string | null } | null;
   };
-  buyer: { contacts: CaseFileContact[]; suppressions: CaseFileSuppression[] };
+  buyer: {
+    contacts: CaseFileContact[];
+    suppressions: CaseFileSuppression[];
+    /** Slice 12: who to contact first (a suggestion from the assessments), or null when no one is on file. */
+    suggestedContactId: string | null;
+    businessChannels: BusinessChannel[];
+    lookups: ProspectLookupView[];
+  };
   /** Slice 9: whether the seller may act on this prospect now, from the database's own gates. */
   readiness: ProspectReadiness;
   outreach: {

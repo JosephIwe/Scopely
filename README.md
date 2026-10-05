@@ -73,8 +73,16 @@ says which stages are built, manual, a boundary only, or deferred.
   OBSERVED defects become evidence, and opportunities open only through the catalog (A35). The
   seller reads what Scopely saw and opens the Case File. Reserved `.example` hosts are answered from
   `fixtures/demo-pages` instead of the network.
+- **Slice 12 (prospect intelligence):** the Case File's 07 Buyer · prospect finds the people at a
+  business through a prospect provider (Clay first, behind `ProspectIntelligenceProvider`) and
+  keeps every person and channel (email, phone, WhatsApp, LinkedIn, Instagram, X, contact page)
+  with its source, call, time, confidence and VERIFIED / PUBLICLY_FOUND / UNVERIFIED label
+  (migration 016). Whatever a provider returns is UNVERIFIED and never a decision maker until a
+  person records what shows it (A37–A39). 07 says who to contact, why, how and how sure, read from
+  what is on file; 08 Outreach preparation lists what the seller may use, and readiness is the
+  Slice 9 gates unchanged. Nothing is sent and no paid enrichment is called.
 
-There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23), the analysis of a selected business's homepage and booking links (A34) and, when switched on, live Clay discovery on the workspace's own key (A32). The AI edit in Slice 5 is
+There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23), the analysis of a selected business's homepage and booking links (A34) and, when switched on, live Clay discovery and people lookups on the workspace's own key (A32, A38). The AI edit in Slice 5 is
 a deterministic interpreter behind the same seam a model-backed one will use. Nothing here contacts a business:
 `messages.sent_at` records a send made by hand.
 

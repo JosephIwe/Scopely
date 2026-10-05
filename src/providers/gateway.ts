@@ -50,7 +50,7 @@ export interface ProviderCost { credits?: number | null; amount?: number | null;
 
 export interface OperationSpec {
   provider: string;
-  capability: 'business_discovery';
+  capability: 'business_discovery' | 'prospect_intelligence';
   operation: string;
   transport: 'live' | 'recorded';
   credential: CallCredential | null;
@@ -145,13 +145,13 @@ export async function callProvider<T>(db: Db, spec: OperationSpec, fn: () => Pro
  * The workspace's ACTIVE connection for a provider and scope, as a credential the gateway can use.
  * Returns null when there is none. The credential_ref is read here and passed only to the resolver.
  */
-export async function connectionCredential(db: Db, provider: string, scope: 'discovery', secrets: SecretResolver | undefined): Promise<CallCredential | null> {
+export async function connectionCredential(db: Db, provider: string, scope: 'discovery' | 'prospects', secrets: SecretResolver | undefined): Promise<CallCredential | null> {
   const c = (await db.query(
     `SELECT id, mode, credential_ref FROM scopely.provider_connections
       WHERE workspace_id = scopely.current_workspace_id() AND provider = $1 AND state = 'ACTIVE' AND $2 = ANY (scopes)
       ORDER BY activated_at DESC, id DESC LIMIT 1`, [provider, scope])).rows[0];
   if (!c || !secrets) return null;
-  // Scopely holds no provider account of its own for discovery; only the workspace's key is used.
+  // Scopely holds no provider account of its own for discovery or prospect lookups (B20); only the workspace's key is used.
   if (c.mode !== 'CUSTOMER_KEY' || !c.credential_ref) return null;
   const ref: string = c.credential_ref;
   return {

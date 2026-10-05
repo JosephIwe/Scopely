@@ -16,7 +16,10 @@ import type pg from 'pg';
 import { getCaseFile, opportunityBuildInfo, stageOf } from '../api/case-file.js';
 import { getSearch, listOpportunities, listSearches } from '../api/queries.js';
 import { OutcomeRejected, recordManualOutcome } from '../sell/outcomes.js';
-import { ProspectRejected, recordCaseRecheck, recordCompanyRegister, saveCaseContact, suppressFromCaseFile } from '../sell/prospect.js';
+import {
+  ProspectRejected, checkCaseFact, recordCaseFact, recordCaseRecheck, recordCompanyRegister, saveCaseContact, suppressFromCaseFile, useFactAsEmail,
+} from '../sell/prospect.js';
+import { ProspectLookupRefused, runProspectLookup } from '../prospects/index.js';
 import {
   ARTIFACT_HEADERS, type EditInterpreter, EditRejected, SiteError, approveVersion, generateSite, getBuildSetup, getSiteWorkspace,
   listProspectLinks, loadPreviewArtifact, openWebsiteProject, previewLink, renderDraft, requestAiEdit, restoreVersion, revokeProspectLink, saveEdits, showVersion, uploadImage,
@@ -32,7 +35,7 @@ import { getRunDiscovery } from '../api/discovery.js';
 import { getRunBusinessAnalysis } from '../api/analysis.js';
 import { AnalysisRefused, DemoAwareProbe, type Probe, analyzeRunBusiness } from '../analysis/index.js';
 import { createSearch, selectForAnalysis, startSearchRun } from '../discovery/index.js';
-import { DiscoveryProviderRegistry, DiscoveryRefused, runProviderDiscovery } from '../providers/index.js';
+import { DiscoveryProviderRegistry, DiscoveryRefused, ProspectProviderRegistry, runProviderDiscovery } from '../providers/index.js';
 import { FindRejected, searchInputFromBody, selectionFromBody, selectionRefusal } from './discovery-api.js';
 import { withWorkspace } from '../tenancy/index.js';
 
@@ -52,6 +55,8 @@ export interface ServerConfig {
   discovery?: { providers: DiscoveryProviderRegistry; secrets?: SecretResolver };
   /** Slice 11: how an analysis requests a business's pages. Defaults to the SSRF-safe probe (demo hosts from fixtures). */
   probe?: Probe;
+  /** Slice 12: prospect intelligence providers, and the same server-side secret resolver for live ones. */
+  prospects?: { providers: ProspectProviderRegistry; secrets?: SecretResolver };
 }
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
@@ -257,7 +262,13 @@ export function createHandler(cfg: ServerConfig) {
           fix = { steps: w.steps, captured: w.capture ? { capturedAt: w.capture.capturedAt, finalUrl: w.capture.finalUrl } : null,
             correction: w.correction ? { reads: w.correction.reads, confirmedAt: w.correction.confirmedAt } : null };
         }
-        return { ...cf, build: { ...cf.build, showLink, fix } };
+        // Slice 12: the prospect providers this server offers. Whether a live one is connected is all the screen learns.
+        const conns = new Set((await db.query<{ provider: string }>(`SELECT DISTINCT provider FROM scopely.provider_connections
+          WHERE workspace_id = scopely.current_workspace_id() AND state = 'ACTIVE' AND 'prospects' = ANY (scopes) AND credential_ref IS NOT NULL
+            AND mode = 'CUSTOMER_KEY'`)).rows.map((r) => r.provider));
+        const prospectProviders = (cfg.prospects?.providers.list() ?? []).map((p) => ({ key: p.provider, label: p.label, transport: p.transport, kinds: p.kinds,
+          ready: p.transport === 'recorded' || (conns.has(p.provider) && Boolean(cfg.prospects?.secrets)) }));
+        return { ...cf, build: { ...cf.build, showLink, fix }, buyer: { ...cf.buyer, providers: prospectProviders } };
       }));
     }
     // POST /api/opportunities/:id/outcomes: a manual SELL record (U4). Nothing is sent.
@@ -290,9 +301,45 @@ export function createHandler(cfg: ServerConfig) {
       const contactId = await tx((db) => saveCaseContact(db, oid, {
         fullName: bd.fullName ?? null, role: bd.role ?? null, isDecisionMaker: bd.isDecisionMaker === true, email: bd.email ?? null,
         emailKind: bd.emailKind ?? null, source: bd.source ?? null, sourceUrl: bd.sourceUrl ?? null, label: bd.label ?? null, outreachBasis: bd.outreachBasis ?? null,
+        relationship: bd.relationship ?? null, relationshipBasis: bd.relationshipBasis ?? null, decisionMakerBasis: bd.decisionMakerBasis ?? null,
+        verificationBasis: bd.verificationBasis ?? null, recordedBy: bd.recordedBy ?? null,
       }, cid));
       log(`contact ${contactId} opportunity ${oid} ${cid ? 'updated' : 'added'}`);
       return json(res, 200, { contactId });
+    }
+    // Slice 12, Prospect Intelligence.
+    // POST /api/opportunities/:id/prospects/lookup: ask a prospect provider who works at the business.
+    if (m === 'POST' && a === 'opportunities' && c === 'prospects' && d === 'lookup' && !e) {
+      const oid = id(b);
+      const bd = await jsonBody(req);
+      const providers = cfg.prospects?.providers ?? new ProspectProviderRegistry();
+      const out = await tx((db) => runProspectLookup(db, { providers, secrets: cfg.prospects?.secrets }, oid, String(bd.provider ?? '')));
+      log(`prospect lookup ${out.operationId} opportunity ${oid} ${out.provider} ${out.transport} returned=${out.returned} added=${out.added}${out.error ? ` ${out.error.code}` : ''}`);
+      return json(res, 200, out);
+    }
+    // POST /api/opportunities/:id/facts: a channel the seller found; /facts/:fid: the seller's check of one on file.
+    if (m === 'POST' && a === 'opportunities' && c === 'facts' && !e) {
+      const oid = id(b);
+      const bd = await jsonBody(req);
+      if (d === undefined) {
+        const factId = await tx((db) => recordCaseFact(db, oid, { contactId: bd.contactId ?? null, kind: String(bd.kind ?? ''), value: String(bd.value ?? ''),
+          sourceUrl: bd.sourceUrl ?? null, label: bd.label ?? null, basis: bd.basis ?? null, recordedBy: String(bd.recordedBy ?? '') }));
+        log(`fact ${factId} opportunity ${oid} added`);
+        return json(res, 200, { factId });
+      }
+      const fid = id(d);
+      await tx((db) => checkCaseFact(db, oid, fid, { label: String(bd.label ?? ''), basis: bd.basis ?? null, recordedBy: String(bd.recordedBy ?? '') }));
+      log(`fact ${fid} opportunity ${oid} checked ${String(bd.label)}`);
+      return json(res, 200, { ok: true });
+    }
+    // POST /api/opportunities/:id/contacts/:cid/email: make an email fact the contact's email of record.
+    if (m === 'POST' && a === 'opportunities' && c === 'contacts' && d && e === 'email' && !parts[5]) {
+      const oid = id(b);
+      const cid = id(d);
+      const bd = await jsonBody(req);
+      await tx((db) => useFactAsEmail(db, oid, cid, String(bd.factId ?? '')));
+      log(`contact ${cid} opportunity ${oid} email from fact`);
+      return json(res, 200, { ok: true });
     }
     // POST /api/opportunities/:id/company: the company register facts the seller looked up.
     if (m === 'POST' && a === 'opportunities' && c === 'company' && !d) {
@@ -663,6 +710,7 @@ export function createHandler(cfg: ServerConfig) {
       if (err instanceof FindRejected) return json(res, err.status, { error: err.message });
       if (err instanceof AnalysisRefused) return json(res, err.status, { error: err.message });
       if (err instanceof DiscoveryRefused) return json(res, 422, { error: err.message, reason: err.reason });
+      if (err instanceof ProspectLookupRefused) return json(res, err.reason === 'not_found' ? 404 : 422, { error: err.message, reason: err.reason });
       if (err instanceof EditRejected) return json(res, 400, { error: err.reason, index: err.index });
       log(`error ${req.method} ${url.pathname.replace(/\/[A-Za-z0-9_.-]{20,}$/, '/…')} ${(err as { code?: string }).code ?? ''}`);
       return json(res, 500, { error: 'Something went wrong. Nothing was changed.' });

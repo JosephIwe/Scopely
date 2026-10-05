@@ -152,8 +152,8 @@ describe('message approval is gated on a lawful recipient', () => {
     const c = await seedChain(db());
     const opp = await seedOpportunity(db(), c);
     await db().query(`UPDATE businesses SET company_type = 'sole_trader' WHERE id = $1`, [c.businessId]);
-    const k = await one<{ id: string }>(db(), `INSERT INTO contacts (business_id, email, source, label, outreach_basis)
-      VALUES ($1, 'a@example-clinic.test', 'enquiry', 'VERIFIED', 'consent') RETURNING id`, [c.businessId]);
+    const k = await one<{ id: string }>(db(), `INSERT INTO contacts (business_id, email, source, label, outreach_basis, verification_basis)
+      VALUES ($1, 'a@example-clinic.test', 'enquiry', 'VERIFIED', 'consent', 'They wrote to us from this address') RETURNING id`, [c.businessId]);
     expect(await failure(db(), approve, [await draft(db(), opp, k.id, [c.evidenceId]), '2026-10-01T10:00:00Z'])).toBeNull();
   });
   it('refuses a suppressed email, email domain or business domain', async () => {

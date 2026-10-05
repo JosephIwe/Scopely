@@ -2,7 +2,7 @@
 //
 // - ClayMcpTransport calls Clay's hosted MCP server (https://api.clay.com/v3/mcp), the same
 //   search-companies and load-more-search-results tools the Slice 10 validation batch was run
-//   through. It sends the workspace's access token as a bearer header and nothing else; the token
+//   through, and (Slice 12) search-contacts for the people at one company. It sends the workspace's access token as a bearer header and nothing else; the token
 //   arrives from the gateway's secret resolver for the length of one call.
 // - RecordedClayTransport replays responses recorded from Clay (fixtures/providers/clay). It
 //   makes no network call, and the gateway records its operations as transport 'recorded'.
@@ -22,6 +22,8 @@ export interface ClayTransport {
   readonly kind: 'live' | 'recorded';
   searchCompanies(dsl: string, secret: string | null): Promise<unknown>;
   loadMore(taskId: string, secret: string | null): Promise<unknown>;
+  /** People currently at the given companies (domains or company profile URLs), filtered by a people query. */
+  searchPeople(companyIdentifiers: string[], dsl: string, secret: string | null): Promise<unknown>;
 }
 
 /** Validates the parts of a Clay page Scopely relies on. */
@@ -45,7 +47,7 @@ export function clayToolError(text: string): ProviderError {
 
 // ------------------------------------------------------------------ recorded
 
-export interface ClayRecording { query: string; pages: unknown[] }
+export interface ClayRecording { query: string; pages: unknown[]; companyIdentifiers?: string[] }
 
 export class RecordedClayTransport implements ClayTransport {
   readonly kind = 'recorded' as const;
@@ -72,6 +74,13 @@ export class RecordedClayTransport implements ClayTransport {
       }
     }
     throw new ProviderError('not_recorded', 'no recording for this page');
+  }
+
+  async searchPeople(companyIdentifiers: string[], dsl: string): Promise<unknown> {
+    const key = [...companyIdentifiers].sort().join('\u0000');
+    const r = this.recordings.find((x) => x.query === dsl && [...(x.companyIdentifiers ?? [])].sort().join('\u0000') === key);
+    if (!r || !r.pages[0]) throw new ProviderError('not_recorded', 'no recording for this lookup');
+    return structuredClone(r.pages[0]);
   }
 }
 
@@ -114,6 +123,10 @@ export class ClayMcpTransport implements ClayTransport {
 
   loadMore(taskId: string, secret: string | null): Promise<unknown> {
     return this.callTool('load-more-search-results', { taskId }, secret);
+  }
+
+  searchPeople(companyIdentifiers: string[], dsl: string, secret: string | null): Promise<unknown> {
+    return this.callTool('search-contacts', { companyIdentifiers, dslQuery: dsl }, secret);
   }
 
   private async callTool(name: string, args: Record<string, unknown>, secret: string | null): Promise<unknown> {

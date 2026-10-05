@@ -149,9 +149,9 @@ describe('the Case File', () => {
 
   it('shows a contact with the database gate on emailing it', async () => {
     const web = await seedWebsiteOpportunity(db());
-    await db().query(`INSERT INTO contacts (business_id, full_name, role, email, email_kind, source, label, outreach_basis)
-                      VALUES ($1, 'Sam Alder', 'Practice manager', 'sam@example-clinic.test', 'role', 'website_contact_page', 'PUBLICLY_FOUND', 'unknown'),
-                             ($1, 'Kit Moss', 'Owner', 'kit@example-clinic.test', 'personal', 'manual', 'VERIFIED', 'consent')`, [web.businessId]);
+    await db().query(`INSERT INTO contacts (business_id, full_name, role, email, email_kind, source, label, outreach_basis, verification_basis)
+                      VALUES ($1, 'Sam Alder', 'Practice manager', 'sam@example-clinic.test', 'role', 'website_contact_page', 'PUBLICLY_FOUND', 'unknown', NULL),
+                             ($1, 'Kit Moss', 'Owner', 'kit@example-clinic.test', 'personal', 'manual', 'VERIFIED', 'consent', 'Confirmed by phone')`, [web.businessId]);
     const { call } = await start();
     const contacts = (await call('GET', `/api/opportunities/${web.opportunityId}`)).json().buyer.contacts as { name: string; emailBlocker: string | null }[];
     expect(contacts.find((c) => c.name === 'Sam Alder')!.emailBlocker).toMatch(/outreach basis is unknown/);

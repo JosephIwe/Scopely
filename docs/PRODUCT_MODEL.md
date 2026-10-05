@@ -429,6 +429,32 @@ gates already read, all scoped to the opportunity they are made from (`src/sell/
   suppressed. The Case File offers "Write in your email app" only for a contact of a READY prospect.
 - No Gmail or Microsoft API is built. Sending is manual and recorded.
 
+### Prospect intelligence (Slice 12)
+
+OPPORTUNITY → PROSPECT INTELLIGENCE → DECISION MAKER → PUBLIC/VERIFIED CONTACT → OUTREACH-READY,
+inside the Case File (07 Buyer · prospect, 08 Outreach preparation). Nothing is sent.
+
+- **Who.** People stay in `contacts`. A provider's person carries `provider_operation_id`,
+  `provider_person_ref`, `observed_at`, the source's own `confidence` and its `provider_record`
+  (listed fields only, secret-scanned). It is stored UNVERIFIED, not a decision maker, with no
+  relationship and outreach basis `unknown` (A37).
+- **How to reach them.** Every channel is a `contact_facts` row of a person or of the business:
+  title, email, phone, WhatsApp, LinkedIn, Instagram, X or contact page, with its source, source URL,
+  time, label and exactly one origin (a provider call or the person who recorded it). Facts are
+  never edited or deleted; a second source saying something different is a second row, shown as a
+  conflict. The business's own channels are read from the analysis (OBSERVED contact links and the
+  contact page), with a broken link marked broken.
+- **Why them, how sure.** `assessBuyer` reads what is on file and labels each reason OBSERVED,
+  RECORDED, REPORTED or INFERRED. A decision maker needs a recorded basis; a senior title only
+  makes a likely buyer, and the screen says it is inferred (A39). `suggestBuyer` picks who to contact
+  first; the seller decides.
+- **Lookups** go through the gateway (`prospect_intelligence`) on the workspace's own key with the
+  `prospects` scope, or replay recordings; a suppressed business is never looked up; a failure or an
+  empty answer stores no one and is never evidence that no one exists (A38). The Clay adapter
+  searches people by company domain or company profile and returns names, titles and LinkedIn
+  only. Paid enrichment is not built (B22).
+- **Ready?** Unchanged (A30): the evidence and contact gates decide, and suppression wins.
+
 ## Budgets and metering
 
 - A search sets `max_businesses_to_analyze`, `analysis_budget_credits` and

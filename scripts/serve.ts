@@ -13,6 +13,11 @@
 // secretref:ws/<id>/<name> names the server variable SCOPELY_SECRET_WS<id>_<NAME>. Nothing else
 // ever reads that variable, and it never reaches a browser.
 //
+// Prospect intelligence (Slice 12): the Case File's Find people replays recorded Clay people
+// lookups (fixtures/providers/clay/demo-people-search.json, synthetic people at the demo's .example
+// businesses) unless SCOPELY_CLAY_LIVE=1. A live lookup needs an ACTIVE provider connection for
+// clay with the 'prospects' scope and a customer key, exactly like discovery. Nothing paid is called.
+//
 // Analysis (Slice 11): analysing a selected business requests its own website with the SSRF-safe
 // probe (src/analysis/fetch.ts); reserved .example hosts are answered from fixtures/demo-pages.
 import { randomBytes } from 'node:crypto';
@@ -25,7 +30,10 @@ import { DemoAwarePageFetcher } from '../src/build/fix/index.js';
 import { DemoAwareProbe } from '../src/analysis/index.js';
 import { createHandler } from '../src/server/app.js';
 import { FileObjectStore } from '../src/storage/index.js';
-import { ClayBusinessDiscoveryAdapter, ClayMcpTransport, DiscoveryProviderRegistry, EnvSecretResolver, RecordedClayTransport, type ClayRecording } from '../src/providers/index.js';
+import {
+  ClayBusinessDiscoveryAdapter, ClayMcpTransport, ClayProspectAdapter, DiscoveryProviderRegistry, EnvSecretResolver, ProspectProviderRegistry, RecordedClayTransport,
+  type ClayRecording,
+} from '../src/providers/index.js';
 
 const workspaceId = process.env.SCOPELY_WORKSPACE_ID;
 if (!workspaceId || !/^\d+$/.test(workspaceId)) {
@@ -45,9 +53,11 @@ if (!Number.isFinite(showHours) || showHours <= 0 || showHours > 24 * 30) {
 const pool = new pg.Pool({ connectionString: databaseUrl(), max: 8 });
 const live = process.env.SCOPELY_CLAY_LIVE === '1';
 const clay = live ? new ClayMcpTransport()
-  : new RecordedClayTransport(['2026-10-05-company-search.json', '2026-10-05-company-search-country.json'].flatMap((f) =>
+  : new RecordedClayTransport(['2026-10-05-company-search.json', '2026-10-05-company-search-country.json', 'demo-people-search.json'].flatMap((f) =>
     (JSON.parse(readFileSync(new URL(`../fixtures/providers/clay/${f}`, import.meta.url), 'utf8')) as { searches: ClayRecording[] }).searches));
-const discovery = { providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(clay)), secrets: live ? new EnvSecretResolver() : undefined };
+const secrets = live ? new EnvSecretResolver() : undefined;
+const discovery = { providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(clay)), secrets };
+const prospects = { providers: new ProspectProviderRegistry().register(new ClayProspectAdapter(clay)), secrets };
 const handler = createHandler({
   pool, workspaceId, signingKey,
   store: new FileObjectStore(process.env.SCOPELY_STORAGE_DIR ?? '.scopely/storage'),
@@ -57,6 +67,7 @@ const handler = createHandler({
   fetcher: new DemoAwarePageFetcher(),
   probe: new DemoAwareProbe(),
   discovery,
+  prospects,
 });
 const port = Number(process.env.PORT ?? 4310);
 const host = process.env.HOST ?? '127.0.0.1';
