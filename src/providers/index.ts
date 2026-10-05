@@ -5,6 +5,6 @@ export * from './prospects.js';
 export { EnvSecretResolver, secretEnvName } from './secrets.js';
 export { ClayBusinessDiscoveryAdapter } from './clay/adapter.js';
 export { ClayProspectAdapter, CLAY_PEOPLE_QUERY, normalizeClayPerson } from './clay/people.js';
-export { ClayMcpTransport, RecordedClayTransport, CLAY_MCP_ENDPOINT, type ClayRecording, type ClayTransport } from './clay/transport.js';
+export { ClayPublicApiTransport, RecordedClayTransport, CLAY_PUBLIC_API_BASE, clayHttpError, type ClayRecording, type ClayTransport } from './clay/transport.js';
 export { CLAY_REVENUE_CURRENCY, clayCompanyQuery, clayCountryName, revenueBuckets } from './clay/query.js';
 export { normalizeClayCompany, parseLocality, countryCode } from './clay/normalize.js';

@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_SHOW_LINK_TTL_SECONDS } from '../src/build/site/index.js';
 import { assessBuyer, normalizeFact, runProspectLookup, suggestBuyer } from '../src/prospects/index.js';
 import {
-  CLAY_PEOPLE_QUERY, ClayMcpTransport, ClayProspectAdapter, EnvSecretResolver, type PeopleResult, type ProspectIntelligenceProvider, ProspectProviderRegistry,
+  CLAY_PEOPLE_QUERY, ClayPublicApiTransport, ClayProspectAdapter, EnvSecretResolver, type PeopleResult, type ProspectIntelligenceProvider, ProspectProviderRegistry,
   ProviderError, RecordedClayTransport, normalizeClayPerson, secretEnvName,
 } from '../src/providers/index.js';
 import { recordOutcome } from '../src/record/index.js';
@@ -372,25 +372,6 @@ describe('Clay as a prospect provider', () => {
   const page = (people: Record<string, unknown>[]) => ({ taskId: 'mcp-task_people', hasMore: false, timestampMs: Date.parse(OBSERVED_AT),
     people: Object.fromEntries(people.map((p, i) => [String(p.entityId ?? i), p])) });
 
-  function fakeClay(answer: (args: Record<string, unknown>) => Response) {
-    const seen: { auth: string | null; body: string }[] = [];
-    const f = (async (_url: string, init: RequestInit) => {
-      const body = String(init.body);
-      seen.push({ auth: (init.headers as Record<string, string>).authorization ?? null, body });
-      const msg = JSON.parse(body);
-      if (msg.method === 'initialize') {
-        return new Response(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2025-06-18', capabilities: {} } }),
-          { status: 200, headers: { 'content-type': 'application/json', 'mcp-session-id': 'sess-1' } });
-      }
-      if (msg.method === 'notifications/initialized') return new Response(null, { status: 202 });
-      const res = answer(msg.params);
-      if (res.status !== 200) return res;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: await res.json() }), { status: 200, headers: { 'content-type': 'application/json' } });
-    }) as unknown as typeof fetch;
-    return { f, seen };
-  }
-  const ok = (v: unknown) => new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(v) }] }), { status: 200 });
-
   it('reads a Clay person as a name, a reported title and a profile, and nothing more', () => {
     expect(normalizeClayPerson({ entityId: '7', full_name: ' Morgan Reyes ', job_title: 'Owner', url: 'https://www.linkedin.com/in/morgan', bio: 'x' })).toEqual({
       ref: 'person:7', fullName: 'Morgan Reyes', title: 'Owner', confidence: null,
@@ -404,28 +385,26 @@ describe('Clay as a prospect provider', () => {
       .toEqual({ request: { companyIdentifiers: ['x.test', 'https://www.linkedin.com/company/x'], dsl: CLAY_PEOPLE_QUERY } });
   });
 
-  it('calls search-contacts with the workspace’s key, bills the workspace, and never stores the key', async () => {
+  it('over the Public API, refuses a live people lookup without sending it, records the refusal, and stores no one', async () => {
     const s = await seedWebsiteOpportunity(db());
     const w = await ws();
     const ref = `secretref:ws/${w}/clay`;
-    const providers = (fetchImpl: typeof fetch) => new ProspectProviderRegistry().register(new ClayProspectAdapter(new ClayMcpTransport({ fetch: fetchImpl })));
+    const seen: string[] = [];
+    const fetchImpl = (async (url: string) => { seen.push(url); return new Response('{}', { status: 200 }); }) as unknown as typeof fetch;
+    const providers = new ProspectProviderRegistry().register(new ClayProspectAdapter(new ClayPublicApiTransport({ fetch: fetchImpl })));
     const secrets = new EnvSecretResolver({ [secretEnvName(ref)]: SECRET });
-    const fake = fakeClay(() => ok(page([{ entityId: '7', full_name: 'Morgan Reyes', job_title: 'Owner', url: 'https://www.linkedin.com/in/morgan' }])));
     // No prospects connection: refused before any call.
     await db().query(`INSERT INTO provider_connections (provider, mode, scopes, credential_ref, state, activated_at) VALUES ('clay', 'CUSTOMER_KEY', '{discovery}', $1, 'ACTIVE', now())`, [ref]);
-    await expect(runProspectLookup(db(), { providers: providers(fake.f), secrets, sleep: noSleep }, s.opportunityId, 'clay')).rejects.toMatchObject({ reason: 'not_connected' });
-    expect(fake.seen).toHaveLength(0);
+    await expect(runProspectLookup(db(), { providers, secrets, sleep: noSleep }, s.opportunityId, 'clay')).rejects.toMatchObject({ reason: 'not_connected' });
     const c = await one<{ id: string }>(db(), `INSERT INTO provider_connections (provider, mode, scopes, credential_ref, state, activated_at)
       VALUES ('clay', 'CUSTOMER_KEY', '{prospects}', $1, 'ACTIVE', now()) RETURNING id`, [ref]);
-    const r = await runProspectLookup(db(), { providers: providers(fake.f), secrets, sleep: noSleep }, s.opportunityId, 'clay');
-    expect(r).toMatchObject({ transport: 'live', added: 1, error: null });
-    const call = fake.seen.map((x) => JSON.parse(x.body)).find((m) => m.method === 'tools/call');
-    expect(call.params).toEqual({ name: 'search-contacts', arguments: { companyIdentifiers: [expect.stringMatching(/\.test$/)], dslQuery: CLAY_PEOPLE_QUERY } });
-    expect(fake.seen.every((x) => x.auth === `Bearer ${SECRET}`)).toBe(true);
-    expect(await one(db(), 'SELECT transport, provider_connection_id::text AS c, billed_to, cost_basis, request_ref FROM provider_operations WHERE id = $1', [r.operationId]))
-      .toEqual({ transport: 'live', c: c.id, billed_to: 'WORKSPACE', cost_basis: 'NOT_REPORTED', request_ref: 'mcp-task_people' });
-    const dump = JSON.stringify([(await db().query('SELECT * FROM provider_operations')).rows, (await db().query('SELECT * FROM contacts')).rows,
-      (await db().query('SELECT * FROM contact_facts')).rows]);
+    const r = await runProspectLookup(db(), { providers, secrets, sleep: noSleep }, s.opportunityId, 'clay');
+    expect(r).toMatchObject({ transport: 'live', added: 0, error: { code: 'invalid_request' } });
+    expect(seen).toHaveLength(0);
+    expect(await one(db(), 'SELECT transport, status, error_code, attempts, provider_connection_id::text AS c, billed_to, cost_basis FROM provider_operations WHERE id = $1', [r.operationId]))
+      .toEqual({ transport: 'live', status: 'FAILED', error_code: 'invalid_request', attempts: 1, c: c.id, billed_to: 'WORKSPACE', cost_basis: 'NOT_REPORTED' });
+    expect((await db().query('SELECT 1 FROM contacts')).rowCount).toBe(0);
+    const dump = JSON.stringify([(await db().query('SELECT * FROM provider_operations')).rows, r]);
     expect(dump).not.toContain(SECRET);
   });
 

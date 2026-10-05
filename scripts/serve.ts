@@ -8,7 +8,8 @@
 // stop working when the server restarts), SHOW_LINK_TTL_HOURS (72).
 //
 // Discovery (Slice 10): Find replays recorded Clay responses (fixtures/providers/clay) unless
-// SCOPELY_CLAY_LIVE=1, which calls Clay with the workspace's own connection. A live search then
+// SCOPELY_CLAY_LIVE=1, which calls Clay's Public API with the workspace's own Public API key
+// (header clay-api-key). A live search then
 // needs an ACTIVE 'discovery' provider connection for clay whose credential_ref
 // secretref:ws/<id>/<name> names the server variable SCOPELY_SECRET_WS<id>_<NAME>. Nothing else
 // ever reads that variable, and it never reaches a browser.
@@ -16,7 +17,8 @@
 // Prospect intelligence (Slice 12): the Case File's Find people replays recorded Clay people
 // lookups (fixtures/providers/clay/demo-people-search.json, synthetic people at the demo's .example
 // businesses) unless SCOPELY_CLAY_LIVE=1. A live lookup needs an ACTIVE provider connection for
-// clay with the 'prospects' scope and a customer key, exactly like discovery. Nothing paid is called.
+// clay with the 'prospects' scope and a customer key, exactly like discovery. Over the Public API a live
+// people lookup is refused, unsent, until Clay's exact-company filter is confirmed. Nothing paid is called.
 //
 // Analysis (Slice 11): analysing a selected business requests its own website with the SSRF-safe
 // probe (src/analysis/fetch.ts); reserved .example hosts are answered from fixtures/demo-pages.
@@ -31,7 +33,7 @@ import { DemoAwareProbe } from '../src/analysis/index.js';
 import { createHandler } from '../src/server/app.js';
 import { FileObjectStore } from '../src/storage/index.js';
 import {
-  ClayBusinessDiscoveryAdapter, ClayMcpTransport, ClayProspectAdapter, DiscoveryProviderRegistry, EnvSecretResolver, ProspectProviderRegistry, RecordedClayTransport,
+  ClayBusinessDiscoveryAdapter, ClayPublicApiTransport, ClayProspectAdapter, DiscoveryProviderRegistry, EnvSecretResolver, ProspectProviderRegistry, RecordedClayTransport,
   type ClayRecording,
 } from '../src/providers/index.js';
 
@@ -52,7 +54,7 @@ if (!Number.isFinite(showHours) || showHours <= 0 || showHours > 24 * 30) {
 }
 const pool = new pg.Pool({ connectionString: databaseUrl(), max: 8 });
 const live = process.env.SCOPELY_CLAY_LIVE === '1';
-const clay = live ? new ClayMcpTransport()
+const clay = live ? new ClayPublicApiTransport()
   : new RecordedClayTransport(['2026-10-05-company-search.json', '2026-10-05-company-search-country.json', 'demo-people-search.json'].flatMap((f) =>
     (JSON.parse(readFileSync(new URL(`../fixtures/providers/clay/${f}`, import.meta.url), 'utf8')) as { searches: ClayRecording[] }).searches));
 const secrets = live ? new EnvSecretResolver() : undefined;

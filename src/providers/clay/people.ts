@@ -1,5 +1,6 @@
 // ClayProspectAdapter: the ProspectIntelligenceProvider capability, backed by Clay's people search
-// (search-contacts: people currently at a company, by role). Clay concepts stop here.
+// (people currently at a company, by role). Clay concepts stop here. Over the Public API transport
+// the live lookup is refused, unsent, until Clay's exact-company filter is confirmed (transport.ts).
 //
 // What is taken from a Clay person: their name, the title Clay reports, and their LinkedIn profile.
 // Nothing else is inferred from it. Clay documents email addresses as a separate enrichment of a

@@ -20,10 +20,11 @@ const RETRYABLE: ReadonlySet<ProviderErrorCode> = new Set(['rate_limited', 'prov
 
 /** A provider failure in Scopely's words. `detail` is a short provider message, never a credential. */
 export class ProviderError extends Error {
-  constructor(readonly code: ProviderErrorCode, readonly detail: string | null = null) {
+  /** `retry` overrides the code's default, for a call that is not safe to repeat. */
+  constructor(readonly code: ProviderErrorCode, readonly detail: string | null = null, private readonly retry?: boolean) {
     super(detail ? `${code}: ${detail}` : code);
   }
-  get retryable(): boolean { return RETRYABLE.has(this.code); }
+  get retryable(): boolean { return this.retry ?? RETRYABLE.has(this.code); }
 }
 
 /** What the person sees when a provider call fails. Never the provider's raw text. */

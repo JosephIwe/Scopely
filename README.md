@@ -174,11 +174,13 @@ characters; a random one is used, with a warning, when unset, so links stop work
 No model credential is read or needed.
 
 Discovery replays the recorded Clay responses in `fixtures/providers/clay/` unless
-`SCOPELY_CLAY_LIVE=1`. Live mode calls Clay's MCP endpoint with the workspace's own key: the
-workspace needs an ACTIVE `CUSTOMER_KEY` connection for `clay` with the `discovery` scope, and the
-server reads the key named by its `credential_ref` from the environment
-(`secretref:ws/<id>/<name>` → `SCOPELY_SECRET_WS<id>_<NAME>`). The key never reaches the database or
-the browser.
+`SCOPELY_CLAY_LIVE=1`. Live mode calls Clay's Public API (`https://api.clay.com/public/v0`, header
+`clay-api-key`, no bearer token) with the workspace's own Public API key: the workspace needs an
+ACTIVE `CUSTOMER_KEY` connection for `clay` with the `discovery` scope, and the server reads the key
+named by its `credential_ref` from the environment (`secretref:ws/<id>/<name>` →
+`SCOPELY_SECRET_WS<id>_<NAME>`). The key never reaches the database or the browser. A live people
+lookup is refused, unsent, until Clay's exact-company filter is confirmed from its query reference;
+`pnpm clay:reference` fetches that reference (free, read-only) with the same connection and key.
 
 Tests read `TEST_DATABASE_ADMIN_URL` (default `postgres://scopely:scopely@localhost:5432/postgres`)
 and create and drop their own `scopely_test_<random>` database. Every test runs in a transaction
