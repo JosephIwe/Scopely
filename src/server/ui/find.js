@@ -4,7 +4,11 @@
 //
 // Routes (hash, under /app):
 //   #/find            searches, the providers this server offers, and a new search
-//   #/find/run/<id>   one run: provider calls, then its businesses, select for analysis
+//   #/find/run/<id>   one run: provider calls, then its businesses, select for analysis, analyse
+//
+// Slice 11: a selected business is analysed one request at a time (so the screen can show
+// progress); each analysed row says what Scopely found and links each opportunity to its Case File.
+// What was observed, inferred and not observable comes from the server as written.
 import { $app, api, date, fail, go, h, plural, remember, toast, when } from './lib.js';
 
 const STATE = {
@@ -16,6 +20,11 @@ const STAGE_WORD = {
   geography: 'Location', industry: 'Industry', size: 'Size', revenue: 'Revenue', structure: 'Structure', online_presence: 'Website',
   signals: 'Reviews', contactability: 'Contact details', exclusions: 'Exclusions',
 };
+const FINDING_NOTE = {
+  opened: 'Opened as an opportunity', already_held: 'Already in an open opportunity', no_service: 'No service in your catalog covers this',
+  not_a_lead: 'Recorded; never the lead of a pitch',
+};
+const STATE_WORD = { OBSERVED: 'Observed', INFERRED: 'Inferred', NOT_OBSERVABLE: 'Not observable' };
 const ERROR_WORD = {
   auth: 'credential refused', rate_limited: 'rate limited', invalid_request: 'search refused', not_recorded: 'not recorded',
   provider_unavailable: 'provider unavailable', timeout: 'timed out', network: 'unreachable', malformed_response: 'unreadable answer',
@@ -209,7 +218,41 @@ async function runView(id) {
       await findView(`#/find/run/${id}`);
     } catch (err) { selBtn.disabled = false; fail(err); }
   } }, 'Select for analysis');
-  const sync = () => { count.textContent = picked.size ? `${picked.size} chosen` : 'Choose qualified businesses to analyse'; selBtn.disabled = picked.size === 0; };
+  // Slice 11: analyse the businesses selected but not analysed yet, one request each.
+  const waiting = () => v.businesses.filter((b) => b.state === 'SELECTED' || (b.state === 'ANALYSIS_QUEUED' && !b.analysis));
+  const progress = h('span', { class: 'fd-progress', role: 'status', 'aria-live': 'polite' });
+  const anaBtn = h('button', { class: 'btn dark', onclick: async () => {
+    const who = by.value.trim();
+    if (!who) { by.focus(); fail(new Error('Say who is asking for this analysis.')); return; }
+    remember('scopely.find.by', who);
+    const todo = waiting();
+    anaBtn.disabled = true;
+    selBtn.disabled = true;
+    let found = 0;
+    try {
+      for (const [i, b] of todo.entries()) {
+        progress.textContent = `Analysing ${i + 1} of ${todo.length}: ${b.name}…`;
+        const r = await api('POST', `/runs/${id}/businesses/${b.businessId}/analyze`, { requestedBy: who });
+        b.state = r.state;
+        b.analysis = { analysisId: r.analysisId, outcome: r.analysis.outcome, findings: r.analysis.findings.length, opportunityIds: r.opportunityIds };
+        found += r.opportunityIds.length;
+        drawList();
+      }
+      toast(`Analysed ${plural(todo.length, 'business', 'businesses')}: ${plural(found, 'opportunity', 'opportunities')} found.`);
+      await findView(`#/find/run/${id}`);
+    } catch (err) {
+      progress.textContent = '';
+      fail(err);
+      await findView(`#/find/run/${id}`);
+    }
+  } });
+  const sync = () => {
+    count.textContent = picked.size ? `${picked.size} chosen` : 'Choose qualified businesses to analyse';
+    selBtn.disabled = picked.size === 0;
+    const n = waiting().length;
+    anaBtn.textContent = `Analyse ${plural(n, 'selected business', 'selected businesses')}`;
+    anaBtn.hidden = n === 0;
+  };
   const matches = (b) => filter === 'all' || (filter === 'selected' ? ['SELECTED', 'ANALYSIS_QUEUED', 'ANALYZED', 'OPPORTUNITY_FOUND', 'NO_OPPORTUNITY'].includes(b.state) : b.state === filter);
   const drawList = () => {
     const rows = v.businesses.filter(matches);
@@ -225,7 +268,7 @@ async function runView(id) {
         h('div', { class: 'fd-main' }, h('div', { class: 'row' }, h('b', { text: b.name }), h('span', { class: `badge ${tone}`, text: word }),
           b.knownBefore ? h('span', { class: 'badge', title: 'This workspace already held this business', text: 'Known' }) : null),
           h('div', { class: 'small muted' }, [b.domain ?? 'No website address', where, b.vertical, size(b.employees)].filter(Boolean).join(' · ')),
-          h('div', { class: 'small fd-why', text: reason(b) })),
+          h('div', { class: 'small fd-why', text: reason(b) }), analysisLine(id, b)),
         h('div', { class: 'fd-prov small muted' }, prov ? [h('span', { text: prov.provider ? `From ${prov.provider[0].toUpperCase()}${prov.provider.slice(1)}` : 'Recorded by hand' }),
           h('span', { text: when(prov.observedAt) })] : null));
     }) : [h('div', { class: 'empty muted', text: 'Nothing in this view.' })]));
@@ -249,5 +292,54 @@ async function runView(id) {
         ? `The provider stopped answering partway through. The ${plural(v.businesses.length, 'business', 'businesses')} found before that are kept below.`
         : 'The provider did not return any businesses for this run. Nothing was kept.' }) : null),
     h('section', { 'aria-label': 'Businesses' }, h('div', { class: 'row fd-listhead' }, h('h2', { class: 'fd-h2 grow', text: 'Businesses, in priority order' }), seg), listEl),
-    h('div', { class: 'fd-selbar' }, count, h('span', { class: 'grow' }), by, selBtn));
+    h('div', { class: 'fd-selbar' }, h('div', { class: 'fd-count' }, count, progress), h('span', { class: 'grow' }), by, selBtn, anaBtn));
+}
+
+// ------------------------------------------------------------------ analysis (Slice 11)
+
+function analysisLine(runId, b) {
+  const a = b.analysis;
+  if (!a) {
+    if (b.state === 'SELECTED') return h('div', { class: 'small muted fd-ana', text: 'Selected · not analysed yet' });
+    return null;
+  }
+  const words = a.outcome === 'NO_ADDRESS' ? 'No website address is known, so nothing was requested'
+    : a.outcome === 'REFUSED' ? 'Its address is not on the public web, so it was never requested'
+      : `Analysed · ${plural(a.findings, 'finding', 'findings')}`;
+  const detail = h('div', { class: 'fd-detail', hidden: true });
+  const more = h('button', { class: 'btn sm ghost', 'aria-expanded': 'false', onclick: async (e) => {
+    const btn = e.currentTarget;
+    const open = btn.getAttribute('aria-expanded') !== 'true';
+    btn.setAttribute('aria-expanded', String(open));
+    btn.textContent = open ? 'Hide what Scopely saw' : 'What Scopely saw';
+    detail.hidden = !open;
+    if (open && !detail.childElementCount) {
+      detail.replaceChildren(h('div', { class: 'skeleton', style: 'height:18px;width:60%' }));
+      try { detail.replaceChildren(analysisDetail(await api('GET', `/runs/${runId}/businesses/${b.businessId}/analysis`))); } catch (err) { detail.replaceChildren(); fail(err); }
+    }
+  } }, 'What Scopely saw');
+  return h('div', { class: 'fd-ana' },
+    h('div', { class: 'row' }, h('span', { class: 'small', text: words }),
+      a.opportunityIds.map((o, i) => h('a', { class: 'btn sm primary', href: `#/o/${o}` }, a.opportunityIds.length > 1 ? `Open Case File ${i + 1}` : 'Open Case File')),
+      a.outcome === 'CHECKED' ? more : null),
+    detail);
+}
+
+function analysisDetail(v) {
+  const page = v.page;
+  const head = h('p', { class: 'small muted' }, `Requested ${v.requestedUrl ?? 'nothing'} ${when(v.startedAt)} for ${v.requestedBy}`,
+    page ? ` · ${page.httpStatus === null ? 'no answer' : `answered ${page.httpStatus}`}${page.redirects.length ? ` after ${plural(page.redirects.length, 'redirect', 'redirects')}` : ''}` : '',
+    ` · ${plural(v.requests, 'request', 'requests')}, cost not reported · website status: ${String(v.website.status).replace('WEBSITE_', '').replace('_', ' ').toLowerCase()}`);
+  const findings = v.findings.length ? h('div', { class: 'fd-group' }, h('h3', { text: 'Findings' }),
+    h('ul', {}, v.findings.map((f) => h('li', {},
+      h('div', {}, h('b', { text: f.plainIssue }), ' ', h('span', { class: `badge ${f.confidence === 'HIGH' ? 'amber' : ''}`, text: `${f.confidence.toLowerCase()} · ${f.issueCode}` })),
+      h('code', { class: 'fd-quote', text: f.quote }),
+      h('div', { class: 'small muted' }, `${FINDING_NOTE[f.note] ?? f.note} · seen ${when(f.observedAt)} on ${f.url} · ${f.rule}`,
+        f.opportunityId ? h('span', {}, ' · ', h('a', { href: `#/o/${f.opportunityId}`, text: 'Case File' })) : null))))) : null;
+  const group = (title, state) => {
+    const items = v.observations.filter((o) => o.state === state);
+    return items.length ? h('div', { class: 'fd-group' }, h('h3', { text: `${title} · ${items.length}` }),
+      h('ul', {}, items.map((o) => h('li', { class: 'small' }, h('span', { class: `fd-dot ${o.result ?? 'na'}`, 'aria-hidden': 'true' }), o.fact)))) : null;
+  };
+  return h('div', {}, head, findings, group(STATE_WORD.OBSERVED, 'OBSERVED'), group(STATE_WORD.INFERRED, 'INFERRED'), group(STATE_WORD.NOT_OBSERVABLE, 'NOT_OBSERVABLE'));
 }

@@ -12,6 +12,9 @@
 // needs an ACTIVE 'discovery' provider connection for clay whose credential_ref
 // secretref:ws/<id>/<name> names the server variable SCOPELY_SECRET_WS<id>_<NAME>. Nothing else
 // ever reads that variable, and it never reaches a browser.
+//
+// Analysis (Slice 11): analysing a selected business requests its own website with the SSRF-safe
+// probe (src/analysis/fetch.ts); reserved .example hosts are answered from fixtures/demo-pages.
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -19,6 +22,7 @@ import pg from 'pg';
 import { databaseUrl } from '../src/db/client.js';
 import { DEFAULT_SHOW_LINK_TTL_SECONDS } from '../src/build/site/index.js';
 import { DemoAwarePageFetcher } from '../src/build/fix/index.js';
+import { DemoAwareProbe } from '../src/analysis/index.js';
 import { createHandler } from '../src/server/app.js';
 import { FileObjectStore } from '../src/storage/index.js';
 import { ClayBusinessDiscoveryAdapter, ClayMcpTransport, DiscoveryProviderRegistry, EnvSecretResolver, RecordedClayTransport, type ClayRecording } from '../src/providers/index.js';
@@ -51,6 +55,7 @@ const handler = createHandler({
   showLinkTtlSeconds: Math.round(showHours * 3600),
   // The Fix Builder captures pages live, except the demo's reserved .example pages (fixtures/demo-pages).
   fetcher: new DemoAwarePageFetcher(),
+  probe: new DemoAwareProbe(),
   discovery,
 });
 const port = Number(process.env.PORT ?? 4310);

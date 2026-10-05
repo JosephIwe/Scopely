@@ -30,11 +30,16 @@ export interface PageFetcher {
   fetch(url: string): Promise<FetchedPage>;
 }
 
+/** Why a request failed, in the vocabulary of `classifyWebsiteFetch` plus the guard's own refusals. */
+export type FetchErrorCode = 'dns_not_found' | 'timeout' | 'tls' | 'connection_refused' | 'blocked' | 'too_large' | 'too_many_redirects' | 'other';
+
 /** A capture that could not be made. Its message is for a person and names no internals. */
-export class CaptureError extends Error {}
+export class CaptureError extends Error {
+  constructor(message: string, readonly code: FetchErrorCode = 'other') { super(message); }
+}
 
 export const MAX_PAGE_BYTES = 2 * 1024 * 1024;
-const MAX_REDIRECTS = 3;
+export const MAX_REDIRECTS = 3;
 const TIMEOUT_MS = 10_000;
 
 const blocked = new BlockList();
@@ -68,9 +73,9 @@ export function assertCapturableUrl(raw: string): URL {
   if (u.port && u.port !== (u.protocol === 'https:' ? '443' : '80')) throw new CaptureError('Only pages on the standard web ports are captured.');
   const host = u.hostname.replace(/^\[|\]$/g, '');
   if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
-    throw new CaptureError('That page address is not on the public web.');
+    throw new CaptureError('That page address is not on the public web.', 'blocked');
   }
-  if (isIP(host) && isBlockedAddress(host)) throw new CaptureError('That page address is not on the public web.');
+  if (isIP(host) && isBlockedAddress(host)) throw new CaptureError('That page address is not on the public web.', 'blocked');
   return u;
 }
 
@@ -78,14 +83,65 @@ export type Resolver = (host: string) => Promise<string[]>;
 const systemResolver: Resolver = async (host) => (await lookup(host, { all: true, verbatim: true })).map((a) => a.address);
 
 /** The one public address a request to `u` will connect to, or a refusal. */
-async function pinnedAddress(u: URL, resolve: Resolver): Promise<string> {
+export async function pinnedAddress(u: URL, resolve: Resolver): Promise<string> {
   const host = u.hostname.replace(/^\[|\]$/g, '');
   if (isIP(host)) return host;
   let addresses: string[];
-  try { addresses = await resolve(host); } catch { throw new CaptureError(`${host} could not be found.`); }
-  if (addresses.length === 0) throw new CaptureError(`${host} could not be found.`);
-  if (addresses.some(isBlockedAddress)) throw new CaptureError('That page address is not on the public web.');
+  try { addresses = await resolve(host); } catch { throw new CaptureError(`${host} could not be found.`, 'dns_not_found'); }
+  if (addresses.length === 0) throw new CaptureError(`${host} could not be found.`, 'dns_not_found');
+  if (addresses.some(isBlockedAddress)) throw new CaptureError('That page address is not on the public web.', 'blocked');
   return addresses[0]!;
+}
+
+export interface PinnedResponse { status: number; location: string | null; contentType: string; bytes: Buffer }
+
+/**
+ * One GET of `u`, connected only to `address` (already checked), with no cookies, no body and a
+ * plain user agent. Redirects are returned, not followed. The body is read only when `readBody`
+ * says so for the response's status and type, and never past MAX_PAGE_BYTES.
+ */
+export function requestPinned(u: URL, address: string, opts: { userAgent: string; accept: string; readBody: (status: number, contentType: string) => boolean }): Promise<PinnedResponse> {
+  const mod = u.protocol === 'https:' ? https : http;
+  return new Promise((resolve, reject) => {
+    const req = mod.request({
+      protocol: u.protocol, hostname: u.hostname.replace(/^\[|\]$/g, ''), port: u.port || undefined, path: `${u.pathname}${u.search}`, method: 'GET',
+      servername: isIP(u.hostname) ? undefined : u.hostname,
+      // Connect only to the address that was checked.
+      lookup: (_h: string, o: { all?: boolean }, cb: (...a: any[]) => void) => {
+        const family = isIP(address);
+        if (o?.all) cb(null, [{ address, family }]); else cb(null, address, family);
+      },
+      headers: { 'user-agent': opts.userAgent, accept: opts.accept, 'accept-encoding': 'identity' },
+      timeout: TIMEOUT_MS,
+    }, (res) => {
+      const status = res.statusCode ?? 0;
+      const location = typeof res.headers.location === 'string' ? res.headers.location : null;
+      const contentType = String(res.headers['content-type'] ?? '');
+      if ((status >= 300 && status < 400) || !opts.readBody(status, contentType)) { res.resume(); resolve({ status, location, contentType, bytes: Buffer.alloc(0) }); return; }
+      const chunks: Buffer[] = [];
+      let size = 0;
+      res.on('data', (c: Buffer) => {
+        size += c.length;
+        if (size > MAX_PAGE_BYTES) { req.destroy(new CaptureError('The page is larger than Scopely captures (2 MB).', 'too_large')); return; }
+        chunks.push(c);
+      });
+      res.on('end', () => resolve({ status, location, contentType, bytes: Buffer.concat(chunks) }));
+      res.on('error', reject);
+    });
+    req.on('timeout', () => req.destroy(new CaptureError('The page took too long to answer.', 'timeout')));
+    req.on('error', (err) => reject(err instanceof CaptureError ? err : new CaptureError('The page could not be reached.', networkCode(err))));
+    req.end();
+  });
+}
+
+/** A socket or TLS error as one of the FetchErrorCode words. */
+function networkCode(err: unknown): FetchErrorCode {
+  const code = String((err as { code?: string })?.code ?? '');
+  if (code === 'ECONNREFUSED') return 'connection_refused';
+  if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT') return 'timeout';
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'dns_not_found';
+  if (/CERT|TLS|SSL|EPROTO/.test(code)) return 'tls';
+  return 'other';
 }
 
 /** The live fetcher used by `pnpm serve`. */
@@ -98,7 +154,7 @@ export class SafePageFetcher implements PageFetcher {
       const address = await pinnedAddress(current, this.resolve);
       const r = await this.once(current, address);
       if (r.status >= 300 && r.status < 400 && r.location) {
-        if (hop === MAX_REDIRECTS) throw new CaptureError('The page redirected too many times.');
+        if (hop === MAX_REDIRECTS) throw new CaptureError('The page redirected too many times.', 'too_many_redirects');
         current = assertCapturableUrl(new URL(r.location, current).toString());
         continue;
       }
@@ -106,40 +162,12 @@ export class SafePageFetcher implements PageFetcher {
       if (!/^text\/html\b|^application\/xhtml\+xml\b/i.test(r.contentType)) throw new CaptureError('The address did not return a web page.');
       return { requestedUrl: url, finalUrl: current.toString(), status: r.status, contentType: r.contentType, bytes: r.bytes };
     }
-    throw new CaptureError('The page redirected too many times.');
+    throw new CaptureError('The page redirected too many times.', 'too_many_redirects');
   }
 
-  private once(u: URL, address: string): Promise<{ status: number; location: string | null; contentType: string; bytes: Buffer }> {
-    const mod = u.protocol === 'https:' ? https : http;
-    return new Promise((resolve, reject) => {
-      const req = mod.request({
-        protocol: u.protocol, hostname: u.hostname.replace(/^\[|\]$/g, ''), port: u.port || undefined, path: `${u.pathname}${u.search}`, method: 'GET',
-        servername: isIP(u.hostname) ? undefined : u.hostname,
-        // Connect only to the address that was checked.
-        lookup: (_h: string, opts: { all?: boolean }, cb: (...a: any[]) => void) => {
-          const family = isIP(address);
-          if (opts?.all) cb(null, [{ address, family }]); else cb(null, address, family);
-        },
-        headers: { 'user-agent': 'ScopelyFixCapture/1 (+page capture for a proposed fix)', accept: 'text/html,application/xhtml+xml', 'accept-encoding': 'identity' },
-        timeout: TIMEOUT_MS,
-      }, (res) => {
-        const status = res.statusCode ?? 0;
-        const location = typeof res.headers.location === 'string' ? res.headers.location : null;
-        const contentType = String(res.headers['content-type'] ?? '');
-        if (status >= 300 && status < 400) { res.resume(); resolve({ status, location, contentType, bytes: Buffer.alloc(0) }); return; }
-        const chunks: Buffer[] = [];
-        let size = 0;
-        res.on('data', (c: Buffer) => {
-          size += c.length;
-          if (size > MAX_PAGE_BYTES) { req.destroy(new CaptureError('The page is larger than Scopely captures (2 MB).')); return; }
-          chunks.push(c);
-        });
-        res.on('end', () => resolve({ status, location, contentType, bytes: Buffer.concat(chunks) }));
-        res.on('error', reject);
-      });
-      req.on('timeout', () => req.destroy(new CaptureError('The page took too long to answer.')));
-      req.on('error', (err) => reject(err instanceof CaptureError ? err : new CaptureError('The page could not be reached.')));
-      req.end();
+  private once(u: URL, address: string): Promise<PinnedResponse> {
+    return requestPinned(u, address, {
+      userAgent: 'ScopelyFixCapture/1 (+page capture for a proposed fix)', accept: 'text/html,application/xhtml+xml', readBody: () => true,
     });
   }
 }

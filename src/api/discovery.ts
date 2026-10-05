@@ -6,6 +6,7 @@
 // more criteria passed, then a known website address (it can be analysed), then name.
 import type { Db } from '../tenancy/index.js';
 import type { CriterionResult, RunBusinessState } from './types.js';
+import { runAnalysisSummaries } from './analysis.js';
 
 const WS = 'workspace_id = scopely.current_workspace_id()';
 
@@ -47,6 +48,8 @@ export interface RunDiscoveryBusiness {
   provenance: { provider: string | null; reference: string; observedAt: string; operationId: string | null; transport: string | null; basis: 'PROVIDER_REPORTED' | 'RECORDED_BY_PERSON' } | null;
   /** Whether another of this workspace's runs or records already held the business. */
   knownBefore: boolean;
+  /** Slice 11: Scopely's analysis of the business in this run, once it has run. */
+  analysis: { analysisId: string; outcome: string; findings: number; opportunityIds: string[] } | null;
 }
 
 export interface RunDiscoveryView {
@@ -102,6 +105,7 @@ export async function getRunDiscovery(db: Db, runId: string): Promise<RunDiscove
     || Number(b.domain !== null) - Number(a.domain !== null)
     || String(a.name).localeCompare(String(b.name)));
 
+  const analyses = await runAnalysisSummaries(db, runId);
   const counts: Record<string, number> = {};
   for (const r of rows) counts[r.state] = (counts[r.state] ?? 0) + 1;
   const reported = ops.filter((o) => o.cost_basis === 'REPORTED');
@@ -138,6 +142,7 @@ export async function getRunDiscovery(db: Db, runId: string): Promise<RunDiscove
         basis: r.provider_operation_id === null ? 'RECORDED_BY_PERSON' : 'PROVIDER_REPORTED',
       },
       knownBefore: r.known_before,
+      analysis: analyses.get(String(r.business_id)) ?? null,
     })),
   };
 }

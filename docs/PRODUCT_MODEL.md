@@ -54,7 +54,7 @@ USER ─ membership ─ WORKSPACE ─┬─ MAILBOX CONNECTIONS
 | DISCOVER | A provider returns candidate businesses. Each is matched to the workspace's canonical business (register number, then domain, then source ref), so one business can appear in many searches and runs | `businesses`, `sources` (`provider`, `search_run_id`), `search_run_businesses` (`DISCOVERED`), `DiscoverySource` / `DiscoveryRegistry` | Built. No provider is implemented (Boundary) |
 | PRE-QUALIFY | Cheap checks against the frozen criteria, in stage order: geography, industry, size, revenue, structure, online presence, signals, contactability, exclusions. Unknown data goes to review, never to pass or fail | `src/discovery/qualify.ts`, `search_run_businesses` (`QUALIFIED` / `REJECTED` + `failed_stage` / `NEEDS_REVIEW` + `unknown_stages`), rule `qualify.search_criteria` | Built |
 | SELECT | The seller picks which qualified businesses to analyse, inside the run's analysis cap and credit budget | `SELECTED`, `estimated_credits`, `search_run_business_guard` | Built |
-| ANALYZE | Fetch, render and check the selected businesses. Only queued businesses can have analysis cost metered against them | `ANALYSIS_QUEUED` → `ANALYZED`, `snapshots`, `observations`, `cost_events` | Built, Manual. Fetch/render worker is Deferred |
+| ANALYZE | Fetch, render and check the selected businesses. Only queued businesses can have analysis cost metered against them | `ANALYSIS_QUEUED` → `ANALYZED`, `business_analyses`, `snapshots`, `observations`, `cost_events`, `src/analysis` | Built. Automated static-HTML analysis since Slice 11 (A34); rendering a page in a browser is Deferred |
 | Evidence | A defect or gap stated with URL, verbatim quote, capture time, confidence and rule version | `evidence`, `issue_codes` | Built |
 | Re-check | The same check on a later snapshot before the finding reaches a prospect | `evidence_rechecks` (append-only) | Built, Manual. Recorded from the Case File since Slice 9 (`recordCaseRecheck`) |
 | OPPORTUNITY | A sellable problem resting on at least one evidence row. A business can hold several | `opportunities`, `opportunity_evidence`, `OPPORTUNITY_FOUND` / `NO_OPPORTUNITY` | Built |
@@ -140,6 +140,37 @@ Both are opportunities in one table, one feed and one funnel.
 | Landing Page Build | not established (NULL) | `landing_page` | FIX |
 
 Effort, margin and close rate are NULL on every item. All are commercially UNPROVEN.
+
+### Automated analysis (Slice 11)
+
+From the Find screen a seller analyses the businesses they selected. `analyzeRunBusiness`
+(`src/analysis/service.ts`) works on one business of one run at a time:
+
+1. It locks the run's row for that business, in the server's workspace. Only `SELECTED` (or already
+   `ANALYSIS_QUEUED`) businesses are analysed, in an open run. A run with a credit budget is
+   refused because analysis has no credit rate yet. A concluded business returns its existing
+   result, so analysing twice requests nothing.
+2. With no known address it records `NO_ADDRESS` and requests nothing. An address that is not a
+   public web address is `REFUSED` before any request.
+3. Otherwise one GET of the homepage through `SafeProbe` (DNS pinned, private ranges refused,
+   every redirect re-checked, 10 s timeout, 2 MB cap). The page is hashed, never stored or logged.
+4. Checks read only the served HTML (`src/analysis/checks.ts`, analyser `scopely.static/1`):
+
+| Rule | OBSERVED | NOT_OBSERVABLE |
+|---|---|---|
+| `check.website_presence` v1 | The answer, redirects, HTTPS, or the network error | |
+| `check.page_signals` v1 | Title, description, viewport, a form (never submitted), contact page, parked page | No form in the HTML (one can be added by script) |
+| `check.contact_links` v2 | Each tel:, WhatsApp and mailto: link: dialable, or a defect (E-TEL-BROKEN, E-WA-BROKEN, E-EMAIL-INVALID, E-LINK-TARGET-MISMATCH) with the anchor quoted verbatim | No contact links in the HTML; whether a mailbox accepts mail |
+| `check.booking_cta_trace` v2 | A Book link whose destination answers 404/410 or has no such host (E-CTA-DEAD-END, MEDIUM), or one that answers | `#` / `javascript:` links, 401/403/429/5xx, timeouts |
+| `check.booking_platform_fingerprint` v2 | A known booking platform in links, scripts or frames | None found (a widget can be added by script) |
+
+5. A working website is INFERRED from the answer, title and text, never OBSERVED.
+6. OBSERVED defects become `evidence` (URL, verbatim quote, observed time, confidence, rule
+   version). Opportunities open only through the catalog (A35); a finding no service covers, or
+   that an open opportunity already holds, is shown with that note and opens nothing.
+7. The business concludes `OPPORTUNITY_FOUND` or `NO_OPPORTUNITY`. The opportunity's Case File
+   applies the existing gates unchanged: HIGH findings need a re-check before Sell, and a
+   `website_fix` opportunity can start the Fix Builder.
 
 ## BUILD/FIX
 

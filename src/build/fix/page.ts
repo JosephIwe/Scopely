@@ -3,7 +3,7 @@
 // observed broken destination, in <a> tags outside comments, scripts and styles. Every other byte
 // of the page stays as it was captured.
 
-const decodeEntities = (s: string): string => s
+export const decodeEntities = (s: string): string => s
   .replace(/&#x([0-9a-f]{1,6});/gi, (_, h) => safeChar(parseInt(h, 16)))
   .replace(/&#([0-9]{1,7});/g, (_, d) => safeChar(parseInt(d, 10)))
   .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
