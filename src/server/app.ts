@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 import { getCaseFile, opportunityBuildInfo, stageOf } from '../api/case-file.js';
-import { listOpportunities } from '../api/queries.js';
+import { getSearch, listOpportunities, listSearches } from '../api/queries.js';
 import { OutcomeRejected, recordManualOutcome } from '../sell/outcomes.js';
 import { ProspectRejected, recordCaseRecheck, recordCompanyRegister, saveCaseContact, suppressFromCaseFile } from '../sell/prospect.js';
 import {
@@ -27,6 +27,11 @@ import {
   type PageFetcher, SafePageFetcher, captureFixPage, confirmFix, generateFix, getFixWorkspace, openFixProject, proposeCorrection, readFixPage, showFixVersion,
 } from '../build/fix/index.js';
 import type { ObjectStore } from '../storage/index.js';
+import type { SecretResolver } from '../build/agents.js';
+import { getRunDiscovery } from '../api/discovery.js';
+import { createSearch, selectForAnalysis, startSearchRun } from '../discovery/index.js';
+import { DiscoveryProviderRegistry, DiscoveryRefused, runProviderDiscovery } from '../providers/index.js';
+import { FindRejected, searchInputFromBody, selectionFromBody, selectionRefusal } from './discovery-api.js';
 import { withWorkspace } from '../tenancy/index.js';
 
 export interface ServerConfig {
@@ -41,6 +46,8 @@ export interface ServerConfig {
   /** How the Fix Builder captures a page (F3). Defaults to the SSRF-safe live fetcher. */
   fetcher?: PageFetcher;
   log?: (line: string) => void;
+  /** Slice 10: business discovery providers and the server-side secret resolver for live ones. */
+  discovery?: { providers: DiscoveryProviderRegistry; secrets?: SecretResolver };
 }
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
@@ -58,6 +65,8 @@ const STATIC: Record<string, [string, string]> = {
   '/case-file.js': ['case-file.js', 'text/javascript; charset=utf-8'],
   '/map-slot.js': ['map-slot.js', 'text/javascript; charset=utf-8'],
   '/shell.css': ['shell.css', 'text/css; charset=utf-8'],
+  '/find.js': ['find.js', 'text/javascript; charset=utf-8'],
+  '/find.css': ['find.css', 'text/css; charset=utf-8'],
 };
 
 /** The workspace's own typefaces (the same files the site template embeds). */
@@ -307,6 +316,7 @@ export function createHandler(cfg: ServerConfig) {
       return json(res, 200, { projectId: await tx((db) => openFixProject(db, oid)) });
     }
     if (a === 'fix') return fixApi(req, res, parts);
+    if (a === 'discovery' || a === 'searches' || a === 'runs') return findApi(req, res, parts);
     if (a !== 'projects') throw new HttpError(404, 'Not found.');
     const pid = id(b);
     if (m === 'GET' && c === 'setup' && !d) return json(res, 200, await tx((db) => getBuildSetup(db, pid)));
@@ -506,6 +516,91 @@ export function createHandler(cfg: ServerConfig) {
     return send(res, 200, page, { ...APP_HEADERS, 'content-type': 'text/html; charset=utf-8' });
   }
 
+  // Slice 10, Find: searches, provider discovery runs and selection for analysis.
+  async function findApi(req: IncomingMessage, res: ServerResponse, parts: string[]) {
+    const m = req.method;
+    const [a, b, c, d] = parts;
+    const providers = cfg.discovery?.providers ?? new DiscoveryProviderRegistry();
+    // GET /api/discovery: the providers this server offers and the workspace's searches. Whether a
+    // live provider is connected is all the screen learns about its credentials.
+    if (m === 'GET' && a === 'discovery' && !b) {
+      return json(res, 200, await tx(async (db) => {
+        const conns = await db.query<{ provider: string }>(`SELECT DISTINCT provider FROM scopely.provider_connections
+          WHERE workspace_id = scopely.current_workspace_id() AND state = 'ACTIVE' AND 'discovery' = ANY (scopes) AND credential_ref IS NOT NULL`);
+        const connected = new Set(conns.rows.map((r) => r.provider));
+        const runs = await db.query(`SELECT r.id, r.search_id, r.started_at, count(rb.id) AS discovered,
+              count(rb.id) FILTER (WHERE rb.state = 'QUALIFIED') AS qualified
+            FROM scopely.search_runs r LEFT JOIN scopely.search_run_businesses rb ON rb.search_run_id = r.id
+           WHERE r.workspace_id = scopely.current_workspace_id() GROUP BY r.id ORDER BY r.started_at DESC, r.id DESC LIMIT 200`);
+        return {
+          providers: providers.list().map((p) => ({ key: p.provider, label: p.label, transport: p.transport,
+            ready: p.transport === 'recorded' || (connected.has(p.provider) && Boolean(cfg.discovery?.secrets)) })),
+          searches: await listSearches(db),
+          runs: runs.rows.map((r) => ({ searchRunId: String(r.id), searchId: String(r.search_id), startedAt: new Date(r.started_at).toISOString(),
+            discovered: Number(r.discovered), qualified: Number(r.qualified) })),
+        };
+      }));
+    }
+    // POST /api/searches: save an ICP.
+    if (m === 'POST' && a === 'searches' && !b) {
+      const input = searchInputFromBody(await jsonBody(req));
+      const searchId = await tx((db) => createSearch(db, input));
+      log(`search ${searchId} created`);
+      return json(res, 200, { searchId });
+    }
+    // GET /api/searches/:id: the search as saved, with its runs.
+    if (m === 'GET' && a === 'searches' && !c) {
+      const sid = id(b);
+      return json(res, 200, await tx(async (db) => {
+        const s = await getSearch(db, sid);
+        if (!s) throw new HttpError(404, 'Not found.');
+        return s;
+      }));
+    }
+    // POST /api/searches/:id/runs: run the search against a provider, then pre-qualify.
+    if (m === 'POST' && a === 'searches' && c === 'runs' && !d) {
+      const sid = id(b);
+      const bd = await jsonBody(req);
+      const provider = String(bd.provider ?? '');
+      const out = await tx(async (db) => {
+        if (!(await getSearch(db, sid))) throw new HttpError(404, 'Not found.');
+        const runId = await startSearchRun(db, sid);
+        const result = await runProviderDiscovery(db, { providers, secrets: cfg.discovery?.secrets }, runId, provider);
+        return { searchRunId: runId, result };
+      });
+      log(`run ${out.searchRunId} search ${sid} ${provider} ${out.result.transport} ops=${out.result.operations} found=${out.result.discovered}${out.result.error ? ` ${out.result.error.code}` : ''}`);
+      return json(res, 200, out);
+    }
+    // GET /api/runs/:id: the run in priority order, with what each provider call did.
+    if (m === 'GET' && a === 'runs' && !c) {
+      const rid = id(b);
+      return json(res, 200, await tx(async (db) => {
+        const v = await getRunDiscovery(db, rid);
+        if (!v) throw new HttpError(404, 'Not found.');
+        return v;
+      }));
+    }
+    // POST /api/runs/:id/select: a person selects qualified businesses for analysis.
+    if (m === 'POST' && a === 'runs' && c === 'select' && !d) {
+      const rid = id(b);
+      const sel = selectionFromBody(await jsonBody(req));
+      try {
+        await tx(async (db) => {
+          if (!(await getRunDiscovery(db, rid))) throw new HttpError(404, 'Not found.');
+          await selectForAnalysis(db, rid, sel.businessIds.map((businessId) => ({ businessId })), sel.selectedBy, new Date().toISOString());
+        });
+      } catch (err) {
+        const words = err instanceof HttpError ? null : selectionRefusal((err as Error).message);
+        if (words) throw new FindRejected(words);
+        if (/is not in run/.test((err as Error).message)) throw new HttpError(404, 'Not found.');
+        throw err;
+      }
+      log(`run ${rid} selected ${sel.businessIds.length}`);
+      return json(res, 200, { selected: sel.businessIds.length });
+    }
+    throw new HttpError(404, 'Not found.');
+  }
+
   return async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const started = Date.now();
@@ -535,6 +630,8 @@ export function createHandler(cfg: ServerConfig) {
       if (err instanceof SiteError) return json(res, err.status, { error: err.message });
       if (err instanceof OutcomeRejected) return json(res, err.status, { error: err.message });
       if (err instanceof ProspectRejected) return json(res, err.status, { error: err.message });
+      if (err instanceof FindRejected) return json(res, err.status, { error: err.message });
+      if (err instanceof DiscoveryRefused) return json(res, 422, { error: err.message, reason: err.reason });
       if (err instanceof EditRejected) return json(res, 400, { error: err.reason, index: err.index });
       log(`error ${req.method} ${url.pathname.replace(/\/[A-Za-z0-9_.-]{20,}$/, '/…')} ${(err as { code?: string }).code ?? ''}`);
       return json(res, 500, { error: 'Something went wrong. Nothing was changed.' });

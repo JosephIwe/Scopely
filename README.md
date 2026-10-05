@@ -61,8 +61,14 @@ says which stages are built, manual, a boundary only, or deferred.
   write (migration 013, A29). The Case File says what is missing and turns READY only when the
   existing `evidence_send_blocker` and `contact_outreach_blocker` gates both pass. Nothing is looked
   up or fetched.
+- **Slice 10 (provider discovery):** a Find screen (`#/find`) where a seller saves a search, runs it
+  against a business discovery provider and selects qualified businesses for analysis. Providers sit
+  behind capability interfaces and one small gateway (`src/providers`) that records every call in
+  `provider_operations` with its latency, result count, cost as reported and normalized error
+  (A31). Clay is the first adapter. Live calls use only the workspace's own key (A32); without one,
+  `pnpm serve` replays Clay responses recorded on 2026-10-05 and says so on screen.
 
-There is **no crawler, no model call, no sending and no cloud resource**. The only outbound request is the Fix Builder's one-page capture (A23). The AI edit in Slice 5 is
+There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23) and, when switched on, live Clay discovery on the workspace's own key (A32). The AI edit in Slice 5 is
 a deterministic interpreter behind the same seam a model-backed one will use. Nothing here contacts a business:
 `messages.sent_at` records a send made by hand.
 
@@ -152,6 +158,13 @@ person yet (B10); it listens on 127.0.0.1 only. It reads `PREVIEW_SIGNING_KEY` (
 characters; a random one is used, with a warning, when unset, so links stop working on restart),
 `SCOPELY_STORAGE_DIR` (default `.scopely/storage`) and `SHOW_LINK_TTL_HOURS` (default 72, A15).
 No model credential is read or needed.
+
+Discovery replays the recorded Clay responses in `fixtures/providers/clay/` unless
+`SCOPELY_CLAY_LIVE=1`. Live mode calls Clay's MCP endpoint with the workspace's own key: the
+workspace needs an ACTIVE `CUSTOMER_KEY` connection for `clay` with the `discovery` scope, and the
+server reads the key named by its `credential_ref` from the environment
+(`secretref:ws/<id>/<name>` → `SCOPELY_SECRET_WS<id>_<NAME>`). The key never reaches the database or
+the browser.
 
 Tests read `TEST_DATABASE_ADMIN_URL` (default `postgres://scopely:scopely@localhost:5432/postgres`)
 and create and drop their own `scopely_test_<random>` database. Every test runs in a transaction

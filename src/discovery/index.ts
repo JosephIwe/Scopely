@@ -6,9 +6,9 @@
 // (ANALYSIS_QUEUED) against its credit budget. The database enforces every transition, the
 // selection cap and the budget; these functions only prepare the rows.
 //
-// Discovery providers plug in through DiscoverySource. None is implemented: Clay, business
-// directories, public datasets and CSV imports are all future sources behind this one interface,
-// and recordDiscoveredBusiness is how any of them (or a person) records what it found.
+// Discovery providers plug in through DiscoverySource, and since Slice 10 through the provider
+// gateway (src/providers), which also records each provider call. recordDiscoveredBusiness is how
+// any of them (or a person) records what it found.
 import type { Db } from '../tenancy/index.js';
 import { criteriaFromRow, type SearchCriteria } from './criteria.js';
 import { prequalify, type BusinessFacts, type QualificationResult, type WebsiteStatus } from './qualify.js';
@@ -20,7 +20,13 @@ export type Basis = 'VERIFIED' | 'REPORTED' | 'ESTIMATED';
 
 /** A business as a discovery source reports it. Every field it does not know stays out. */
 export interface DiscoveredBusiness {
-  source: { provider: string; sourceType: string; reference: string; discoveredAt?: string };
+  source: {
+    provider: string; sourceType: string; reference: string; discoveredAt?: string;
+    /** The provider_operations row of the call that found it (Slice 10). */
+    operationId?: string;
+    /** The provider's own fields for this business, as the adapter read them. */
+    record?: Record<string, unknown>;
+  };
   name: string;
   domain?: string;
   websiteUrl?: string;
@@ -96,6 +102,8 @@ export interface DiscoveryRecord {
   runBusinessId: string;
   /** How the business was recognised: a new one, or an existing one of this workspace. */
   matchedBy: 'new' | 'company_register' | 'domain' | 'source_reference';
+  /** False when the business was already in this run (the provider returned it twice). */
+  newInRun: boolean;
 }
 
 /**
@@ -169,9 +177,10 @@ export async function recordDiscoveredBusiness(db: Db, runId: string, d: Discove
   }
 
   const sourceId = (await db.query<{ id: string }>(
-    `INSERT INTO scopely.sources (business_id, kind, ref, provider, search_run_id, found_at)
-     VALUES ($1, $2, $3, $4, $5, coalesce($6::timestamptz, now())) RETURNING id`,
-    [businessId, d.source.sourceType, d.source.reference, d.source.provider, runId, d.source.discoveredAt ?? null])).rows[0]!.id;
+    `INSERT INTO scopely.sources (business_id, kind, ref, provider, search_run_id, found_at, provider_operation_id, provider_record)
+     VALUES ($1, $2, $3, $4, $5, coalesce($6::timestamptz, now()), $7, $8) RETURNING id`,
+    [businessId, d.source.sourceType, d.source.reference, d.source.provider, runId, d.source.discoveredAt ?? null,
+     d.source.operationId ?? null, d.source.record ? JSON.stringify(d.source.record) : null])).rows[0]!.id;
   const member = await db.query<{ id: string }>(
     `INSERT INTO scopely.search_run_businesses (search_run_id, business_id, source_id, discovered_at)
      VALUES ($1, $2, $3, coalesce($4::timestamptz, now()))
@@ -179,7 +188,7 @@ export async function recordDiscoveredBusiness(db: Db, runId: string, d: Discove
     [runId, businessId, sourceId, d.source.discoveredAt ?? null]);
   const runBusinessId = member.rows[0]?.id ?? (await db.query<{ id: string }>(
     'SELECT id FROM scopely.search_run_businesses WHERE search_run_id = $1 AND business_id = $2', [runId, businessId])).rows[0]!.id;
-  return { businessId, runBusinessId, matchedBy: existing?.matchedBy ?? 'new' };
+  return { businessId, runBusinessId, matchedBy: existing?.matchedBy ?? 'new', newInRun: member.rows.length === 1 };
 }
 
 // ------------------------------------------------------------------ pre-qualification

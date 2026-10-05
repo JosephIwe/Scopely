@@ -7,7 +7,7 @@
 //   #/                 Discover: every opportunity
 //   #/stage/<key>      one stage: opportunities, build, sell, deliver, verify
 //   #/o/<id>           the Case File of one opportunity
-// The builders keep their own routes (#/p/…, #/f/…) and open unchanged.
+// The builders keep their own routes (#/p/…, #/f/…) and open unchanged; Find is #/find (find.js).
 import { $app, api, fail, go, h, money } from './lib.js';
 import { mountMapSlot } from './map-slot.js';
 import { renderCaseFile } from './case-file.js';
@@ -61,7 +61,8 @@ function mount() {
   const stageSel = h('select', { class: 'sh-stagesel', 'aria-label': 'Stage', onchange: (e) => go(stageHash(e.target.value)) });
   const ws = h('span', { class: 'sh-ws' });
   const top = h('header', { class: 'sh-top' },
-    h('a', { class: 'logo', href: '#/' }, h('i'), 'SCOPELY'), stages, stageSel, h('div', { class: 'sh-topr' }, ws));
+    h('a', { class: 'logo', href: '#/' }, h('i'), 'SCOPELY'), stages, stageSel,
+    h('div', { class: 'sh-topr' }, h('a', { class: 'btn sm', href: '#/find' }, 'Find businesses'), ws));
   const filters = h('div', { class: 'sh-filters', role: 'group', 'aria-label': 'Filters' });
   const mapEl = h('div', { class: 'sh-map' });
   const stage = h('section', { class: 'sh-stage', 'aria-label': 'Map' }, mapEl, filters);
