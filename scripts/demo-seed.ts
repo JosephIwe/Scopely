@@ -6,6 +6,7 @@
 //
 //   DATABASE_URL=... pnpm demo:seed     # prints the workspace id to pass to `pnpm serve`
 import { connect } from '../src/db/client.js';
+import { createSearch } from '../src/discovery/index.js';
 import { createWorkspace, withWorkspace } from '../src/tenancy/index.js';
 
 const db = await connect();
@@ -66,6 +67,11 @@ try {
     const fixOpp = await q(`INSERT INTO scopely.opportunities (business_id, opportunity_type, mapping_status, catalog_item_id, currency, service_price)
       VALUES ($1, 'broken_contact_path', 'MAPPED', $2, 'GBP', 120) RETURNING id`, [fixBiz.id, sprint.id]);
     await q('INSERT INTO scopely.opportunity_evidence (opportunity_id, evidence_id) VALUES ($1, $2) RETURNING opportunity_id', [fixOpp.id, fixEv.id]);
+
+    // Slice 10: a saved search whose provider query matches the recorded Clay responses in
+    // fixtures/providers/clay, so Find can be tried without a live provider call.
+    await createSearch(db, { name: 'Sample: small clinics (recorded Clay responses)', verticals: ['Medical Practices'], countryCode: 'GB',
+      city: 'Leeds', employeeMin: 2, employeeMax: 50, maxDiscoveredPerRun: 40, maxBusinessesToAnalyze: 10 });
   });
   await db.query('COMMIT');
   console.log(workspaceId);

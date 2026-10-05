@@ -6,6 +6,7 @@ import {
   $app, I, api, cap, claimWord, confidenceWord, date, fail, go, h, icon, money, plural, remember, slugOf, toast, when,
 } from './lib.js';
 import { shellView } from './shell.js';
+import { findView } from './find.js';
 
 function appbar(back) {
   return h('header', { class: 'appbar' },
@@ -28,6 +29,8 @@ async function route() {
   if ((m = hsh.match(/^#\/p\/(\d+)$/))) return workspaceView(m[1]);
   leaveGuard = null;
   if ((m = hsh.match(/^#\/f\/(\d+)$/))) return fixView(m[1]);
+  // Slice 10: Find, the provider-backed searches.
+  if (/^#\/find(\/run\/\d+)?$/.test(hsh)) return findView(hsh);
   // Slice 8: the product shell, its stage feeds and the Case File.
   return shellView(hsh, { setEscape: (fn) => { onEscape = fn; } });
 }
