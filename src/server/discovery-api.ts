@@ -50,6 +50,16 @@ export function searchInputFromBody(b: Record<string, unknown>): SearchInput {
   if (min !== undefined && max !== undefined && min > max) throw new FindRejected('Fewest employees cannot be more than most employees.');
   if (min !== undefined) input.employeeMin = min;
   if (max !== undefined) input.employeeMax = max;
+  // Revenue is the seller's threshold in the currency they name; it is never converted.
+  const revenueMin = whole(b.revenueMin, 'Lowest revenue', 0, 99_999_999_999_999);
+  const revenueMax = whole(b.revenueMax, 'Highest revenue', 0, 99_999_999_999_999);
+  if (revenueMin !== undefined && revenueMax !== undefined && revenueMin > revenueMax) throw new FindRejected('Lowest revenue cannot be more than highest revenue.');
+  const revenueCurrency = text(b.revenueCurrency, 'Revenue currency', 3)?.toUpperCase();
+  if (revenueCurrency !== undefined && !/^[A-Z]{3}$/.test(revenueCurrency)) throw new FindRejected('Revenue currency must be a three-letter code, like USD or GBP.');
+  if ((revenueMin !== undefined || revenueMax !== undefined) && !revenueCurrency) throw new FindRejected('Say which currency the revenue is in.');
+  if (revenueMin !== undefined) input.revenueMin = revenueMin;
+  if (revenueMax !== undefined) input.revenueMax = revenueMax;
+  if (revenueCurrency && (revenueMin !== undefined || revenueMax !== undefined)) input.revenueCurrency = revenueCurrency;
   const found = whole(b.maxDiscoveredPerRun, 'Businesses to find per run', 1, 100);
   if (found === undefined) throw new FindRejected('Say how many businesses a run may find (up to 100).');
   input.maxDiscoveredPerRun = found;

@@ -13,6 +13,7 @@
 // secretref:ws/<id>/<name> names the server variable SCOPELY_SECRET_WS<id>_<NAME>. Nothing else
 // ever reads that variable, and it never reaches a browser.
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import pg from 'pg';
 import { databaseUrl } from '../src/db/client.js';
@@ -20,7 +21,7 @@ import { DEFAULT_SHOW_LINK_TTL_SECONDS } from '../src/build/site/index.js';
 import { DemoAwarePageFetcher } from '../src/build/fix/index.js';
 import { createHandler } from '../src/server/app.js';
 import { FileObjectStore } from '../src/storage/index.js';
-import { ClayBusinessDiscoveryAdapter, ClayMcpTransport, DiscoveryProviderRegistry, EnvSecretResolver, RecordedClayTransport } from '../src/providers/index.js';
+import { ClayBusinessDiscoveryAdapter, ClayMcpTransport, DiscoveryProviderRegistry, EnvSecretResolver, RecordedClayTransport, type ClayRecording } from '../src/providers/index.js';
 
 const workspaceId = process.env.SCOPELY_WORKSPACE_ID;
 if (!workspaceId || !/^\d+$/.test(workspaceId)) {
@@ -40,7 +41,8 @@ if (!Number.isFinite(showHours) || showHours <= 0 || showHours > 24 * 30) {
 const pool = new pg.Pool({ connectionString: databaseUrl(), max: 8 });
 const live = process.env.SCOPELY_CLAY_LIVE === '1';
 const clay = live ? new ClayMcpTransport()
-  : RecordedClayTransport.fromFile(new URL('../fixtures/providers/clay/2026-10-05-company-search.json', import.meta.url).pathname);
+  : new RecordedClayTransport(['2026-10-05-company-search.json', '2026-10-05-company-search-country.json'].flatMap((f) =>
+    (JSON.parse(readFileSync(new URL(`../fixtures/providers/clay/${f}`, import.meta.url), 'utf8')) as { searches: ClayRecording[] }).searches));
 const discovery = { providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(clay)), secrets: live ? new EnvSecretResolver() : undefined };
 const handler = createHandler({
   pool, workspaceId, signingKey,

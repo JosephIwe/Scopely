@@ -110,6 +110,7 @@ function newSearchForm() {
       const body = {
         name: f.name.value, verticals: f.verticals.value, countryCode: f.countryCode.value, city: f.city.value,
         employeeMin: f.employeeMin.value, employeeMax: f.employeeMax.value, websitePresence: presence,
+        revenueMin: f.revenueMin.value, revenueMax: f.revenueMax.value, revenueCurrency: f.revenueCurrency.value,
         maxDiscoveredPerRun: f.maxDiscoveredPerRun.value, maxBusinessesToAnalyze: f.maxBusinessesToAnalyze.value,
       };
       await api('POST', '/searches', body);
@@ -124,6 +125,10 @@ function newSearchForm() {
       field('City', input('city', { maxlength: 120 }), null, true)),
     h('div', { class: 'fd-two' }, field('Fewest employees', input('employeeMin', { inputmode: 'numeric' }), null, true),
       field('Most employees', input('employeeMax', { inputmode: 'numeric' }), null, true)),
+    h('div', { class: 'fd-three' }, field('Lowest revenue', input('revenueMin', { inputmode: 'numeric', placeholder: '1000000' }), null, true),
+      field('Highest revenue', input('revenueMax', { inputmode: 'numeric' }), null, true),
+      field('Currency', input('revenueCurrency', { maxlength: 3, placeholder: 'USD', autocapitalize: 'characters' }))),
+    h('p', { class: 'hint fd-rev', text: 'Yearly revenue in whole units, never converted. Clay filters revenue in US dollars only; in another currency only Scopely checks it. Clay’s revenue ranges carry no currency, so they are not recorded as facts and each business found goes to review on revenue.' }),
     h('div', { class: 'field' }, h('span', { class: 'lab' }, 'Website'), seg),
     h('div', { class: 'fd-two' }, field('Find per run', input('maxDiscoveredPerRun', { inputmode: 'numeric', value: '40', required: true }), 'Up to 100.'),
       field('Analyse at most', input('maxBusinessesToAnalyze', { inputmode: 'numeric' }), null, true)),

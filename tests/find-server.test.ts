@@ -4,15 +4,15 @@
 // reach another workspace's runs.
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import path from 'node:path';
 import type pg from 'pg';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createHandler } from '../src/server/app.js';
 import {
-  ClayBusinessDiscoveryAdapter, ClayMcpTransport, DiscoveryProviderRegistry, EnvSecretResolver, RecordedClayTransport, secretEnvName,
+  ClayBusinessDiscoveryAdapter, ClayMcpTransport, DiscoveryProviderRegistry, EnvSecretResolver, secretEnvName,
 } from '../src/providers/index.js';
 import { MemoryObjectStore } from '../src/storage/index.js';
 import { StubFetcher } from './fix-helpers.js';
+import { recordedClay } from './clay-recordings.js';
 import { enterNewWorkspace, one, useDb } from './helpers.js';
 import { SIGNING_KEY } from './site-helpers.js';
 
@@ -29,8 +29,7 @@ function poolOver(client: pg.Client): pg.Pool {
 let server: http.Server | null = null;
 afterEach(() => { server?.close(); server = null; });
 
-const FIXTURE = path.resolve(import.meta.dirname, '../fixtures/providers/clay/2026-10-05-company-search.json');
-const recorded = () => ({ providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(RecordedClayTransport.fromFile(FIXTURE))) });
+const recorded = () => ({ providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(recordedClay())) });
 const currentWs = async () => (await one<{ ws: string }>(db(), 'SELECT scopely.current_workspace_id()::text AS ws')).ws;
 
 type Discovery = Parameters<typeof createHandler>[0]['discovery'];
@@ -90,6 +89,33 @@ describe('saving a search', () => {
       max_discovered_per_run, max_businesses_to_analyze FROM searches WHERE id = $1`, [ok.json().searchId]);
     expect(row).toEqual({ name: ICP.name, verticals: ['Medical Practices'], country_code: 'GB', city: 'Leeds', employee_min: 2, employee_max: 50,
       max_discovered_per_run: 40, max_businesses_to_analyze: 3 });
+  });
+
+  it('saves a revenue threshold in the currency the seller names, and refuses a range it cannot hold', async () => {
+    const srv = await start();
+    const bad = async (body: Record<string, unknown>) => {
+      const r = await srv.call('POST', '/api/searches', { ...ICP, ...body });
+      expect(r.status).toBe(422);
+      return r.json().error as string;
+    };
+    expect(await bad({ revenueMin: '5000000', revenueMax: '1000000', revenueCurrency: 'USD' })).toBe('Lowest revenue cannot be more than highest revenue.');
+    expect(await bad({ revenueMin: '1000000' })).toBe('Say which currency the revenue is in.');
+    expect(await bad({ revenueMin: '1,000,000', revenueCurrency: 'USD' })).toMatch(/Lowest revenue must be a whole number/);
+    expect(await bad({ revenueMax: '-5', revenueCurrency: 'USD' })).toMatch(/Highest revenue must be a whole number/);
+    expect(await bad({ revenueMin: '1000000', revenueCurrency: 'US$' })).toMatch(/three-letter code/);
+    expect(await db().query('SELECT 1 FROM searches WHERE workspace_id = $1', [srv.workspaceId])).toHaveProperty('rowCount', 0);
+
+    const usd = await srv.call('POST', '/api/searches', { ...ICP, revenueMin: '1000000', revenueMax: '5000000', revenueCurrency: 'usd' });
+    expect(usd.status).toBe(200);
+    const gbp = await srv.call('POST', '/api/searches', { ...ICP, name: 'In pounds', revenueMin: '800000', revenueCurrency: 'GBP' });
+    const rows = (await db().query('SELECT id::text, revenue_min, revenue_max, revenue_currency FROM searches WHERE id = ANY ($1) ORDER BY id',
+      [[usd.json().searchId, gbp.json().searchId]])).rows;
+    expect(rows).toEqual([
+      { id: usd.json().searchId, revenue_min: '1000000.00', revenue_max: '5000000.00', revenue_currency: 'USD' },
+      { id: gbp.json().searchId, revenue_min: '800000.00', revenue_max: null, revenue_currency: 'GBP' }]);
+    // A currency with no amount is not a threshold, and is not saved as one.
+    const none = await srv.call('POST', '/api/searches', { ...ICP, name: 'No revenue', revenueCurrency: 'USD' });
+    expect(await one(db(), 'SELECT revenue_currency FROM searches WHERE id = $1', [none.json().searchId])).toEqual({ revenue_currency: null });
   });
 
   it('refuses a write without the request header', async () => {

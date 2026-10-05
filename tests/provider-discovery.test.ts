@@ -8,15 +8,15 @@ import { getRunDiscovery } from '../src/api/discovery.js';
 import { createSearch, startSearchRun, type SearchInput } from '../src/discovery/index.js';
 import {
   ClayBusinessDiscoveryAdapter, ClayMcpTransport, DiscoveryProviderRegistry, DiscoveryRefused, EnvSecretResolver, ProviderError,
-  RecordedClayTransport, callProvider, clayCompanyQuery, countryCode, normalizeClayCompany, parseLocality, runProviderDiscovery, secretEnvName,
+  callProvider, clayCompanyQuery, clayCountryName, countryCode, normalizeClayCompany, parseLocality, revenueBuckets, runProviderDiscovery, secretEnvName,
 } from '../src/providers/index.js';
 import { criteriaFromRow } from '../src/discovery/index.js';
+import { recordedClay } from './clay-recordings.js';
 import { asApp, enterNewWorkspace, failure, one, useDb } from './helpers.js';
 
 const { db } = useDb();
 
-const FIXTURE = path.resolve(import.meta.dirname, '../fixtures/providers/clay/2026-10-05-company-search.json');
-const recorded = () => new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(RecordedClayTransport.fromFile(FIXTURE)));
+const recorded = () => new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(recordedClay()));
 const noSleep = async () => undefined;
 
 /** The ICP the recorded search B was run with: one industry, a city and a 2-50 employee range. */
@@ -24,7 +24,8 @@ const ICP: SearchInput = {
   name: 'Small clinics in one city', verticals: ['Medical Practices'], countryCode: 'GB', city: 'Leeds',
   employeeMin: 2, employeeMax: 50, maxDiscoveredPerRun: 40,
 };
-const RECORDED_QUERY = 'select from companies where industry = "Medical Practices" and company_size in ("2-10", "11-50") and locations.any(city = "Leeds")';
+/** The query the ICP is sent as, with the city and country in one location clause, as recorded from Clay. */
+const RECORDED_QUERY = 'select from companies where industry = "Medical Practices" and company_size in ("2-10", "11-50") and locations.any(city = "Leeds" and country_name = "United Kingdom")';
 
 async function runFor(input: Partial<SearchInput> = {}) {
   const searchId = await createSearch(db(), { ...ICP, ...input });
@@ -37,12 +38,13 @@ describe('Clay query plan', () => {
   const criteria = (c: Partial<SearchInput>) => criteriaFromRow({
     verticals: [], subverticals: [], specialties: [], business_types: [], website_statuses: [], opportunity_kinds: [],
     excluded_domains: [], excluded_business_types: [], website_presence: 'any',
-    ...Object.fromEntries(Object.entries({ verticals: c.verticals, city: c.city, employee_min: c.employeeMin, employee_max: c.employeeMax })
+    ...Object.fromEntries(Object.entries({ verticals: c.verticals, city: c.city, country_code: c.countryCode, employee_min: c.employeeMin, employee_max: c.employeeMax,
+      revenue_min: c.revenueMin, revenue_max: c.revenueMax, revenue_currency: c.revenueCurrency })
       .filter(([, v]) => v !== undefined)),
   });
 
-  it('pushes industry, size and city down, exactly as the recorded search was run', () => {
-    expect(clayCompanyQuery(criteria(ICP))).toEqual({ dsl: RECORDED_QUERY, pushedDown: ['industry', 'size', 'city'] });
+  it('pushes industry, size, city and country down, exactly as the recorded search was run', () => {
+    expect(clayCompanyQuery(criteria(ICP))).toEqual({ dsl: RECORDED_QUERY, pushedDown: ['industry', 'size', 'city', 'country'] });
   });
 
   it('lists several industries, and leaves size out when every bucket fits', () => {
@@ -60,6 +62,51 @@ describe('Clay query plan', () => {
 
   it('refuses a search with neither an industry nor a city: it would pull an unbounded list', () => {
     expect(clayCompanyQuery(criteria({ employeeMin: 2, employeeMax: 10 }))).toEqual({ refused: expect.stringMatching(/industry or a city/) });
+  });
+});
+
+describe('Clay query plan: country and revenue (Slice 10 review)', () => {
+  const criteria = (c: Partial<SearchInput>) => criteriaFromRow({
+    verticals: ['Dentists'], subverticals: [], specialties: [], business_types: [], website_statuses: [], opportunity_kinds: [],
+    excluded_domains: [], excluded_business_types: [], website_presence: 'any',
+    ...Object.fromEntries(Object.entries({ city: c.city, country_code: c.countryCode, revenue_min: c.revenueMin, revenue_max: c.revenueMax,
+      revenue_currency: c.revenueCurrency }).filter(([, v]) => v !== undefined)),
+  });
+
+  it('sends the country as the name Clay’s locations carry, with the city in the same location when there is one', () => {
+    expect(clayCompanyQuery(criteria({ countryCode: 'GB' }))).toEqual({
+      dsl: 'select from companies where industry = "Dentists" and locations.any(country_name = "United Kingdom")', pushedDown: ['industry', 'country'] });
+    expect(clayCompanyQuery(criteria({ countryCode: 'US', city: 'Austin' }))).toEqual({
+      dsl: 'select from companies where industry = "Dentists" and locations.any(city = "Austin" and country_name = "United States")',
+      pushedDown: ['industry', 'city', 'country'] });
+    // A country without an industry or a city is still too broad to send.
+    expect(clayCompanyQuery({ ...criteria({ countryCode: 'GB' }), verticals: [] })).toHaveProperty('refused');
+  });
+
+  it('escapes the location clause, and never sends a country that is not an ISO code', () => {
+    expect(clayCountryName('GB')).toBe('United Kingdom');
+    expect(clayCountryName('G"')).toBeNull();
+    expect(clayCountryName('gb')).toBeNull();
+    const q = clayCompanyQuery(criteria({ city: 'X" and country_name = "Y', countryCode: 'GB' }));
+    expect(q).toEqual({ dsl: 'select from companies where industry = "Dentists" and locations.any(city = "X\\" and country_name = \\"Y" and country_name = "United Kingdom")',
+      pushedDown: ['industry', 'city', 'country'] });
+  });
+
+  it('sends a US-dollar revenue range as the Clay revenue buckets it overlaps', () => {
+    expect(revenueBuckets(1_000_000, 10_000_000)).toEqual(['500K-1M', '1M-5M', '5M-10M', '10M-25M']);
+    expect(revenueBuckets(2_000_000, null)).toEqual(['1M-5M', '5M-10M', '10M-25M', '25M-75M', '75M-200M', '200M-500M', '500M-1B', '1B-10B', '10B-100B', '100B-1T']);
+    expect(revenueBuckets(0, null)).toBeNull();
+    const q = clayCompanyQuery(criteria({ revenueMin: 2_000_000, revenueMax: 4_000_000, revenueCurrency: 'USD', city: 'Leeds', countryCode: 'GB' }));
+    expect(q).toEqual({
+      dsl: 'select from companies where industry = "Dentists" and annual_revenue in ("1M-5M") and locations.any(city = "Leeds" and country_name = "United Kingdom")',
+      pushedDown: ['industry', 'revenue', 'city', 'country'] });
+    expect(clayCompanyQuery(criteria({ revenueMin: 2e12, revenueCurrency: 'USD', city: 'Leeds' }))).toHaveProperty('refused');
+  });
+
+  it('never converts: a revenue range in another currency is not sent to Clay, and Scopely alone checks it', () => {
+    const q = clayCompanyQuery(criteria({ revenueMin: 2_000_000, revenueCurrency: 'GBP', city: 'Leeds' }));
+    expect(q).toEqual({ dsl: 'select from companies where industry = "Dentists" and locations.any(city = "Leeds")', pushedDown: ['industry', 'city'] });
+    expect(JSON.stringify(q)).not.toContain('annual_revenue');
   });
 });
 
@@ -115,16 +162,17 @@ describe('provider discovery through the gateway (recorded Clay responses)', () 
     const ops = (await db().query('SELECT * FROM provider_operations WHERE search_run_id = $1 ORDER BY id', [runId])).rows;
     expect(ops.map((o) => [o.operation, o.status, o.result_count, o.request_ref, o.cost_basis, o.provider_credits, o.transport, o.billed_to]))
       .toEqual([
-        ['search', 'SUCCEEDED', 20, 'mcp-task_0tmfuprd6RPCXCEDc63', 'NOT_REPORTED', null, 'recorded', null],
-        ['search_next_page', 'SUCCEEDED', 20, 'mcp-task_0tmfupwNqDNcPWAmu2A', 'NOT_REPORTED', null, 'recorded', null],
+        ['search', 'SUCCEEDED', 20, 'mcp-task_0tmfwg3G7BWtdhSmfhi', 'NOT_REPORTED', null, 'recorded', null],
+        ['search_next_page', 'SUCCEEDED', 20, 'mcp-task_0tmfwgacva37AdQRd8y', 'NOT_REPORTED', null, 'recorded', null],
       ]);
 
     // Provenance: every business points at the call that found it, with the provider's record.
     const src = await one<{ n: string; with_op: string; observed: string }>(db(),
       `SELECT count(*) AS n, count(provider_operation_id) AS with_op, min(found_at)::text AS observed FROM sources WHERE search_run_id = $1`, [runId]);
-    expect(src).toEqual({ n: '40', with_op: '40', observed: '2026-10-05 14:25:03.914+00' });
+    expect(src).toEqual({ n: '40', with_op: '40', observed: '2026-10-05 15:02:27.162+00' });
 
-    // The ICP decides, not the provider: a business Clay matched on a branch office elsewhere is rejected on geography.
+    // The ICP decides, not the provider: a business Clay matched on a branch office elsewhere is rejected on geography,
+    // even with the country pushed down (Clay returned the US company because it has an office in the city).
     const v = (await getRunDiscovery(db(), runId))!;
     const byName = new Map(v.businesses.map((b) => [b.name, b]));
     expect(byName.get('Vision Care')).toMatchObject({ state: 'REJECTED', failedStage: 'geography', city: 'London' });
@@ -270,6 +318,33 @@ describe('live provider path (fake Clay endpoint, no network)', () => {
     expect(r3).toMatchObject({ error: { code: 'auth' } });
     const failed = (await db().query(`SELECT error_code, attempts FROM provider_operations WHERE status = 'FAILED' ORDER BY id`)).rows;
     expect(failed).toEqual([{ error_code: 'invalid_request', attempts: 1 }, { error_code: 'auth', attempts: 1 }]);
+  });
+
+  it('sends the search’s country and US-dollar revenue to Clay, still decides itself, and records no revenue fact', async () => {
+    const usOffice = { ...page('t1', false, ['1', '2']) };
+    (usOffice.companies as Record<string, Record<string, unknown>>)['2']!.country = 'United States';
+    (usOffice.companies as Record<string, Record<string, unknown>>)['2']!.locality = 'Austin, Texas';
+    for (const c of Object.values(usOffice.companies)) (c as Record<string, unknown>).annual_revenue = '1M-5M';
+    const s = await liveSetup([ok(usOffice)]);
+    const runId = await runFor({ maxDiscoveredPerRun: 10, revenueMin: 1_500_000, revenueMax: 4_000_000, revenueCurrency: 'USD' });
+    const r = await runProviderDiscovery(db(), { providers: s.providers, secrets: s.secrets, sleep: noSleep }, runId, 'clay', AS_OF);
+    expect(r).toMatchObject({ discovered: 2, error: null });
+    const call = s.seen.map((x) => JSON.parse(x.body)).find((m) => m.method === 'tools/call');
+    expect(call.params.arguments.dslQuery).toBe('select from companies where industry = "Medical Practices" and company_size in ("2-10", "11-50") '
+      + 'and annual_revenue in ("1M-5M") and locations.any(city = "Leeds" and country_name = "United Kingdom")');
+    const v = (await getRunDiscovery(db(), runId))!;
+    const byName = new Map(v.businesses.map((b) => [b.name, b]));
+    // Clay's filter narrowed the list; Scopely's geography check still rejects what it returned outside the country.
+    expect(byName.get('Clinic 2')).toMatchObject({ state: 'REJECTED', failedStage: 'geography', countryCode: 'US' });
+    // Clay's revenue bucket names no currency, so no revenue fact is recorded and revenue is unknown: review, not a pass.
+    expect(byName.get('Clinic 1')).toMatchObject({ state: 'NEEDS_REVIEW' });
+    const unknown = await one<{ unknown_stages: string[] }>(db(), `SELECT rb.unknown_stages FROM search_run_businesses rb
+      JOIN businesses b ON b.id = rb.business_id WHERE rb.search_run_id = $1 AND b.name = 'Clinic 1'`, [runId]);
+    expect(unknown.unknown_stages).toContain('revenue');
+    expect((await db().query(`SELECT 1 FROM businesses WHERE workspace_id = $1 AND (revenue_amount IS NOT NULL OR revenue_min IS NOT NULL
+      OR revenue_max IS NOT NULL OR revenue_currency IS NOT NULL OR revenue_basis IS NOT NULL)`, [s.ws])).rowCount).toBe(0);
+    expect(await one(db(), `SELECT s.provider_record->>'annual_revenue' AS rev FROM sources s JOIN search_run_businesses rb ON rb.source_id = s.id
+      JOIN businesses b ON b.id = rb.business_id WHERE rb.search_run_id = $1 AND b.name = 'Clinic 1'`, [runId])).toEqual({ rev: '1M-5M' });
   });
 
   it('keeps the record of a failed call whose error text looks like a credential, without the text', async () => {
