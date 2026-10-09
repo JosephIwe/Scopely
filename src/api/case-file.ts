@@ -5,6 +5,7 @@
 //
 // Scoped like the rest of src/api: an explicit current_workspace_id() predicate on every query, on
 // top of row-level security. An opportunity in another workspace reads as not found.
+import { isDemoBusiness } from './sample.js';
 import type { Db } from '../tenancy/index.js';
 import { assessBuyer, suggestBuyer } from '../prospects/buyer.js';
 import { normalizeFact } from '../prospects/facts.js';
@@ -322,7 +323,7 @@ export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFi
     situation: { whyItMatters: o.why_it_matters, notObservable: o.not_observable_notes },
     evidence: items,
     business: {
-      businessId: business.businessId, name: business.name, domain: business.domain, websiteUrl: business.websiteUrl,
+      businessId: business.businessId, name: business.name, domain: business.domain, websiteUrl: business.websiteUrl, demo: isDemoBusiness(business.domain, business.websiteUrl),
       phone: business.phone, vertical: business.vertical, subvertical: business.subvertical, specialty: business.specialty,
       location: business.location, website: business.website, company: business.company, firmographics: business.firmographics,
       sources: business.sources.map((x) => ({ provider: x.provider, sourceType: x.sourceType, foundAt: x.foundAt })),
