@@ -10,6 +10,7 @@ import { getRunBusinessAnalysis } from '../src/api/analysis.js';
 import { getCaseFile } from '../src/api/case-file.js';
 import { getRunDiscovery } from '../src/api/discovery.js';
 import { captureFixPage, openFixProject } from '../src/build/fix/index.js';
+import { classifyWebsiteFetch } from '../src/discovery/website.js';
 import { recordCaseRecheck } from '../src/sell/prospect.js';
 import { MemoryObjectStore } from '../src/storage/index.js';
 import { AT, BOOKING, CLINIC, PLATFORM, TableProbe, runBusiness, seedRun } from './analysis-helpers.js';
@@ -404,6 +405,18 @@ describe('workspace isolation', () => {
 });
 
 describe('the live probe’s guard', () => {
+  it('reads a name that does not exist as not found, and a failed lookup as nothing observed', async () => {
+    const failing = (code: string) => new SafeProbe(async () => { throw Object.assign(new Error('lookup'), { code }); }, now);
+    expect(await failing('ENOTFOUND').get('https://gone.test/')).toMatchObject({ kind: 'error', error: 'dns_not_found' });
+    for (const code of ['EAI_AGAIN', 'ESERVFAIL', 'ETIMEOUT', 'ECONNREFUSED', '']) {
+      const r = await failing(code).get('https://flaky.test/');
+      expect(r, code).toMatchObject({ kind: 'error', error: 'other' });
+    }
+    // So the website status is unreachable on a NOT_OBSERVABLE basis, not an OBSERVED one.
+    expect(classifyWebsiteFetch({ kind: 'error', error: 'other' })).toEqual({ status: 'WEBSITE_UNREACHABLE', basis: 'NOT_OBSERVABLE' });
+    expect(classifyWebsiteFetch({ kind: 'error', error: 'dns_not_found' })).toEqual({ status: 'WEBSITE_UNREACHABLE', basis: 'OBSERVED' });
+  });
+
   it('refuses private, loopback and odd addresses before connecting, and never throws for them', async () => {
     const probe = (addrs: string[]) => new SafeProbe(async () => addrs, now);
     expect(await probe(['10.0.0.5']).get('https://intranet.test/')).toMatchObject({ kind: 'error', error: 'blocked' });
