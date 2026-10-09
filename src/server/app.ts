@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 import { getCaseFile, opportunityBuildInfo, stageOf } from '../api/case-file.js';
+import { isDemoBusiness } from '../api/sample.js';
 import { getSearch, listOpportunities, listSearches } from '../api/queries.js';
 import { OutcomeRejected, recordManualOutcome } from '../sell/outcomes.js';
 import {
@@ -243,6 +244,8 @@ export function createHandler(cfg: ServerConfig) {
           const bi = info.get(f.opportunityId) ?? { buildable: false, projectId: null, fixable: false, fixProjectId: null };
           return {
             opportunityId: f.opportunityId, business: f.business.name, domain: f.business.domain, path: f.path, kind: f.kind,
+            // A business on a reserved .example-style address is demo data, never a live prospect.
+            demo: isDemoBusiness(f.business.domain),
             service: f.service.name, price: f.service.price, currency: f.service.currency, evidenceCount: f.evidence.count,
             topConfidence: f.evidence.topConfidence, issue: i?.plain_issue ?? null, buildState: f.buildState,
             buildable: bi.buildable, projectId: bi.projectId, fixable: bi.fixable, fixProjectId: bi.fixProjectId,

@@ -7,6 +7,7 @@
 //   DATABASE_URL=... pnpm demo:seed     # prints the workspace id to pass to `pnpm serve`
 import { connect } from '../src/db/client.js';
 import { createSearch } from '../src/discovery/index.js';
+import { recordWebsiteStatus } from '../src/discovery/website.js';
 import { createWorkspace, withWorkspace } from '../src/tenancy/index.js';
 
 const db = await connect();
@@ -20,6 +21,9 @@ try {
       RETURNING id`);
     const snap = await q(`INSERT INTO scopely.snapshots (business_id, url, http_status, fetched_at, fetch_method, viewport, html_sha256)
       VALUES ($1, 'https://alderfinch.example/', 200, '2026-09-27T09:00:00Z', 'render', 'mobile', repeat('b', 64)) RETURNING id`, [biz.id]);
+    // The sample snapshot answered 200, so the sample site was seen: say so, as an analysis would,
+    // instead of leaving the card at "not checked" beside a finding read from that page.
+    await recordWebsiteStatus(db, biz.id, { status: 'WEBSITE_PRESENT', basis: 'OBSERVED', source: 'demo_seed', checkedAt: '2026-09-27T09:00:00Z' });
     const rule = await q(`SELECT id FROM scopely.rule_versions WHERE rule_key = 'check.booking_cta_trace' AND version = 1`);
     const obs = await q(`INSERT INTO scopely.observations (snapshot_id, check_code, rule_version_id, state, result, href, visible_text, observed_at)
       VALUES ($1, 'booking_cta_trace.target', $2, 'OBSERVED', 'defect', '/contact', 'Book an appointment', '2026-09-27T09:00:00Z') RETURNING id`, [snap.id, rule.id]);
@@ -50,6 +54,7 @@ try {
     const links = await q(`SELECT id FROM scopely.rule_versions WHERE rule_key = 'check.contact_links' AND version = 1`);
     const fixSnap = await q(`INSERT INTO scopely.snapshots (business_id, url, http_status, fetched_at, fetch_method, viewport, html_sha256)
       VALUES ($1, 'https://harbourlane.example/contact', 200, '2026-09-26T10:00:00Z', 'render', 'mobile', repeat('c', 64)) RETURNING id`, [fixBiz.id]);
+    await recordWebsiteStatus(db, fixBiz.id, { status: 'WEBSITE_PRESENT', basis: 'OBSERVED', source: 'demo_seed', checkedAt: '2026-09-26T10:00:00Z' });
     const fixObs = await q(`INSERT INTO scopely.observations (snapshot_id, check_code, rule_version_id, state, result, href, visible_text, observed_at)
       VALUES ($1, 'contact_links.whatsapp', $2, 'OBSERVED', 'defect', 'https://api.whatsapp.com/send?phone=07700900461', 'WhatsApp us', '2026-09-26T10:00:00Z')
       RETURNING id`, [fixSnap.id, links.id]);

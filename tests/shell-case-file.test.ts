@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import type pg from 'pg';
 import { afterEach, describe, expect, it } from 'vitest';
 import { stageOf } from '../src/api/case-file.js';
+import { isDemoBusiness, isReservedHost } from '../src/api/sample.js';
 import { DEFAULT_SHOW_LINK_TTL_SECONDS } from '../src/build/site/index.js';
 import { createHandler } from '../src/server/app.js';
 import { OutcomeRejected, occurredAt } from '../src/sell/outcomes.js';
@@ -193,6 +194,35 @@ describe('the feed', () => {
     expect((await call('POST', `/api/fix/${projectId}/capture`, { evidenceId: fix.evidenceId })).status).toBe(200);
     const f = ((await call('GET', '/api/opportunities')).json() as Record<string, unknown>[]).find((o) => o.opportunityId === fix.opportunityId)!;
     expect(f).toMatchObject({ captured: true, fixProjectId: projectId });
+  });
+});
+
+describe('demo data', () => {
+  it('knows a reserved documentation or test address, and nothing else, as demo', () => {
+    for (const h of ['alderfinch.example', 'https://harbourlane.example/contact', 'x.test', 'a.invalid', 'example.com', 'www.example.org', 'HTTPS://Clinic.Example.']) {
+      expect(isReservedHost(h), h).toBe(true);
+    }
+    for (const h of ['alderfinch.co.uk', 'example.co.uk', 'myexample.com', 'examples.com', 'test.com', 'clinic.testing', '', 'not a url']) {
+      expect(isReservedHost(h), h).toBe(false);
+    }
+    expect(isDemoBusiness(null, null)).toBe(false);
+    expect(isDemoBusiness('clinic.example', 'https://clinic.example/')).toBe(true);
+    // One real address is enough to treat the business as real.
+    expect(isDemoBusiness('clinic.example', 'https://realclinic.co.uk/')).toBe(false);
+  });
+
+  it('marks a business on a reserved address as demo in the feed and the Case File, and a real one not', async () => {
+    const web = await seedWebsiteOpportunity(db());
+    const { call } = await start();
+    const feedItem = async () => ((await call('GET', '/api/opportunities')).json() as Record<string, unknown>[]).find((o) => o.opportunityId === web.opportunityId)!;
+    expect((await feedItem()).demo).toBe(true);
+    expect((await call('GET', `/api/opportunities/${web.opportunityId}`)).json().business.demo).toBe(true);
+    await db().query(`UPDATE businesses SET domain = 'realclinic.co.uk' WHERE id = $1`, [web.businessId]);
+    expect((await feedItem()).demo).toBe(false);
+    expect((await call('GET', `/api/opportunities/${web.opportunityId}`)).json().business.demo).toBe(false);
+    // The screens label it from the API's flag, not from their own reading of the address.
+    expect((await call('GET', '/shell.js')).text).toMatch(/o\.demo \? h\('span', \{ class: 'badge b-demo'[^)]*text: 'DEMO DATA'/);
+    expect((await call('GET', '/case-file.js')).text).toMatch(/cf\.business\.demo \? h\('span', \{ class: 'badge b-demo'[^)]*text: 'DEMO DATA'/);
   });
 });
 

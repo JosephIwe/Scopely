@@ -115,6 +115,11 @@ sit inside its own range. Coordinates need a `geo_source`.
 - **A failed fetch is never "no website".** Timeouts, DNS errors and 5xx become
   `WEBSITE_UNREACHABLE`; blocked or ambiguous results become `WEBSITE_NEEDS_REVIEW`
   (`classifyWebsiteFetch` never returns `WEBSITE_NOT_OBSERVED`).
+- **Only a "no such host" answer is an observed DNS failure.** `ENOTFOUND`/`ENODATA` is
+  `dns_not_found` (unreachable, OBSERVED). A lookup that failed (`EAI_AGAIN`, a timed-out or refused
+  resolver) is `other`, so the status is unreachable on a `NOT_OBSERVABLE` basis. An environment
+  whose resolver answers `ENOTFOUND` for every name (some sandboxes do) still looks like a real
+  "not found"; run analyses where public DNS works.
 - **`WEBSITE_NOT_OBSERVED`** needs an `OBSERVED` or `INFERRED` basis and no known domain or URL.
 - **The no-website finding** (`E-NO-WEBSITE`) can only be recorded, and only reach a message, while
   the business is `WEBSITE_NOT_OBSERVED`.
