@@ -10,105 +10,197 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/landing.css">
+  <!-- Loaded in the head, not deferred, so scroll reveals are armed before the first paint. Without
+       it (or with reduced motion) every section is simply visible. -->
+  <script src="/landing.js"></script>
 </head>
 <!-- U2: the public landing page at /; the product is at /app. Every claim here matches what the product
      does today. Deliver and Verify stay marked planned until they are built, and the example Case File
      is the demo seed's fictional business, labelled as demo data (L2). -->
 <body class="lp">
   <header class="lp-bar">
+    <div class="lp-progress" aria-hidden="true"><i></i></div>
     <a class="logo" href="/"><i></i>SCOPELY</a>
     <nav class="lp-nav" aria-label="Sections">
+      <a href="#case">Case file</a>
       <a href="#how">How it works</a>
       <a href="#evidence">Evidence</a>
+      <a href="#honest">Honest by design</a>
     </nav>
-    <a class="btn dark" href="/app">Open Scopely</a>
+    <a class="btn dark go" href="/app">Open Scopely</a>
   </header>
 
   <main>
     <section class="lp-hero">
       <div class="lp-copy">
-        <div class="eyebrow">Opportunity to revenue</div>
-        <h1>Find businesses with a problem you can <em>prove</em>. Build the fix. Sell it.</h1>
-        <p class="lp-lede">Scopely finds local businesses, checks their websites for problems it can show you, and turns each problem into a service you can sell, with the evidence attached.</p>
-        <div class="lp-ctas">
-          <a class="btn primary lg" href="/app">Open Scopely</a>
-          <a class="btn ghost lg" href="#evidence">See how evidence works</a>
+        <div class="lp-pill eyebrow in-1">From opportunity to revenue</div>
+        <h1 class="in-2">Find businesses with real problems you can <em>prove</em>.</h1>
+        <p class="lp-lede in-3">Scopely finds local businesses, checks their websites for problems it can show you, and turns each problem into a service you can sell. Prove it. Build the fix. Sell it.</p>
+        <div class="lp-ctas in-4">
+          <a class="btn dark lg go" href="/app">Open Scopely</a>
+          <a class="btn ghost lg play" href="#how">See how it works</a>
         </div>
+        <ul class="lp-marks in-5">
+          <li><i class="mk amber"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7"/></svg></i><span><b>Real evidence</b>Pages, elements and times</span></li>
+          <li><i class="mk blue"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></i><span><b>Clear opportunities</b>A new website, or a fix</span></li>
+          <li><i class="mk sage"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 12l4-4 2.5 2.5L14 6"/></svg></i><span><b>Services to sell</b>Each finding mapped to one</span></li>
+        </ul>
       </div>
 
-      <figure class="lp-demo" aria-labelledby="demo-cap">
-        <div class="demo-tag">Demo data</div>
-        <div class="cf" aria-hidden="true">
+      <div class="lp-visual in-6" role="img" aria-label="Illustration of the Scopely app with demo data: an opportunity feed with two fictional businesses and the evidence behind one finding.">
+        <div class="app-win">
+          <aside class="aw-side">
+            <span class="aw-logo"><i></i>SCOPELY</span>
+            <span class="aw-nav cur">Discover</span>
+            <span class="aw-nav">Prove</span>
+            <span class="aw-nav">Build</span>
+            <span class="aw-nav">Sell</span>
+            <span class="aw-nav off">Deliver</span>
+            <span class="aw-nav off">Verify</span>
+            <span class="aw-ws">Sample workspace</span>
+          </aside>
+          <div class="aw-main">
+            <div class="aw-head"><b>Opportunities</b><span class="aw-demo">Demo data</span></div>
+            <div class="aw-chips"><span class="on">All</span><span><i class="dot web"></i>Needs a website</span><span><i class="dot fix"></i>Needs a fix</span></div>
+            <ul class="aw-feed">
+              <li><i class="av a1"></i><span><b>Harbour Lane Dental</b><small>Contact page</small></span><em class="chip fix">Needs a fix</em></li>
+              <li><i class="av a2"></i><span><b>Alder &amp; Finch Physiotherapy</b><small>Booking button</small></span><em class="chip fix">Needs a fix</em></li>
+              <li class="ghostrow"><i class="av"></i><span><s></s><s></s></span><em class="chip web">Needs a website</em></li>
+              <li class="ghostrow"><i class="av"></i><span><s></s><s></s></span><em class="chip web">Needs a website</em></li>
+            </ul>
+          </div>
+        </div>
+        <div class="ev-float">
+          <span class="eyebrow">Observed · high confidence</span>
+          <b>WhatsApp link has no country code</b>
+          <span class="ok">Re-checked: still broken</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="lp-case" id="case" aria-labelledby="case-h">
+      <h2 class="sr" id="case-h">An example Case File</h2>
+      <figure class="lp-demo" aria-labelledby="demo-cap" data-reveal>
+        <div class="cf">
           <div class="cf-head">
-            <span class="eyebrow">Case file</span>
+            <span class="demo-tag">Demo data</span>
             <span class="badge b-fix">FIX OPPORTUNITY</span>
           </div>
-          <div class="cf-biz"><b>Harbour Lane Dental</b><span>harbourlane.example</span></div>
-          <ol class="cf-secs">
-            <li><span class="num">01</span><div><b>Opportunity</b><p>The “WhatsApp us” button uses a number with no country code, which WhatsApp cannot open</p></div></li>
-            <li><span class="num">02</span><div><b>Evidence</b>
+          <div class="eyebrow">Case file</div>
+          <div class="cf-biz"><b>Harbour Lane Dental</b><span>harbourlane.example · fictional dental practice</span></div>
+          <ol class="cf-secs" data-stagger>
+            <li><span class="cf-ic"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5M8 10.8v.2"/></svg></span><div><span class="num">01</span> <b>Opportunity</b><p>The “WhatsApp us” button uses a number with no country code, which WhatsApp cannot open.</p></div></li>
+            <li><span class="cf-ic"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2.5" width="10" height="11" rx="1.5"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3"/></svg></span><div><span class="num">02</span> <b>Evidence</b>
               <div class="quote"><span class="eyebrow">Observed · 26 Sep 2026 · high confidence</span><code>&lt;a href="https://api.whatsapp.com/send?phone=07700900461"&gt;WhatsApp us&lt;/a&gt;</code></div>
               <p class="ok">Re-checked on a later visit: still broken</p></div></li>
-            <li><span class="num">04</span><div><b>Proposed service</b><p>Website Fix Sprint <span class="price">£120</span></p></div></li>
-            <li class="flow"><span>Observed problem</span><span class="cur">Prove</span><span>Build fix</span></li>
-            <li class="planned"><span class="num">10</span><div><b>Deliver · verify · get paid</b> <span class="plan">PLANNED</span></div></li>
+            <li><span class="cf-ic"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5a3 3 0 00-3.7 3.9L2.5 10.7l2.8 2.8 4.3-4.3a3 3 0 003.9-3.7l-1.8 1.8-1.9-.3-.3-1.9z"/></svg></span><div><span class="num">04</span> <b>Proposed service</b><p>Website Fix Sprint <span class="price">£120</span> <span class="sample">sample price</span></p></div></li>
+            <li class="planned"><span class="cf-ic"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke-dasharray="2 2"/></svg></span><div><span class="num">10</span> <b>Deliver · verify · get paid</b> <span class="plan">PLANNED</span></div></li>
           </ol>
+          <a class="btn dark go" href="/app">Open Scopely</a>
         </div>
-        <figcaption id="demo-cap">An example Case File from Scopely’s demo data. Harbour Lane Dental is a fictional business on a reserved <code>.example</code> domain; the finding and price are sample values, not results.</figcaption>
+
+        <div class="cf-fix" aria-hidden="true">
+          <p class="hand">From an observed problem to a fix you can show</p>
+          <div class="flow-track" data-stagger>
+            <span class="st">Observed problem</span>
+            <span class="st cur">Prove</span>
+            <span class="st">Build fix</span>
+          </div>
+          <div class="browser">
+            <div class="br-bar"><i></i><i></i><i></i><span>harbourlane.example/contact</span></div>
+            <div class="br-page">
+              <div class="br-nav"><b>Harbour Lane Dental</b><span></span><span></span><span></span></div>
+              <div class="br-hero">
+                <p class="br-h">Get in touch</p>
+                <div class="br-lines"><s></s><s></s><s></s></div>
+                <div class="br-diff">
+                  <div class="was"><span class="eyebrow">Observed</span><code>phone=07700900461</code></div>
+                  <div class="now"><span class="eyebrow">Draft fix · for your review</span><code>phone=447700900461</code></div>
+                </div>
+                <span class="br-wa">WhatsApp us</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption id="demo-cap">An example Case File from Scopely’s demo data. Harbour Lane Dental is a fictional business on a reserved <code>.example</code> domain; the finding, the corrected number and the price are sample values, not results.</figcaption>
       </figure>
     </section>
 
     <section class="lp-sec" id="how" aria-labelledby="how-h">
-      <div class="eyebrow">How it works</div>
-      <h2 id="how-h">One workflow, from a search to a sale</h2>
-      <ol class="lp-steps">
-        <li><span class="num">1</span><h3>Discover</h3><p>Search for businesses by industry, place and size. Scopely shows who it found, and why a business was left out.</p></li>
-        <li><span class="num">2</span><h3>Prove</h3><p>Scopely visits each selected website and records what it observed: the page, the exact link or button, and when it looked.</p></li>
-        <li><span class="num">3</span><h3>Build</h3><p>Open a website build or a fix from the evidence, review the draft, and approve the version you want to show.</p></li>
-        <li><span class="num">4</span><h3>Sell</h3><p>See who to contact and whether you may, then record your pitch and its outcome. Scopely never sends messages for you.</p></li>
-        <li class="later"><span class="num">5</span><h3>Deliver <span class="plan">PLANNED</span></h3><p>Tracking delivery is not built yet. Won work is listed, nothing more.</p></li>
-        <li class="later"><span class="num">6</span><h3>Verify <span class="plan">PLANNED</span></h3><p>Re-checking the original problem after delivery is not built yet. Nothing is marked verified.</p></li>
+      <div class="sec-head" data-reveal>
+        <div><div class="eyebrow">How it works</div>
+        <h2 id="how-h">One workflow, from a search to a sale</h2></div>
+        <p>Go from finding a real problem to a pitch you can stand behind, all in one place.</p>
+      </div>
+      <ol class="lp-steps" data-stagger>
+        <li class="s-amber"><span class="num">1</span><h3>Discover</h3><p>Search by industry, place and size. See who was found, and why a business was left out.</p></li>
+        <li class="s-blue"><span class="num">2</span><h3>Prove</h3><p>Scopely visits each site and records what it saw: the page, the element, the time.</p></li>
+        <li class="s-amber"><span class="num">3</span><h3>Build</h3><p>Start a website or a fix from the evidence, then approve the version to show.</p></li>
+        <li class="s-blue"><span class="num">4</span><h3>Sell</h3><p>Record your pitch and its outcome. Scopely never sends messages for you.</p></li>
+        <li class="later"><span class="num">5</span><h3>Deliver <span class="plan">PLANNED</span></h3><p>Not built yet. Won work is listed, nothing more.</p></li>
+        <li class="later"><span class="num">6</span><h3>Verify <span class="plan">PLANNED</span></h3><p>Not built yet. Nothing is marked verified.</p></li>
       </ol>
     </section>
 
     <section class="lp-sec" id="evidence" aria-labelledby="ev-h">
-      <div class="eyebrow">Evidence</div>
-      <h2 id="ev-h">Every opportunity carries its proof</h2>
-      <div class="lp-ev">
-        <article><span class="k">Observed</span><h3>What Scopely saw</h3><p>The page address, the exact element and the time it looked. If it could not see something, it says “unknown” and never guesses.</p></article>
-        <article><span class="k">Why it matters</span><h3>The problem, in plain words</h3><p>A button that opens the wrong form, a WhatsApp link with no country code, a booking path that ends nowhere.</p></article>
-        <article><span class="k">What you can sell</span><h3>A service mapped to it</h3><p>Each finding points to a fix or a new website. A price appears only when you have set one.</p></article>
+      <div class="sec-head" data-reveal>
+        <div><div class="eyebrow">Evidence</div>
+        <h2 id="ev-h">Every opportunity carries its proof</h2></div>
+        <p>Scopely doesn’t just give you a list. It shows you what is actually happening, so you can have a confident conversation.</p>
       </div>
-      <p class="lp-note">A high-confidence finding is checked again on a fresh visit before it can reach a prospect.</p>
+      <div class="lp-ev" data-stagger>
+        <article>
+          <div class="ev-art art-page" aria-hidden="true"><s></s><s></s><span class="hl">Book an appointment</span><s></s></div>
+          <span class="k">Observed</span><h3>What Scopely saw</h3><p>The page address, the exact element and the time it looked. If it could not see something, it says “unknown” and never guesses.</p></article>
+        <article>
+          <div class="ev-art art-code" aria-hidden="true"><code><b>&lt;a</b> href=<em>"tel:WhatsApp:0800"</em><b>&gt;</b></code><code>  Call us<b>&lt;/a&gt;</b></code></div>
+          <span class="k">Why it matters</span><h3>The problem, in plain words</h3><p>A button that opens the wrong form, a WhatsApp link with no country code, a booking path that ends nowhere.</p></article>
+        <article>
+          <div class="ev-art art-svc" aria-hidden="true"><span class="cur">£</span><span class="lines"><s></s><s></s><s></s></span></div>
+          <span class="k">What you can sell</span><h3>A service mapped to it</h3><p>Each finding points to a fix or a new website. A price appears only when you have set one.</p></article>
+      </div>
+      <p class="lp-note" data-reveal>A high-confidence finding is checked again on a fresh visit before it can reach a prospect.</p>
     </section>
 
     <section class="lp-sec" aria-labelledby="kinds-h">
-      <div class="eyebrow">Two kinds of opportunity</div>
-      <h2 id="kinds-h">A new website, or a fix to the one they have</h2>
-      <div class="lp-kinds">
-        <article class="web"><span class="badge b-web">WEBSITE OPPORTUNITY</span><h3><i class="dot web"></i>Needs a website</h3>
+      <div class="sec-head" data-reveal>
+        <div><div class="eyebrow">Two kinds of opportunity</div>
+        <h2 id="kinds-h">A new website, or a fix to the one they have</h2></div>
+        <p>Two simple categories. Clear problems you can show.</p>
+      </div>
+      <div class="lp-kinds" data-stagger>
+        <article class="web"><span class="kind-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
+          <div><span class="badge b-web">WEBSITE OPPORTUNITY</span><h3>Needs a website</h3>
           <p>Scopely’s own visit found no working website, or the site there cannot do the job. Start a website build from a template and the business’s own details.</p>
-          <p class="path">Opportunity → Build website</p></article>
-        <article class="fix"><span class="badge b-fix">FIX OPPORTUNITY</span><h3><i class="dot fix"></i>Needs a fix</h3>
+          <p class="path">Opportunity → Build website</p></div></article>
+        <article class="fix"><span class="kind-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15.5 3.5a4.5 4.5 0 00-5.6 5.8L3.5 15.7l4.2 4.2 6.4-6.4a4.5 4.5 0 005.8-5.6l-2.7 2.7-2.9-.4-.4-2.9z"/></svg></span>
+          <div><span class="badge b-fix">FIX OPPORTUNITY</span><h3>Needs a fix</h3>
           <p>A specific, observed problem on a live page, such as a broken contact link. Capture the page as proof, then build the corrected version.</p>
-          <p class="path">Observed problem → Prove → Build fix</p></article>
+          <p class="path">Observed problem → Prove → Build fix</p></div></article>
       </div>
     </section>
 
-    <section class="lp-sec" aria-labelledby="not-h">
-      <div class="eyebrow">What Scopely does not do</div>
-      <h2 id="not-h">Honest by design</h2>
-      <ul class="lp-not">
-        <li><b>It does not send messages.</b> You write and send your own outreach; Scopely records what you did.</li>
-        <li><b>It does not invent numbers.</b> Revenue, traffic and leads lost stay empty until a real figure is recorded.</li>
-        <li><b>It does not trust provider data blindly.</b> Names and contact details from data providers stay unverified until you check them.</li>
+    <section class="lp-sec" id="honest" aria-labelledby="not-h">
+      <div class="sec-head" data-reveal>
+        <div><div class="eyebrow">What Scopely does not do</div>
+        <h2 id="not-h">Honest by design</h2></div>
+        <p>Scopely gives you the facts and the tools. You stay in control of the conversation.</p>
+      </div>
+      <ul class="lp-not" data-stagger>
+        <li><span class="not-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6M4 19L20 5"/></svg></span><p><b>It does not send messages.</b> You write and send your own outreach; Scopely records what you did.</p></li>
+        <li><span class="not-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-4 3 3 5-6"/><path d="M4 4l16 16"/></svg></span><p><b>It does not invent numbers.</b> Revenue, traffic and leads lost stay empty until a real figure is recorded.</p></li>
+        <li><span class="not-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-3.5 3.8-5 7-5s6 1.5 7 5"/><path d="M17 4l3 3"/></svg></span><p><b>It does not trust provider data blindly.</b> Names and contact details from data providers stay unverified until you check them.</p></li>
       </ul>
     </section>
 
-    <section class="lp-cta" aria-labelledby="cta-h">
-      <h2 id="cta-h">See your opportunities</h2>
-      <p>Open Scopely to search, review the evidence and start a build.</p>
-      <a class="btn primary lg" href="/app">Open Scopely</a>
+    <section class="lp-cta" aria-labelledby="cta-h" data-reveal>
+      <div class="cta-copy">
+        <div class="eyebrow">Ready to find real opportunities?</div>
+        <h2 id="cta-h">See your opportunities.</h2>
+        <p>Open Scopely to search, review the evidence and start a build.</p>
+        <a class="btn primary lg go" href="/app">Open Scopely</a>
+      </div>
+      <div class="cta-tile" aria-hidden="true"><span class="logo light"><i></i>SCOPELY</span><span class="hand">Find it. Prove it.<br>Build the fix. Sell it.</span></div>
     </section>
   </main>
 
@@ -117,6 +209,5 @@
     <span>Preview build. Sign-in is not built yet.</span>
     <a href="/app">Open Scopely</a>
   </footer>
-  <script src="/landing.js"></script>
 </body>
 </html>

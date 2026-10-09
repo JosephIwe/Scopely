@@ -111,6 +111,33 @@ describe('product shell routes (U2)', () => {
     expect(w.json()).toMatchObject({ authenticated: false });
     expect(typeof w.json().name).toBe('string');
   });
+
+  it('animates the landing page only as an enhancement: nothing is hidden without JavaScript or with reduced motion', async () => {
+    const { call } = await start();
+    const page = (await call('GET', '/')).text;
+    const css = (await call('GET', '/landing.css')).text.replace(/\/\*[\s\S]*?\*\//g, '');
+    const js = (await call('GET', '/landing.js')).text;
+    // Same-origin script only: no animation library, no inline script (the CSP allows neither).
+    expect([...page.matchAll(/<script[^>]*>/g)].map((m) => m[0])).toEqual(['<script src="/landing.js">']);
+    // Every hidden starting state is armed by landing.js (html.lp-motion) and sits inside the
+    // no-preference block, so reduced motion and a failed script both leave every section visible.
+    const motion = css.slice(css.indexOf('@media (prefers-reduced-motion: no-preference)'), css.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(motion.length).toBeGreaterThan(0);
+    const outside = css.replace(motion, '').replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*\s*\}/g, '');
+    expect(outside).not.toMatch(/opacity:\s*0\s*[;}]/);
+    expect(outside).not.toMatch(/animation:(?!\s*none)/);
+    for (const rule of motion.match(/[^{}]+\{[^{}]*opacity:\s*0\s*[;}]/g) ?? []) expect(rule.trim()).toMatch(/^\.lp-motion /);
+    // Entrance animations fill backwards only, so hover and pressed states still apply afterwards.
+    for (const a of motion.match(/animation:[^;]+;/g) ?? []) {
+      if (!/infinite/.test(a)) expect(a).toMatch(/backwards/);
+    }
+    // The script arms reveals only when they can run, and takes them off again if anything fails.
+    expect(js).toMatch(/'IntersectionObserver' in window && !reduce\.matches/);
+    expect(js).toMatch(/catch \{\s*root\.classList\.remove\('lp-motion'\)/);
+    expect(js).not.toMatch(/setInterval|setTimeout/);
+    // Hover is never the only way to see something: hover rules change emphasis, not visibility.
+    for (const rule of css.match(/[^{}]*:hover[^{}]*\{[^{}]*\}/g) ?? []) expect(rule).not.toMatch(/display|visibility|opacity/);
+  });
 });
 
 describe('stageOf', () => {
