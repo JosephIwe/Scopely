@@ -60,12 +60,38 @@ describe('product shell routes (U2)', () => {
     expect(root.text).toContain('href="/app"');
     expect(root.text).not.toContain('/app.js');
     expect(root.headers.get('content-security-policy')).toMatch(/script-src 'self'/);
+    expect((await call('GET', '/landing.css')).headers.get('content-type')).toMatch(/text\/css/);
     for (const f of ['/shell.js', '/case-file.js', '/map-slot.js', '/lib.js', '/landing.js']) {
       const r = await call('GET', f);
       expect(r.status, f).toBe(200);
       expect(r.headers.get('content-type'), f).toMatch(/javascript/);
     }
     expect((await call('GET', '/shell.css')).headers.get('content-type')).toMatch(/text\/css/);
+  });
+
+  it('the landing page leads to /app, labels its example as demo data, and claims nothing that is not built (L1–L3)', async () => {
+    const { call } = await start();
+    const page = (await call('GET', '/')).text;
+    // L3: out of search engines until launch; the product keeps its own noindex.
+    expect(page).toMatch(/<meta name="robots" content="noindex,nofollow">/);
+    expect((await call('GET', '/app')).text).toMatch(/<meta name="robots" content="noindex,nofollow">/);
+    // L1: every call to action opens the product, and there is no form collecting details.
+    const ctas = [...page.matchAll(/<a class="btn[^"]*" href="([^"]+)">([^<]+)<\/a>/g)].filter((m) => m[2] === 'Open Scopely');
+    expect(ctas.length).toBeGreaterThanOrEqual(3);
+    for (const m of ctas) expect(m[1]).toBe('/app');
+    expect(page).not.toMatch(/<form|<input|mailto:/i);
+    // L2: the example Case File is the demo seed's fictional business, labelled as demo data.
+    const demo = page.slice(page.indexOf('<figure'), page.indexOf('</figure>'));
+    expect(demo).toContain('Demo data');
+    expect(demo).toContain('harbourlane.example');
+    expect(demo).toMatch(/fictional business/);
+    expect(page.match(/\.example\b/g)!.length).toBe(page.slice(page.indexOf('<figure'), page.indexOf('</figure>')).match(/\.example\b/g)!.length);
+    // Deliver and Verify stay planned, wherever they appear.
+    const steps = page.slice(page.indexOf('class="lp-steps"'), page.indexOf('</ol>', page.indexOf('class="lp-steps"')));
+    for (const stage of ['Deliver', 'Verify']) expect(steps).toMatch(new RegExp(`<h3>${stage} <span class="plan">PLANNED</span></h3>`));
+    expect(demo).toMatch(/Deliver · verify · get paid<\/b> <span class="plan">PLANNED<\/span>/);
+    // No invented results: no percentages, customer counts or testimonials.
+    expect(page).not.toMatch(/\d+\s*%|testimonial|customers? (?:love|trust)|\d+[,\d]* (?:businesses|clients|customers)/i);
   });
 
   it('keeps the map a placeholder: no provider, tiles or coordinates (U3)', async () => {

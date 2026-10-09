@@ -60,11 +60,11 @@ export interface ServerConfig {
 }
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
-// U2: the root is the landing page's place; the product lives under /app. The landing page itself
-// is not built yet, so / is a plain boundary page that points to /app.
+// U2: the root is the public landing page (noindex until launch, L3); the product lives under /app.
 const STATIC: Record<string, [string, string]> = {
   '/': ['landing.html', 'text/html; charset=utf-8'],
   '/landing.js': ['landing.js', 'text/javascript; charset=utf-8'],
+  '/landing.css': ['landing.css', 'text/css; charset=utf-8'],
   '/app': ['index.html', 'text/html; charset=utf-8'],
   '/app/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],

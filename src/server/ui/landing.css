@@ -1,0 +1,103 @@
+/* The public landing page at / (U2). Built on the app's tokens in app.css: Geist, Instrument Serif
+   for display type, Geist Mono labels, amber = needs a website, blue = needs a fix. */
+
+body.lp { height: auto; background: var(--paper); }
+.lp main { overflow-x: hidden; }
+.lp .plan { font: 600 9px/1 var(--font); letter-spacing: .07em; padding: 3px 5px; border-radius: 4px; border: 1px dashed #C9C1B2; color: var(--muted); vertical-align: middle; white-space: nowrap; }
+.lp .badge { display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: .07em; padding: 3px 7px; border-radius: 6px; white-space: nowrap; }
+.lp .b-web { background: var(--amber-tint); color: var(--amber-text); }
+.lp .b-fix { background: var(--blue-tint); color: var(--blue); }
+.lp .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.lp .dot.web { background: var(--amber); }
+.lp .dot.fix { background: var(--blue); }
+.lp code { font-family: var(--mono); font-size: .92em; }
+
+/* ---------------------------------------------------------------- header */
+.lp-bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 24px; height: 60px; padding: 0 max(20px, calc((100% - 1152px) / 2));
+  background: rgba(251, 249, 244, .94); border-bottom: 1px solid var(--line); backdrop-filter: saturate(1.2) blur(8px); }
+.lp-nav { display: flex; gap: 20px; margin-left: auto; }
+.lp-nav a { color: var(--ink-2); text-decoration: none; font-size: 14px; }
+.lp-nav a:hover { color: var(--ink); }
+
+/* ---------------------------------------------------------------- hero */
+.lp-hero { max-width: 1152px; margin: 0 auto; padding: 72px 24px 56px; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 56px; align-items: center; }
+.lp-hero h1 { margin-top: 16px; font: 400 clamp(38px, 5vw, 60px)/1.04 "Instrument Serif", Georgia, serif; letter-spacing: -.01em; }
+.lp-hero h1 em { font-style: italic; color: var(--blue); }
+.lp-lede { margin-top: 20px; max-width: 520px; font-size: 17px; line-height: 1.55; color: var(--ink-2); }
+.lp-ctas { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+
+/* the example Case File (demo data, L2) */
+.lp-demo { position: relative; margin: 0; }
+.demo-tag { position: absolute; z-index: 2; top: -12px; right: 18px; font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+  padding: 7px 10px; border-radius: 999px; background: var(--ink); color: #fff; }
+.cf { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--frame); padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.cf-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.cf-biz { display: flex; flex-direction: column; }
+.cf-biz b { font-size: 19px; }
+.cf-biz span { font: 12px var(--mono); color: var(--muted); }
+.cf-secs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.cf-secs > li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 13.5px; }
+.cf-secs .num { font: 500 11px/1.8 var(--mono); color: var(--faint); }
+.cf-secs b { font-size: 13.5px; }
+.cf-secs p { color: var(--ink-2); margin-top: 2px; }
+.cf-secs .quote { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; padding: 9px 11px; background: var(--paper); border-radius: 9px; overflow-wrap: anywhere; }
+.cf-secs .quote .eyebrow { font-size: 9.5px; color: var(--blue); }
+.cf-secs .quote code { font-size: 11.5px; color: var(--ink); }
+.cf-secs .ok { margin-top: 6px; font-size: 12.5px; color: var(--sage-text); }
+.cf-secs .price { font-family: var(--mono); font-weight: 500; color: var(--ink); margin-left: 6px; }
+.cf-secs .flow { display: flex; flex-wrap: wrap; gap: 6px; font: 500 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.cf-secs .flow span + span::before { content: "→ "; color: var(--faint); }
+.cf-secs .flow .cur { color: var(--blue); font-weight: 600; }
+.cf-secs .planned { color: var(--muted); }
+.lp-demo figcaption { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+
+/* ---------------------------------------------------------------- sections */
+.lp-sec { max-width: 1152px; margin: 0 auto; padding: 56px 24px; border-top: 1px solid var(--line); }
+.lp-sec h2, .lp-cta h2 { margin-top: 12px; font: 400 clamp(30px, 3.6vw, 42px)/1.1 "Instrument Serif", Georgia, serif; }
+.lp-sec h3 { font-size: 16px; font-weight: 600; }
+.lp-sec p { color: var(--ink-2); }
+
+.lp-steps { list-style: none; margin: 28px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.lp-steps li { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 6px; }
+.lp-steps .num { font: 500 12px/1 var(--mono); color: var(--amber-text); }
+.lp-steps li.later { background: transparent; border-style: dashed; }
+.lp-steps li.later h3 { color: var(--ink-2); }
+
+.lp-ev { margin-top: 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.lp-ev article { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 6px; }
+.lp-ev .k { font: 500 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--blue); }
+.lp-note { margin-top: 16px; font-size: 13.5px; }
+
+.lp-kinds { margin-top: 28px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.lp-kinds article { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.lp-kinds .web { --c: var(--amber); }
+.lp-kinds .fix { --c: var(--blue); }
+.lp-kinds .path { font: 500 11px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+
+.lp-not { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 10px; max-width: 760px; }
+.lp-not li { padding: 14px 16px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); color: var(--ink-2); }
+.lp-not b { color: var(--ink); }
+
+.lp-cta { max-width: 1104px; margin: 24px auto 64px; padding: 48px 24px; text-align: center; background: var(--ink); color: #fff; border-radius: 22px; }
+.lp-cta p { margin: 10px 0 24px; color: #CFC9BE; }
+
+.lp-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 24px max(20px, calc((100% - 1152px) / 2)); border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.lp-foot span { margin-right: auto; }
+
+/* ---------------------------------------------------------------- tablet and phone */
+@media (max-width: 960px) {
+  .lp-hero { grid-template-columns: minmax(0, 1fr); gap: 44px; padding-top: 48px; }
+  .lp-steps, .lp-ev { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .lp-bar { gap: 12px; padding: 0 16px; }
+  .lp-nav { display: none; }
+  .lp-bar .btn { margin-left: auto; }
+  .lp-hero, .lp-sec { padding-left: 16px; padding-right: 16px; }
+  .lp-hero { padding-top: 36px; }
+  .lp-lede { font-size: 16px; }
+  .lp-ctas .btn { flex: 1 1 100%; }
+  .lp-steps, .lp-ev, .lp-kinds { grid-template-columns: minmax(0, 1fr); }
+  .lp-cta { margin: 16px 16px 48px; }
+  .cf { padding: 16px; }
+}
