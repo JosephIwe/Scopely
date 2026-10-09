@@ -60,12 +60,38 @@ describe('product shell routes (U2)', () => {
     expect(root.text).toContain('href="/app"');
     expect(root.text).not.toContain('/app.js');
     expect(root.headers.get('content-security-policy')).toMatch(/script-src 'self'/);
+    expect((await call('GET', '/landing.css')).headers.get('content-type')).toMatch(/text\/css/);
     for (const f of ['/shell.js', '/case-file.js', '/map-slot.js', '/lib.js', '/landing.js']) {
       const r = await call('GET', f);
       expect(r.status, f).toBe(200);
       expect(r.headers.get('content-type'), f).toMatch(/javascript/);
     }
     expect((await call('GET', '/shell.css')).headers.get('content-type')).toMatch(/text\/css/);
+  });
+
+  it('the landing page leads to /app, labels its example as demo data, and claims nothing that is not built (L1–L3)', async () => {
+    const { call } = await start();
+    const page = (await call('GET', '/')).text;
+    // L3: out of search engines until launch; the product keeps its own noindex.
+    expect(page).toMatch(/<meta name="robots" content="noindex,nofollow">/);
+    expect((await call('GET', '/app')).text).toMatch(/<meta name="robots" content="noindex,nofollow">/);
+    // L1: every call to action opens the product, and there is no form collecting details.
+    const ctas = [...page.matchAll(/<a class="btn[^"]*" href="([^"]+)">([^<]+)<\/a>/g)].filter((m) => m[2] === 'Open Scopely');
+    expect(ctas.length).toBeGreaterThanOrEqual(3);
+    for (const m of ctas) expect(m[1]).toBe('/app');
+    expect(page).not.toMatch(/<form|<input|mailto:/i);
+    // L2: the example Case File is the demo seed's fictional business, labelled as demo data.
+    const demo = page.slice(page.indexOf('<figure'), page.indexOf('</figure>'));
+    expect(demo).toContain('Demo data');
+    expect(demo).toContain('harbourlane.example');
+    expect(demo).toMatch(/fictional business/);
+    expect(page.match(/\.example\b/g)!.length).toBe(page.slice(page.indexOf('<figure'), page.indexOf('</figure>')).match(/\.example\b/g)!.length);
+    // Deliver and Verify stay planned, wherever they appear.
+    const steps = page.slice(page.indexOf('class="lp-steps"'), page.indexOf('</ol>', page.indexOf('class="lp-steps"')));
+    for (const stage of ['Deliver', 'Verify']) expect(steps).toMatch(new RegExp(`<h3>${stage} <span class="plan">PLANNED</span></h3>`));
+    expect(demo).toMatch(/Deliver · verify · get paid<\/b> <span class="plan">PLANNED<\/span>/);
+    // No invented results: no percentages, customer counts or testimonials.
+    expect(page).not.toMatch(/\d+\s*%|testimonial|customers? (?:love|trust)|\d+[,\d]* (?:businesses|clients|customers)/i);
   });
 
   it('keeps the map a placeholder: no provider, tiles or coordinates (U3)', async () => {
@@ -84,6 +110,52 @@ describe('product shell routes (U2)', () => {
     expect(w.status).toBe(200);
     expect(w.json()).toMatchObject({ authenticated: false });
     expect(typeof w.json().name).toBe('string');
+  });
+
+  it('loads the landing page typefaces from this server, two families with system fallbacks', async () => {
+    const { call } = await start();
+    const page = (await call('GET', '/')).text;
+    const css = (await call('GET', '/landing.css')).text;
+    // Nothing is fetched from another origin: every href and src is same-origin or a data: URL.
+    for (const m of page.matchAll(/<(?:a|link|script|img)\b[^>]*?\s(?:href|src)="([^"#]+)"/g)) expect(m[1], m[1]).toMatch(/^(?:\/|data:)/);
+    expect(css).not.toMatch(/url\((?!\/fonts\/)/);
+    for (const m of css.matchAll(/url\((\/fonts\/[^)]+)\)/g)) {
+      const r = await call('GET', m[1]!);
+      expect(r.status, m[1]).toBe(200);
+      expect(r.headers.get('content-type'), m[1]).toBe('font/woff2');
+    }
+    // Instrument Serif for display, IBM Plex (Sans and its Mono) for everything else; each stack
+    // ends in a system face so a failed font still leaves readable text.
+    const faces = new Set([...css.matchAll(/@font-face\s*\{[^}]*font-family:\s*"([^"]+)"/g)].map((m) => m[1]));
+    expect([...faces].sort()).toEqual(['IBM Plex Mono', 'IBM Plex Sans', 'Instrument Serif', 'Serif Fallback']);
+    for (const v of ['--font', '--mono', '--serif']) expect(css).toMatch(new RegExp(`${v}: [^;]*(?:sans-serif|monospace|serif);`));
+  });
+
+  it('animates the landing page only as an enhancement: nothing is hidden without JavaScript or with reduced motion', async () => {
+    const { call } = await start();
+    const page = (await call('GET', '/')).text;
+    const css = (await call('GET', '/landing.css')).text.replace(/\/\*[\s\S]*?\*\//g, '');
+    const js = (await call('GET', '/landing.js')).text;
+    // Same-origin script only: no animation library, no inline script (the CSP allows neither).
+    expect([...page.matchAll(/<script[^>]*>/g)].map((m) => m[0])).toEqual(['<script src="/landing.js">']);
+    // Every hidden starting state is armed by landing.js (html.lp-motion) and sits inside the
+    // no-preference block, so reduced motion and a failed script both leave every section visible.
+    const motion = css.slice(css.indexOf('@media (prefers-reduced-motion: no-preference)'), css.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(motion.length).toBeGreaterThan(0);
+    const outside = css.replace(motion, '').replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*\s*\}/g, '');
+    expect(outside).not.toMatch(/opacity:\s*0\s*[;}]/);
+    expect(outside).not.toMatch(/animation:(?!\s*none)/);
+    for (const rule of motion.match(/[^{}]+\{[^{}]*opacity:\s*0\s*[;}]/g) ?? []) expect(rule.trim()).toMatch(/^\.lp-motion /);
+    // Entrance animations fill backwards only, so hover and pressed states still apply afterwards.
+    for (const a of motion.match(/animation:[^;]+;/g) ?? []) {
+      if (!/infinite/.test(a)) expect(a).toMatch(/backwards/);
+    }
+    // The script arms reveals only when they can run, and takes them off again if anything fails.
+    expect(js).toMatch(/'IntersectionObserver' in window && !reduce\.matches/);
+    expect(js).toMatch(/catch \{\s*root\.classList\.remove\('lp-motion'\)/);
+    expect(js).not.toMatch(/setInterval|setTimeout/);
+    // Hover is never the only way to see something: hover rules change emphasis, not visibility.
+    for (const rule of css.match(/[^{}]*:hover[^{}]*\{[^{}]*\}/g) ?? []) expect(rule).not.toMatch(/display|visibility|opacity/);
   });
 });
 
@@ -149,9 +221,9 @@ describe('the Case File', () => {
 
   it('shows a contact with the database gate on emailing it', async () => {
     const web = await seedWebsiteOpportunity(db());
-    await db().query(`INSERT INTO contacts (business_id, full_name, role, email, email_kind, source, label, outreach_basis)
-                      VALUES ($1, 'Sam Alder', 'Practice manager', 'sam@example-clinic.test', 'role', 'website_contact_page', 'PUBLICLY_FOUND', 'unknown'),
-                             ($1, 'Kit Moss', 'Owner', 'kit@example-clinic.test', 'personal', 'manual', 'VERIFIED', 'consent')`, [web.businessId]);
+    await db().query(`INSERT INTO contacts (business_id, full_name, role, email, email_kind, source, label, outreach_basis, verification_basis)
+                      VALUES ($1, 'Sam Alder', 'Practice manager', 'sam@example-clinic.test', 'role', 'website_contact_page', 'PUBLICLY_FOUND', 'unknown', NULL),
+                             ($1, 'Kit Moss', 'Owner', 'kit@example-clinic.test', 'personal', 'manual', 'VERIFIED', 'consent', 'Confirmed by phone')`, [web.businessId]);
     const { call } = await start();
     const contacts = (await call('GET', `/api/opportunities/${web.opportunityId}`)).json().buyer.contacts as { name: string; emailBlocker: string | null }[];
     expect(contacts.find((c) => c.name === 'Sam Alder')!.emailBlocker).toMatch(/outreach basis is unknown/);

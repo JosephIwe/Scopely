@@ -6,9 +6,13 @@
 // Scoped like the rest of src/api: an explicit current_workspace_id() predicate on every query, on
 // top of row-level security. An opportunity in another workspace reads as not found.
 import type { Db } from '../tenancy/index.js';
+import { assessBuyer, suggestBuyer } from '../prospects/buyer.js';
+import { normalizeFact } from '../prospects/facts.js';
+import { LOOKUP_ERROR_WORDS, conflictsFor } from '../prospects/lookup.js';
+import type { ProviderErrorCode } from '../providers/gateway.js';
 import { getBusinessDetail } from './queries.js';
 import type {
-  BuildState, CaseFile, CaseFileContact, CaseFileOutcome, CaseFileSuppression, DeliveryState, EvidenceItem, FeedStage, OpportunityBuildInfo,
+  BuildState, BusinessChannel, CaseFile, CaseFileContact, ContactFactView, ProspectLookupView, CaseFileOutcome, CaseFileSuppression, DeliveryState, EvidenceItem, FeedStage, OpportunityBuildInfo,
   ProspectReadiness, ReadinessCheck, SellState,
 } from './types.js';
 
@@ -162,6 +166,64 @@ async function prospectReadiness(db: Db, opportunityId: string, businessId: stri
   return { status, checks, readyContactIds: status === 'READY' ? ready : [], evidenceBlocker };
 }
 
+/** A provider key as a person reads it. */
+const providerName = (key: string) => (key === 'seller' ? 'You' : key.charAt(0).toUpperCase() + key.slice(1));
+
+const CHANNEL_CHECKS: Record<string, BusinessChannel['kind']> = {
+  'contact_links.phone': 'phone', 'contact_links.whatsapp': 'whatsapp', 'contact_links.email': 'email', 'page_signals.contact_page': 'contact_page',
+};
+
+/**
+ * Slice 12: what is on file about reaching this business and its people. Facts come from
+ * contact_facts with their own source and label; the business's own channels add the links Scopely
+ * observed on the business's own page in an analysis (OBSERVED, with the page and time); lookups are
+ * the prospect_intelligence calls for this business in the provider ledger. Nothing is fetched.
+ */
+async function prospectIntelligence(db: Db, businessId: string) {
+  const factRows = (await db.query(
+    `SELECT f.*, (f.provider_operation_id IS NOT NULL) AS from_provider FROM scopely.contact_facts f
+      WHERE f.business_id = $1 AND f.${WS} ORDER BY f.observed_at DESC, f.id`, [businessId])).rows;
+  const facts: (ContactFactView & { contactId: string | null })[] = factRows.map((f) => ({
+    factId: String(f.id), contactId: s(f.contact_id), kind: f.kind, value: f.value, source: f.source, sourceUrl: f.source_url, observedAt: iso(f.observed_at)!,
+    label: f.label, confidence: f.confidence, fromProvider: f.from_provider, recordedBy: f.recorded_by,
+    verification: f.verified_by ? { basis: f.verification_basis, by: f.verified_by, at: iso(f.verified_at)! } : null,
+  }));
+  const observed = (await db.query(
+    `SELECT o.check_code, o.result, o.href, o.observed_at, s.url AS page FROM scopely.observations o JOIN scopely.snapshots s ON s.id = o.snapshot_id
+      WHERE s.business_id = $1 AND s.${WS} AND o.${WS} AND o.state = 'OBSERVED' AND o.href IS NOT NULL AND o.check_code = ANY ($2)
+      ORDER BY o.observed_at DESC, o.id DESC`, [businessId, Object.keys(CHANNEL_CHECKS)])).rows;
+  const channels: BusinessChannel[] = [];
+  const seen = new Set<string>();
+  const add = (c: BusinessChannel) => {
+    const k = `${c.kind}\u0000${c.value.toLowerCase()}\u0000${c.origin}\u0000${c.source}`;
+    if (!seen.has(k)) { seen.add(k); channels.push(c); }
+  };
+  for (const r of observed) {
+    const kind = CHANNEL_CHECKS[r.check_code]!;
+    let raw: string = r.href;
+    if (kind === 'contact_page') { try { raw = new URL(r.href, r.page).toString(); } catch { continue; } }
+    const value = normalizeFact(kind, raw);
+    if (!value) continue;
+    // A broken link is proof of the problem, never a way to reach them; a working one Scopely saw is publicly found.
+    add({ kind, value, origin: 'analysis', broken: r.result === 'defect', label: 'PUBLICLY_FOUND', source: 'scopely', sourceUrl: r.page,
+      observedAt: iso(r.observed_at), factId: null });
+  }
+  for (const f of facts.filter((x) => x.contactId === null && x.kind !== 'title')) {
+    add({ kind: f.kind as BusinessChannel['kind'], value: f.value, origin: 'fact', broken: false, label: f.label, source: f.source, sourceUrl: f.sourceUrl,
+      observedAt: f.observedAt, factId: f.factId });
+  }
+  const lookups: ProspectLookupView[] = (await db.query(
+    `SELECT id, provider, transport, started_at, status, result_count, error_code, cost_basis, provider_credits, provider_cost_amount, provider_cost_currency
+       FROM scopely.provider_operations WHERE business_id = $1 AND ${WS} AND capability = 'prospect_intelligence'
+      ORDER BY started_at DESC, id DESC LIMIT 20`, [businessId])).rows.map((r) => ({
+    operationId: String(r.id), provider: r.provider, transport: r.transport, at: iso(r.started_at)!, status: r.status,
+    found: r.result_count === null ? null : Number(r.result_count),
+    error: r.error_code ? LOOKUP_ERROR_WORDS[r.error_code as ProviderErrorCode] ?? 'The lookup failed.' : null,
+    cost: { basis: r.cost_basis, credits: s(r.provider_credits), amount: s(r.provider_cost_amount), currency: r.provider_cost_currency },
+  }));
+  return { facts, businessChannels: channels, lookups };
+}
+
 /** One opportunity's Case File, or null when it is not in this workspace. */
 export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFile | null> {
   const o = (await db.query(
@@ -185,12 +247,13 @@ export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFi
        FROM scopely.builds b WHERE b.project_id = $1 AND b.${WS} AND b.status NOT IN ('DISCARDED', 'SUPERSEDED')
       ORDER BY b.version_no DESC LIMIT 1`, [projectId])).rows[0] : undefined;
   const contacts = await db.query(
-    `SELECT c.*, scopely.contact_outreach_blocker(c.id, c.business_id) AS blocker,
+    `SELECT c.*, scopely.contact_outreach_blocker(c.id, c.business_id) AS blocker, po.transport AS provider_transport, po.started_at AS provider_at,
             EXISTS (SELECT 1 FROM scopely.suppression s WHERE s.${WS} AND c.email IS NOT NULL
                        AND ((s.email IS NOT NULL AND lower(s.email) = lower(c.email))
                             OR (s.domain IS NOT NULL AND lower(s.domain) = lower(split_part(c.email, '@', 2))))) AS suppressed
-       FROM scopely.contacts c
+       FROM scopely.contacts c LEFT JOIN scopely.provider_operations po ON po.id = c.provider_operation_id AND po.${WS}
       WHERE c.business_id = $1 AND c.${WS} ORDER BY c.is_decision_maker DESC, c.id`, [o.business_id]);
+  const prospect = await prospectIntelligence(db, String(o.business_id));
   // The workspace's suppression entries that reach this business: the business, its domain, or a contact's address or domain.
   const suppression = await db.query(
     `SELECT s.* FROM scopely.suppression s
@@ -221,12 +284,30 @@ export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFi
   }));
   const terminal = outcomeViews.find((x) => (x.kind === 'won' || x.kind === 'lost') && !x.voided) ?? null;
   const pitched = o.pitched_at !== null;
-  const contactViews: CaseFileContact[] = contacts.rows.map((c) => ({
-    contactId: String(c.id), name: c.full_name, role: c.role, isDecisionMaker: c.is_decision_maker, email: c.email, emailKind: c.email_kind,
-    label: c.label, source: c.source, sourceUrl: c.source_url, outreachBasis: c.outreach_basis,
-    // The database's own gate (007): basis, the country's rule and suppression. Null means an email may be written.
-    emailBlocker: c.blocker,
-  }));
+  const conflicts = await conflictsFor(db, contacts.rows.map((c) => String(c.id)));
+  const forOpportunity = { path: o.opportunity_path, serviceName: o.service, businessName: business.name };
+  const contactViews: CaseFileContact[] = contacts.rows.map((c) => {
+    const facts = prospect.facts.filter((f) => f.contactId === String(c.id)).map(({ contactId: _, ...f }) => f);
+    const view = {
+      contactId: String(c.id), name: c.full_name, role: c.role, isDecisionMaker: c.is_decision_maker, email: c.email, emailKind: c.email_kind,
+      label: c.label, source: c.source, sourceUrl: c.source_url, outreachBasis: c.outreach_basis,
+      // The database's own gate (007): basis, the country's rule and suppression. Null means an email may be written.
+      emailBlocker: c.blocker,
+      relationship: c.relationship, relationshipBasis: c.relationship_basis, decisionMakerBasis: c.decision_maker_basis,
+      verification: c.verification_basis || c.verified_by ? { basis: c.verification_basis, by: c.verified_by, at: iso(c.verified_at) } : null,
+      observedAt: iso(c.observed_at), confidence: c.confidence,
+      provenance: c.provider_operation_id ? { provider: c.source, operationId: String(c.provider_operation_id), transport: c.provider_transport, at: iso(c.provider_at)! } : null,
+      facts,
+      conflicts: conflicts.filter((x) => x.contactId === String(c.id)).map(({ kind, values }) => ({ kind, values })),
+    };
+    const assessment = assessBuyer({
+      name: c.full_name, role: c.role, relationship: c.relationship, relationshipBasis: c.relationship_basis, isDecisionMaker: c.is_decision_maker,
+      decisionMakerBasis: c.decision_maker_basis, email: c.email, emailKind: c.email_kind, provider: c.provider_operation_id ? c.source : null,
+      observedAt: iso(c.observed_at), reportedTitles: facts.filter((f) => f.kind === 'title' && f.fromProvider).map((f) => ({ value: f.value, source: providerName(f.source) })),
+    }, forOpportunity);
+    return { ...view, assessment };
+  });
+  const suggested = suggestBuyer(contactViews.map((c) => ({ ...c, readyToEmail: readiness.readyContactIds.includes(c.contactId) })));
 
   return {
     opportunityId: String(o.opportunity_id), path: o.opportunity_path, kind: o.opportunity_kind, opportunityType: o.opportunity_type,
@@ -256,7 +337,10 @@ export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFi
         approvedAt: iso(latest.approved_at), approvedBy: latest.approved_by, shownAt: iso(latest.shown_at),
       } : null,
     },
-    buyer: { contacts: contactViews, suppressions },
+    buyer: {
+      contacts: contactViews, suppressions, suggestedContactId: suggested?.contactId ?? null,
+      businessChannels: prospect.businessChannels, lookups: prospect.lookups,
+    },
     readiness,
     outreach: {
       // Rule 12: a HIGH finding is re-checked on a new snapshot before it reaches a prospect.

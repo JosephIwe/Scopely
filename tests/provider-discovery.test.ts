@@ -1,14 +1,14 @@
 // Slice 10: the provider gateway and the first provider path, Clay business discovery.
 //
 // The Clay responses replayed here were recorded from Clay on 2026-10-05 (fixtures/providers/clay).
-// No test calls Clay: the live transport is exercised against a fake MCP endpoint.
+// No test calls Clay: the live transport is exercised against a fake Clay Public API.
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getRunDiscovery } from '../src/api/discovery.js';
 import { createSearch, startSearchRun, type SearchInput } from '../src/discovery/index.js';
 import {
-  ClayBusinessDiscoveryAdapter, ClayMcpTransport, DiscoveryProviderRegistry, DiscoveryRefused, EnvSecretResolver, ProviderError,
-  callProvider, clayCompanyQuery, clayCountryName, countryCode, normalizeClayCompany, parseLocality, revenueBuckets, runProviderDiscovery, secretEnvName,
+  ClayBusinessDiscoveryAdapter, ClayPublicApiTransport, DiscoveryProviderRegistry, DiscoveryRefused, EnvSecretResolver, ProviderError,
+  callProvider, clayHttpError, connectionCredential, clayCompanyQuery, clayCountryName, countryCode, normalizeClayCompany, parseLocality, revenueBuckets, runProviderDiscovery, secretEnvName,
 } from '../src/providers/index.js';
 import { criteriaFromRow } from '../src/discovery/index.js';
 import { recordedClay } from './clay-recordings.js';
@@ -251,30 +251,28 @@ describe('live provider path (fake Clay endpoint, no network)', () => {
       industry: 'Medical Practices', locality: 'Leeds, West Yorkshire', domain: `clinic-${id}.test`, order: i }])),
   });
 
-  /** A fake MCP endpoint: answers initialize, then tools/call from `answers` in order. */
-  function fakeClay(answers: ((args: Record<string, unknown>) => Response | Promise<Response>)[]) {
-    const seen: { auth: string | null; body: string }[] = [];
+  type Seen = { method: string; url: string; headers: Record<string, string>; body: string };
+  /**
+   * A fake Clay Public API: POST /search/query-mode creates a search (always srch-N), and each
+   * POST /search/query-mode/{id}/run is answered from `answers` in order.
+   */
+  function fakeClay(answers: ((body: Record<string, unknown>) => Response | Promise<Response>)[]) {
+    const seen: Seen[] = [];
     let i = 0;
-    const f = (async (_url: string, init: RequestInit) => {
-      const body = String(init.body);
-      seen.push({ auth: (init.headers as Record<string, string>).authorization ?? null, body });
-      const msg = JSON.parse(body);
-      if (msg.method === 'initialize') {
-        return new Response(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2025-06-18', capabilities: {} } }),
-          { status: 200, headers: { 'content-type': 'application/json', 'mcp-session-id': 'sess-1' } });
-      }
-      if (msg.method === 'notifications/initialized') return new Response(null, { status: 202 });
-      const answer = answers[i++]!;
-      const res = await answer(msg.params.arguments);
-      if (res.status !== 200) return res;
-      const result = await res.json();
-      return new Response(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: msg.id, result })}\n\n`,
-        { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    let searches = 0;
+    const f = (async (url: string, init: RequestInit) => {
+      const body = init.body === undefined ? '' : String(init.body);
+      seen.push({ method: String(init.method), url, headers: { ...(init.headers as Record<string, string>) }, body });
+      if (url.endsWith('/search/query-mode')) return new Response(JSON.stringify({ search_id: `srch-${++searches}`, source_type: 'companies' }), { status: 200 });
+      const answer = answers[i++];
+      if (!answer) throw new Error('unexpected call');
+      return answer(body ? JSON.parse(body) : {});
     }) as unknown as typeof fetch;
     return { f, seen };
   }
-  const ok = (v: unknown) => () => new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(v) }] }), { status: 200 });
-  const toolError = (text: string) => () => new Response(JSON.stringify({ isError: true, content: [{ type: 'text', text }] }), { status: 200 });
+  /** A run answer in the Public API's shape (data, has_more) from a page in Clay's entity-map shape. */
+  const ok = (v: ReturnType<typeof page>) => () => new Response(JSON.stringify({ data: Object.values(v.companies), has_more: v.hasMore, period_quota: {} }), { status: 200 });
+  const httpError = (status: number, message: string) => () => new Response(JSON.stringify({ message }), { status });
 
   async function liveSetup(answers: Parameters<typeof fakeClay>[0], connection: { scopes?: string[]; state?: string } = {}) {
     const ws = (await one<{ ws: string }>(db(), 'SELECT scopely.current_workspace_id()::text AS ws')).ws;
@@ -282,7 +280,7 @@ describe('live provider path (fake Clay endpoint, no network)', () => {
     const c = await one<{ id: string }>(db(), `INSERT INTO provider_connections (provider, mode, scopes, credential_ref, state, activated_at)
       VALUES ('clay', 'CUSTOMER_KEY', $1, $2, $3, now()) RETURNING id`, [connection.scopes ?? ['discovery'], ref, connection.state ?? 'ACTIVE']);
     const { f, seen } = fakeClay(answers);
-    const providers = new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(new ClayMcpTransport({ fetch: f })));
+    const providers = new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(new ClayPublicApiTransport({ fetch: f })));
     const secrets = new EnvSecretResolver({ [secretEnvName(ref)]: SECRET });
     return { providers, secrets, seen, connectionId: c.id, ws };
   }
@@ -293,23 +291,29 @@ describe('live provider path (fake Clay endpoint, no network)', () => {
     const r = await runProviderDiscovery(db(), { providers: s.providers, secrets: s.secrets, sleep: noSleep }, runId, 'clay', AS_OF);
     expect(r).toMatchObject({ transport: 'live', operations: 2, discovered: 3, stoppedBy: 'exhausted' });
     const ops = (await db().query('SELECT * FROM provider_operations WHERE search_run_id = $1 ORDER BY id', [runId])).rows;
+    // One search, read in two pages: the search id is the reference of both.
     expect(ops.map((o) => [o.transport, o.provider_connection_id, o.billed_to, o.request_ref, o.cost_basis])).toEqual([
-      ['live', s.connectionId, 'WORKSPACE', 't1', 'NOT_REPORTED'], ['live', s.connectionId, 'WORKSPACE', 't2', 'NOT_REPORTED']]);
-    // The key went only into the Authorization header of calls to the provider.
-    expect(s.seen.every((x) => x.auth === `Bearer ${SECRET}`)).toBe(true);
-    expect(s.seen.some((x) => x.body.includes(SECRET))).toBe(false);
+      ['live', s.connectionId, 'WORKSPACE', 'srch-1', 'NOT_REPORTED'], ['live', s.connectionId, 'WORKSPACE', 'srch-1', 'NOT_REPORTED']]);
+    // The key went only into the clay-api-key header of calls to the Public API: no bearer token, never in a body or URL.
+    expect(s.seen.map((x) => [x.method, x.url])).toEqual([
+      ['POST', 'https://api.clay.com/public/v0/search/query-mode'], ['POST', 'https://api.clay.com/public/v0/search/query-mode/srch-1/run'],
+      ['POST', 'https://api.clay.com/public/v0/search/query-mode/srch-1/run']]);
+    expect(s.seen.every((x) => x.headers['clay-api-key'] === SECRET)).toBe(true);
+    expect(s.seen.some((x) => Object.keys(x.headers).some((h) => h.toLowerCase() === 'authorization'))).toBe(false);
+    expect(s.seen.some((x) => Object.values(x.headers).some((v) => /bearer/i.test(v)))).toBe(false);
+    expect(s.seen.some((x) => x.body.includes(SECRET) || x.url.includes(SECRET))).toBe(false);
     const dump = JSON.stringify([(await db().query('SELECT * FROM provider_operations')).rows, (await db().query('SELECT * FROM sources')).rows,
       (await db().query('SELECT * FROM businesses')).rows, await getRunDiscovery(db(), runId)]);
     expect(dump).not.toContain(SECRET);
   });
 
   it('retries a rate limit and records the attempts; does not retry a refused credential or a bad query', async () => {
-    const s = await liveSetup([toolError('Too many concurrent requests. Please try again shortly.'), ok(page('t1', false, ['1']))]);
+    const s = await liveSetup([httpError(429, 'Too many requests'), ok(page('t1', false, ['1']))]);
     const r = await runProviderDiscovery(db(), { providers: s.providers, secrets: s.secrets, sleep: noSleep }, await runFor({ maxDiscoveredPerRun: 5 }), 'clay', AS_OF);
     expect(r).toMatchObject({ discovered: 1, error: null });
     expect(await one(db(), 'SELECT status, attempts FROM provider_operations')).toEqual({ status: 'SUCCEEDED', attempts: 2 });
 
-    const bad = await liveSetup([toolError("Unknown field 'location_country' for entity 'companies'"), ok(page('t9', false, ['9']))]);
+    const bad = await liveSetup([httpError(400, "Unknown field 'location_country' for entity 'companies'"), ok(page('t9', false, ['9']))]);
     const r2 = await runProviderDiscovery(db(), { providers: bad.providers, secrets: bad.secrets, sleep: noSleep }, await runFor({ name: 'Bad', maxDiscoveredPerRun: 5 }), 'clay', AS_OF);
     expect(r2).toMatchObject({ discovered: 0, stoppedBy: 'error', error: { code: 'invalid_request' } });
 
@@ -329,8 +333,8 @@ describe('live provider path (fake Clay endpoint, no network)', () => {
     const runId = await runFor({ maxDiscoveredPerRun: 10, revenueMin: 1_500_000, revenueMax: 4_000_000, revenueCurrency: 'USD' });
     const r = await runProviderDiscovery(db(), { providers: s.providers, secrets: s.secrets, sleep: noSleep }, runId, 'clay', AS_OF);
     expect(r).toMatchObject({ discovered: 2, error: null });
-    const call = s.seen.map((x) => JSON.parse(x.body)).find((m) => m.method === 'tools/call');
-    expect(call.params.arguments.dslQuery).toBe('select from companies where industry = "Medical Practices" and company_size in ("2-10", "11-50") '
+    const create = s.seen.find((x) => x.url.endsWith('/search/query-mode'))!;
+    expect(JSON.parse(create.body).query).toBe('select from companies where industry = "Medical Practices" and company_size in ("2-10", "11-50") '
       + 'and annual_revenue in ("1M-5M") and locations.any(city = "Leeds" and country_name = "United Kingdom")');
     const v = (await getRunDiscovery(db(), runId))!;
     const byName = new Map(v.businesses.map((b) => [b.name, b]));
@@ -348,7 +352,7 @@ describe('live provider path (fake Clay endpoint, no network)', () => {
   });
 
   it('keeps the record of a failed call whose error text looks like a credential, without the text', async () => {
-    const s = await liveSetup([toolError('Unauthorized: token sk-live0123456789abcdef was rejected')]);
+    const s = await liveSetup([httpError(401, 'Unauthorized: token sk-live0123456789abcdef was rejected')]);
     const r = await runProviderDiscovery(db(), { providers: s.providers, secrets: s.secrets, sleep: noSleep }, await runFor({ maxDiscoveredPerRun: 5 }), 'clay', AS_OF);
     expect(r).toMatchObject({ discovered: 0, error: { code: 'auth' } });
     expect(await one(db(), 'SELECT status, error_code, error_detail FROM provider_operations')).toEqual({ status: 'FAILED', error_code: 'auth', error_detail: '[redacted]' });
@@ -361,6 +365,73 @@ describe('live provider path (fake Clay endpoint, no network)', () => {
       VALUES ('clay', 'CUSTOMER_KEY', '{discovery}', $1, 'ACTIVE', now())`, [`secretref:ws/${s.ws}/other`]);
     const r = await runProviderDiscovery(db(), { providers: s.providers, secrets: new EnvSecretResolver({}) }, await runFor({ name: 'No key' }), 'clay', AS_OF);
     expect(r).toMatchObject({ discovered: 0, error: { code: 'auth' } });
+  });
+
+  it('does not retry a next page that may have reached Clay, since each run advances the search; a first page is retried', async () => {
+    const timeout = () => { throw Object.assign(new Error('timed out'), { name: 'TimeoutError' }); };
+    const s = await liveSetup([httpError(503, 'unavailable'), ok(page('t1', true, ['1'])), timeout, ok(page('t2', false, ['2']))]);
+    const runId = await runFor({ maxDiscoveredPerRun: 10 });
+    const r = await runProviderDiscovery(db(), { providers: s.providers, secrets: s.secrets, sleep: noSleep }, runId, 'clay', AS_OF);
+    expect(r).toMatchObject({ discovered: 1, stoppedBy: 'error', error: { code: 'timeout' } });
+    expect((await db().query('SELECT status, error_code, attempts FROM provider_operations WHERE search_run_id = $1 ORDER BY id', [runId])).rows).toEqual([
+      { status: 'SUCCEEDED', error_code: null, attempts: 2 }, { status: 'FAILED', error_code: 'timeout', attempts: 1 }]);
+    // The retried first page started a new search; the failed next page was asked once.
+    expect(s.seen.map((x) => x.url.replace('https://api.clay.com/public/v0', ''))).toEqual([
+      '/search/query-mode', '/search/query-mode/srch-1/run', '/search/query-mode', '/search/query-mode/srch-2/run', '/search/query-mode/srch-2/run']);
+  });
+
+  it('never puts the key in an error, a stored detail or a log, even when Clay echoes it', async () => {
+    const e = clayHttpError(401, JSON.stringify({ message: `invalid key ${SECRET}` }), SECRET);
+    expect(e).toMatchObject({ code: 'auth' });
+    expect(`${e.message} ${e.detail}`).not.toContain(SECRET);
+    const logged: string[] = [];
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m).mockImplementation((...a: unknown[]) => { logged.push(a.map(String).join(' ')); }));
+    try {
+      const s = await liveSetup([httpError(403, `key ${SECRET} is not allowed`)]);
+      const r = await runProviderDiscovery(db(), { providers: s.providers, secrets: s.secrets, sleep: noSleep }, await runFor({ maxDiscoveredPerRun: 5 }), 'clay', AS_OF);
+      expect(r).toMatchObject({ error: { code: 'auth' } });
+      const op = await one<{ error_detail: string }>(db(), 'SELECT error_detail FROM provider_operations');
+      expect(JSON.stringify([r, op, logged])).not.toContain(SECRET);
+    } finally {
+      for (const sp of spies) sp.mockRestore();
+    }
+  });
+
+  it('treats a page without data or has_more, or rows without an entity id, as malformed and records nothing', async () => {
+    const s = await liveSetup([() => new Response(JSON.stringify({ results: [] }), { status: 200 })]);
+    const r = await runProviderDiscovery(db(), { providers: s.providers, secrets: s.secrets, sleep: noSleep }, await runFor({ maxDiscoveredPerRun: 5 }), 'clay', AS_OF);
+    expect(r).toMatchObject({ discovered: 0, error: { code: 'malformed_response' } });
+    const t = new ClayPublicApiTransport({ fetch: fakeClay([() => new Response(JSON.stringify({ data: [{ name: 'No id' }], has_more: false }), { status: 200 })]).f });
+    await expect(t.searchCompanies('select from companies', SECRET)).rejects.toMatchObject({ code: 'malformed_response' });
+    expect((await db().query('SELECT 1 FROM businesses b JOIN search_run_businesses rb ON rb.business_id = b.id')).rowCount).toBe(0);
+  });
+
+  it('uses only the current workspace’s own key: another workspace’s key on the server is never sent', async () => {
+    const s = await liveSetup([ok(page('t1', false, ['1']))]);
+    const other = await enterNewWorkspace(db(), 'otherkey');
+    // The server holds a key for the other workspace only; this workspace's connection names its own reference.
+    const secrets = new EnvSecretResolver({ [secretEnvName(`secretref:ws/${other}/clay`)]: 'clay-other-workspace-key-0000' });
+    await asApp(db(), s.ws, async () => {
+      const cred = await connectionCredential(db(), 'clay', 'discovery', secrets);
+      expect(cred).toMatchObject({ connectionId: s.connectionId, billedTo: 'WORKSPACE' });
+      await expect(cred!.withSecret(async () => 'used')).rejects.toMatchObject({ code: 'auth' });
+    });
+    expect(s.seen).toHaveLength(0);
+  });
+
+  it('asks Clay for its query reference with the key header only, and refuses a people search without sending it', async () => {
+    const { f, seen } = fakeClay([]);
+    const reference = { sources: ['people', 'companies'] };
+    const t = new ClayPublicApiTransport({ fetch: (async (url: string, init: RequestInit) => {
+      if (url.endsWith('/search/query-mode/reference')) { seen.push({ method: String(init.method), url, headers: { ...(init.headers as Record<string, string>) }, body: '' }); return new Response(JSON.stringify(reference), { status: 200 }); }
+      return f(url, init);
+    }) as unknown as typeof fetch });
+    expect(await t.queryReference(SECRET)).toEqual(reference);
+    expect(seen).toEqual([{ method: 'GET', url: 'https://api.clay.com/public/v0/search/query-mode/reference', headers: { accept: 'application/json', 'clay-api-key': SECRET }, body: '' }]);
+    await expect(t.queryReference(null)).rejects.toMatchObject({ code: 'auth' });
+    await expect(t.searchPeople()).rejects.toMatchObject({ code: 'invalid_request' });
+    expect(seen).toHaveLength(1);
+    expect(() => new ClayPublicApiTransport({ baseUrl: 'http://api.clay.com/public/v0' })).toThrow(/https/);
   });
 });
 

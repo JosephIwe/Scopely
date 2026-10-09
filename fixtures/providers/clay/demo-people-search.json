@@ -1,0 +1,96 @@
+{
+ "recording": "SYNTHETIC. Not a recording of Clay. Fictional people at the demo businesses on reserved .example domains, so `pnpm serve` can show a prospect lookup end to end without calling Clay or storing anyone real. The page follows the shape Clay returned for company searches on 2026-10-05 (taskId, an entity map keyed by entityId, order, timestampMs); the people field names (full_name, job_title, url) are not yet confirmed against a live Clay people search.",
+ "searches": [
+  {
+   "query": "select from people where experiences.any(is_current = true and job_title is_similar_to (\"Owner\", \"Founder\", \"Director\", \"Managing Director\", \"Partner\", \"Practice Manager\", \"Marketing Manager\")) limit 10",
+   "companyIdentifiers": [
+    "harbourlane.example"
+   ],
+   "pages": [
+    {
+     "taskId": "mcp-task_demo-harbourlane",
+     "searchId": "cgas-search-id_mcp-task_demo-harbourlane",
+     "people": {
+      "demo-p-101": {
+       "entityType": "person",
+       "entityId": "demo-p-101",
+       "full_name": "Morgan Reyes",
+       "job_title": "Practice Owner",
+       "url": "https://www.linkedin.com/in/morgan-reyes-demo",
+       "location": "Sampleton, United Kingdom",
+       "domain": "harbourlane.example",
+       "order": 1,
+       "enrichments": []
+      },
+      "demo-p-102": {
+       "entityType": "person",
+       "entityId": "demo-p-102",
+       "full_name": "Priya Nand",
+       "job_title": "Practice Manager",
+       "url": "https://www.linkedin.com/in/priya-nand-demo",
+       "location": "Sampleton, United Kingdom",
+       "domain": "harbourlane.example",
+       "order": 2,
+       "enrichments": []
+      }
+     },
+     "hasMore": false,
+     "timestampMs": 1791212400000
+    }
+   ]
+  },
+  {
+   "query": "select from people where experiences.any(is_current = true and job_title is_similar_to (\"Owner\", \"Founder\", \"Director\", \"Managing Director\", \"Partner\", \"Practice Manager\", \"Marketing Manager\")) limit 10",
+   "companyIdentifiers": [
+    "alderfinch.example"
+   ],
+   "pages": [
+    {
+     "taskId": "mcp-task_demo-alderfinch",
+     "searchId": "cgas-search-id_mcp-task_demo-alderfinch",
+     "people": {
+      "demo-p-201": {
+       "entityType": "person",
+       "entityId": "demo-p-201",
+       "full_name": "Sam Alder",
+       "job_title": "Clinical Director",
+       "url": "https://www.linkedin.com/in/sam-alder-demo",
+       "location": "Sampleton, United Kingdom",
+       "domain": "alderfinch.example",
+       "order": 1,
+       "enrichments": []
+      },
+      "demo-p-202": {
+       "entityType": "person",
+       "entityId": "demo-p-202",
+       "full_name": "Jo Finch",
+       "job_title": "Marketing Manager",
+       "url": "https://www.linkedin.com/in/jo-finch-demo",
+       "location": "Sampleton, United Kingdom",
+       "domain": "alderfinch.example",
+       "order": 2,
+       "enrichments": []
+      }
+     },
+     "hasMore": false,
+     "timestampMs": 1791212400000
+    }
+   ]
+  },
+  {
+   "query": "select from people where experiences.any(is_current = true and job_title is_similar_to (\"Owner\", \"Founder\", \"Director\", \"Managing Director\", \"Partner\", \"Practice Manager\", \"Marketing Manager\")) limit 10",
+   "companyIdentifiers": [
+    "quietyard.example"
+   ],
+   "pages": [
+    {
+     "taskId": "mcp-task_demo-quietyard",
+     "searchId": "cgas-search-id_mcp-task_demo-quietyard",
+     "people": {},
+     "hasMore": false,
+     "timestampMs": 1791212400000
+    }
+   ]
+  }
+ ]
+}

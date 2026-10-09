@@ -12,7 +12,9 @@
 // reads as not found. The database's own guards (workspace guard, RLS, re-check guard) stay the judge.
 //
 // Logs and errors never carry contact details, notes or URLs.
-import { SUPPRESSION_REASONS, recordContact, recordSuppression } from '../record/index.js';
+import { type ContactInput, SUPPRESSION_REASONS, recordContact, recordSuppression } from '../record/index.js';
+import { FACT_KINDS } from '../providers/prospects.js';
+import { normalizeFact } from '../prospects/facts.js';
 import type { Db } from '../tenancy/index.js';
 
 export class ProspectRejected extends Error {
@@ -131,7 +133,18 @@ export interface CaseContactInput {
   label?: string | null;
   /** The lawful basis for contacting them. 'unknown' when the seller does not know. */
   outreachBasis?: string | null;
+  /** Slice 12: what they are to the business, and what shows it. */
+  relationship?: string | null;
+  relationshipBasis?: string | null;
+  /** Slice 12: required with isDecisionMaker: what was seen that says they decide. */
+  decisionMakerBasis?: string | null;
+  /** Slice 12: required for VERIFIED (and to raise a provider's person above UNVERIFIED): how it was checked. */
+  verificationBasis?: string | null;
+  /** Who is recording this; required with a verification. */
+  recordedBy?: string | null;
 }
+
+export const RELATIONSHIPS = ['owner', 'director', 'partner', 'employee', 'other'] as const;
 
 function contactFields(c: CaseContactInput) {
   const fullName = text(c.fullName, 120);
@@ -151,29 +164,62 @@ function contactFields(c: CaseContactInput) {
   if (!outreachBasis || !(OUTREACH_BASES as readonly string[]).includes(outreachBasis)) {
     throw new ProspectRejected(400, 'Say what lets you contact them, or choose Not known.');
   }
+  const relationship = text(c.relationship, 20);
+  if (relationship && !(RELATIONSHIPS as readonly string[]).includes(relationship)) throw new ProspectRejected(400, 'Choose their relationship to the business, or Not known.');
+  const relationshipBasis = text(c.relationshipBasis, 500);
+  if (relationship && !relationshipBasis) throw new ProspectRejected(400, 'Say what shows their relationship to the business.');
+  const isDecisionMaker = c.isDecisionMaker === true;
+  const decisionMakerBasis = isDecisionMaker ? text(c.decisionMakerBasis, 500) : null;
+  if (isDecisionMaker && !decisionMakerBasis) throw new ProspectRejected(400, 'Say what shows they make the decision. Without it, leave Decision maker unticked.');
+  const verificationBasis = text(c.verificationBasis, 500);
+  const recordedBy = text(c.recordedBy, 120);
+  if (label === 'VERIFIED' && !verificationBasis) throw new ProspectRejected(400, 'Say how the business confirmed it. Without it, choose Not verified or Publicly found.');
+  if (label === 'VERIFIED' && !recordedBy) throw new ProspectRejected(400, 'Say who is recording this.');
   return {
-    fullName: fullName ?? undefined, role: text(c.role, 120) ?? undefined, isDecisionMaker: c.isDecisionMaker === true,
+    fullName: fullName ?? undefined, role: text(c.role, 120) ?? undefined, isDecisionMaker,
     email: email ?? undefined, emailKind: (emailKind ?? undefined) as 'role' | 'personal' | undefined, source, sourceUrl: sourceUrl ?? undefined,
     label: label as (typeof CONTACT_LABELS)[number], outreachBasis: outreachBasis as (typeof OUTREACH_BASES)[number],
+    relationship, relationshipBasis: relationship ? relationshipBasis : null, decisionMakerBasis, verificationBasis, recordedBy,
   };
 }
 
 /**
  * Adds a contact the seller has to this opportunity's business, or corrects one already recorded.
  * Nothing is looked up or checked against the outside world: mx_ok stays unknown, and the label is
- * the seller's own (Scopely never marks a contact verified).
+ * the seller's own. Slice 12: a decision maker needs a basis, a relationship needs a basis, VERIFIED
+ * says how and by whom. A person a provider returned keeps where it came from (source, provider
+ * call): the seller corrects what is on file and can raise its label only by saying how it was checked.
  */
 export async function saveCaseContact(db: Db, opportunityId: string, input: CaseContactInput, contactId?: string): Promise<string> {
   const { businessId } = await caseBusiness(db, opportunityId);
-  const f = contactFields(input);
+  const prior = contactId && /^\d{1,18}$/.test(contactId) ? (await db.query(
+    `SELECT label, source, source_url, provider_operation_id, verification_basis, verified_by, verified_at FROM scopely.contacts
+      WHERE id = $1 AND business_id = $2 AND workspace_id = scopely.current_workspace_id()`, [contactId, businessId])).rows[0] : undefined;
+  if (contactId && !prior) throw new ProspectRejected(404, 'That contact is not on this business.');
+  const fromProvider = Boolean(prior?.provider_operation_id);
+  const f = contactFields(fromProvider ? { ...input, source: prior.source } : input);
+  const raised = f.label !== 'UNVERIFIED' && f.label !== prior?.label;
+  if (fromProvider && raised && (!f.verificationBasis || !f.recordedBy)) {
+    throw new ProspectRejected(400, 'This person came from a provider. Say who checked them and how before marking them publicly found or verified.');
+  }
+  // A verification is the recorder's, at the time they record it; an unchanged label keeps the one on file.
+  const verification = raised || (f.label === 'VERIFIED' && f.verificationBasis !== prior?.verification_basis)
+    ? { basis: f.verificationBasis, by: f.recordedBy, at: new Date().toISOString() }
+    : f.label === prior?.label ? { basis: prior?.verification_basis ?? f.verificationBasis, by: prior?.verified_by ?? null, at: prior?.verified_at ?? null }
+      : { basis: null, by: null, at: null };
   return guarded(db, async () => {
-    if (!contactId) return recordContact(db, { businessId, ...f });
+    if (!contactId) {
+      return recordContact(db, { businessId, ...f, relationship: f.relationship as ContactInput['relationship'], verificationBasis: verification.basis,
+        verifiedBy: verification.by });
+    }
     const r = await db.query(
       `UPDATE scopely.contacts SET full_name = $3, role = $4, is_decision_maker = $5, email = $6, email_kind = $7, source = $8,
-              source_url = $9, label = $10, outreach_basis = $11
+              source_url = $9, label = $10, outreach_basis = $11, relationship = $12, relationship_basis = $13, decision_maker_basis = $14,
+              verification_basis = $15, verified_by = $16, verified_at = $17
         WHERE id = $1 AND business_id = $2 AND workspace_id = scopely.current_workspace_id() RETURNING id`,
       [contactId, businessId, f.fullName ?? null, f.role ?? null, f.isDecisionMaker, f.email ?? null, f.emailKind ?? null, f.source,
-       f.sourceUrl ?? null, f.label, f.outreachBasis]);
+       fromProvider ? prior.source_url : f.sourceUrl ?? null, f.label, f.outreachBasis, f.relationship, f.relationshipBasis, f.decisionMakerBasis,
+       verification.basis, verification.by, verification.at]);
     if (!r.rows[0]) throw new ProspectRejected(404, 'That contact is not on this business.');
     return String(r.rows[0].id);
   }, () => null);
@@ -255,4 +301,113 @@ export async function suppressFromCaseFile(db: Db, opportunityId: string, input:
     return guarded(db, () => recordSuppression(db, { email: c.email, reason: r }), () => null);
   }
   throw new ProspectRejected(400, 'Choose what to stop contacting: this email address, the domain, or the whole business.');
+}
+
+// ------------------------------------------------------------------ 5. contact facts (Slice 12)
+
+export interface CaseFactInput {
+  /** The person it is about, or null for the business's own channel. */
+  contactId?: string | null;
+  kind: string;
+  value: string;
+  /** Where the seller saw it. Required: a fact a person records is one they saw somewhere. */
+  sourceUrl?: string | null;
+  /** How sure: UNVERIFIED, PUBLICLY_FOUND (seen on the source page) or VERIFIED (the business confirmed it). */
+  label?: string | null;
+  /** For VERIFIED: how the business confirmed it. */
+  basis?: string | null;
+  recordedBy: string;
+}
+
+/**
+ * Records a channel the seller found for this business or one of its people: a phone, WhatsApp,
+ * email, LinkedIn, Instagram or X profile, or a contact page. The value is normalized (never
+ * repaired into something else); the source page is required; PUBLICLY_FOUND means the seller saw it
+ * there, VERIFIED needs how the business confirmed it.
+ */
+export async function recordCaseFact(db: Db, opportunityId: string, input: CaseFactInput): Promise<string> {
+  const { businessId } = await caseBusiness(db, opportunityId);
+  const kind = String(input.kind ?? '');
+  if (!(FACT_KINDS as readonly string[]).includes(kind) || kind === 'title') throw new ProspectRejected(400, 'Choose what kind of channel this is.');
+  const value = normalizeFact(kind, input.value);
+  if (!value) throw new ProspectRejected(400, kind === 'email' ? 'That email address is not valid.' : kind === 'phone' || kind === 'whatsapp'
+    ? 'That is not a phone number. Use digits, with + and the country code if you have it.' : 'That link is not a profile or page of that kind.');
+  const sourceUrl = input.sourceUrl ? normalizeFact('contact_page', input.sourceUrl) : null;
+  if (!sourceUrl) throw new ProspectRejected(400, 'Add the link to the page where you found it.');
+  const recordedBy = text(input.recordedBy, 120);
+  if (!recordedBy) throw new ProspectRejected(400, 'Say who is recording this.');
+  const label = text(input.label, 20) ?? 'PUBLICLY_FOUND';
+  if (!(CONTACT_LABELS as readonly string[]).includes(label)) throw new ProspectRejected(400, 'Say how sure you are of it.');
+  const basis = text(input.basis, 500);
+  if (label === 'VERIFIED' && !basis) throw new ProspectRejected(400, 'Say how the business confirmed it.');
+  let contactId: string | null = null;
+  if (input.contactId) {
+    const c = /^\d{1,18}$/.test(String(input.contactId)) ? (await db.query(
+      `SELECT id FROM scopely.contacts WHERE id = $1 AND business_id = $2 AND workspace_id = scopely.current_workspace_id()`,
+      [input.contactId, businessId])).rows[0] : undefined;
+    if (!c) throw new ProspectRejected(404, 'That contact is not on this business.');
+    contactId = String(c.id);
+  }
+  const raised = label !== 'UNVERIFIED';
+  return guarded(db, async () => {
+    const r = await db.query(
+      `INSERT INTO scopely.contact_facts (business_id, contact_id, kind, value, source, source_url, observed_at, label, recorded_by,
+         verification_basis, verified_by, verified_at)
+       VALUES ($1, $2, $3, $4, 'seller', $5, now(), $6, $7, $8, $9, $10)
+       ON CONFLICT (workspace_id, business_id, coalesce(contact_id, 0), kind, lower(value), lower(source)) DO NOTHING RETURNING id`,
+      [businessId, contactId, kind, value, sourceUrl, label, recordedBy, raised ? basis ?? `Seen on ${sourceUrl}` : null,
+       raised ? recordedBy : null, raised ? new Date().toISOString() : null]);
+    if (!r.rows[0]) throw new ProspectRejected(409, 'You have already recorded that.');
+    return String(r.rows[0].id);
+  }, () => null);
+}
+
+/**
+ * A person's check of a fact on file (a provider's or their own): PUBLICLY_FOUND when they saw it on
+ * a public page (the basis names it), VERIFIED when the business confirmed it (the basis says how),
+ * UNVERIFIED to withdraw an earlier check. The fact's value and source never change.
+ */
+export async function checkCaseFact(db: Db, opportunityId: string, factId: string, input: { label: string; basis?: string | null; recordedBy: string }): Promise<void> {
+  const { businessId } = await caseBusiness(db, opportunityId);
+  if (!/^\d{1,18}$/.test(factId)) throw new ProspectRejected(404, 'That is not on this business.');
+  const label = String(input.label ?? '');
+  if (!(CONTACT_LABELS as readonly string[]).includes(label)) throw new ProspectRejected(400, 'Say how sure you are of it.');
+  const recordedBy = text(input.recordedBy, 120);
+  if (!recordedBy) throw new ProspectRejected(400, 'Say who is recording this.');
+  const basis = text(input.basis, 500);
+  if (label !== 'UNVERIFIED' && !basis) {
+    throw new ProspectRejected(400, label === 'VERIFIED' ? 'Say how the business confirmed it.' : 'Add the public page where you saw it.');
+  }
+  await guarded(db, async () => {
+    const r = await db.query(
+      `UPDATE scopely.contact_facts SET label = $3, verification_basis = $4, verified_by = $5, verified_at = $6
+        WHERE id = $1 AND business_id = $2 AND workspace_id = scopely.current_workspace_id() RETURNING id`,
+      [factId, businessId, label, label === 'UNVERIFIED' ? null : basis, label === 'UNVERIFIED' ? null : recordedBy,
+       label === 'UNVERIFIED' ? null : new Date().toISOString()]);
+    if (!r.rows[0]) throw new ProspectRejected(404, 'That is not on this business.');
+  }, () => null);
+}
+
+const LABEL_RANK: Record<string, number> = { UNVERIFIED: 0, PUBLICLY_FOUND: 1, VERIFIED: 2 };
+
+/**
+ * Makes an email fact the person's email of record: the address the outreach gate checks. The fact
+ * must be about this person or the business itself. The contact's label never ends up stronger than
+ * the fact's: adopting an unverified address makes the contact unverified.
+ */
+export async function useFactAsEmail(db: Db, opportunityId: string, contactId: string, factId: string): Promise<void> {
+  const { businessId } = await caseBusiness(db, opportunityId);
+  if (!/^\d{1,18}$/.test(contactId) || !/^\d{1,18}$/.test(factId)) throw new ProspectRejected(404, 'That is not on this business.');
+  const row = (await db.query(
+    `SELECT f.value, f.label AS fact_label, c.label AS contact_label, c.email FROM scopely.contact_facts f
+       JOIN scopely.contacts c ON c.id = $2 AND c.business_id = f.business_id AND c.workspace_id = scopely.current_workspace_id()
+      WHERE f.id = $1 AND f.business_id = $3 AND f.kind = 'email' AND f.workspace_id = scopely.current_workspace_id()
+        AND (f.contact_id IS NULL OR f.contact_id = c.id)`, [factId, contactId, businessId])).rows[0];
+  if (!row) throw new ProspectRejected(404, 'That address is not on this person or business.');
+  const label = LABEL_RANK[row.fact_label]! < LABEL_RANK[row.contact_label]! ? row.fact_label : row.contact_label;
+  await guarded(db, () => db.query(
+    `UPDATE scopely.contacts SET email = $2, email_kind = CASE WHEN email IS DISTINCT FROM $2 THEN NULL ELSE email_kind END, label = $3,
+            verification_basis = CASE WHEN $3 = label THEN verification_basis ELSE NULL END,
+            verified_by = CASE WHEN $3 = label THEN verified_by ELSE NULL END, verified_at = CASE WHEN $3 = label THEN verified_at ELSE NULL END
+      WHERE id = $1`, [contactId, row.value, label]), () => null);
 }
