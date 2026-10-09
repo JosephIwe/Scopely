@@ -27,6 +27,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import pg from 'pg';
 import { databaseUrl } from '../src/db/client.js';
+import { pendingMigrations } from '../src/db/migrate.js';
 import { DEFAULT_SHOW_LINK_TTL_SECONDS } from '../src/build/site/index.js';
 import { DemoAwarePageFetcher } from '../src/build/fix/index.js';
 import { DemoAwareProbe } from '../src/analysis/index.js';
@@ -53,6 +54,13 @@ if (!Number.isFinite(showHours) || showHours <= 0 || showHours > 24 * 30) {
   process.exit(1);
 }
 const pool = new pg.Pool({ connectionString: databaseUrl(), max: 8 });
+// A database behind the code is reported here, by name; the server never migrates it.
+try {
+  const pending = await pendingMigrations(pool);
+  if (pending.length) console.warn(`The database has not applied ${pending.length} migration(s): ${pending.join(', ')}. Pages that need them will say so. Run pnpm migrate, then restart.`);
+} catch (err) {
+  console.warn(`Could not check the database's migrations (${(err as { code?: string }).code ?? 'no code'}).`);
+}
 const live = process.env.SCOPELY_CLAY_LIVE === '1';
 const clay = live ? new ClayPublicApiTransport()
   : new RecordedClayTransport(['2026-10-05-company-search.json', '2026-10-05-company-search-country.json', 'demo-people-search.json'].flatMap((f) =>

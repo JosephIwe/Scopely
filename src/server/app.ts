@@ -148,6 +148,12 @@ function sameHost(origin: string, host: string | undefined): boolean {
   try { return Boolean(host) && new URL(origin).host === host; } catch { return false; }
 }
 
+// Postgres codes for a table, column or function this code needs that the database does not have
+// (undefined_table, undefined_column, undefined_function): the database is older than the code.
+const SCHEMA_BEHIND = new Set(['42P01', '42703', '42883']);
+export const SCHEMA_BEHIND_MESSAGE = 'The database is missing a table or column this version of Scopely needs, so a migration has probably not been applied. '
+  + 'Run pnpm migrate, then restart the server. Nothing was changed.';
+
 export function createHandler(cfg: ServerConfig) {
   const log = cfg.log ?? ((l: string) => process.stdout.write(`${l}\n`));
   const fetcher = cfg.fetcher ?? new SafePageFetcher();
@@ -712,7 +718,9 @@ export function createHandler(cfg: ServerConfig) {
       if (err instanceof DiscoveryRefused) return json(res, 422, { error: err.message, reason: err.reason });
       if (err instanceof ProspectLookupRefused) return json(res, err.reason === 'not_found' ? 404 : 422, { error: err.message, reason: err.reason });
       if (err instanceof EditRejected) return json(res, 400, { error: err.reason, index: err.index });
-      log(`error ${req.method} ${url.pathname.replace(/\/[A-Za-z0-9_.-]{20,}$/, '/…')} ${(err as { code?: string }).code ?? ''}`);
+      const code = (err as { code?: string }).code ?? '';
+      log(`error ${req.method} ${url.pathname.replace(/\/[A-Za-z0-9_.-]{20,}$/, '/…')} ${code}`);
+      if (SCHEMA_BEHIND.has(code)) return json(res, 503, { error: SCHEMA_BEHIND_MESSAGE, reason: 'schema_behind' });
       return json(res, 500, { error: 'Something went wrong. Nothing was changed.' });
     } finally {
       if (url.pathname.startsWith('/api/')) log(`${req.method} ${url.pathname} ${res.statusCode} ${Date.now() - started}ms`);

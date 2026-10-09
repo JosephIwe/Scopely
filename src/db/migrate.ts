@@ -46,3 +46,16 @@ export async function migrate(client: pg.Client, dir = MIGRATIONS_DIR): Promise<
   }
   return result;
 }
+
+/**
+ * The migrations in `dir` that this database has not applied, by stem, without changing anything.
+ * The server checks this at startup so a database that is behind the code says so, instead of
+ * failing later with a generic error (pnpm migrate applies them; the server never does).
+ */
+export async function pendingMigrations(client: Pick<pg.Client, 'query'>, dir = MIGRATIONS_DIR): Promise<string[]> {
+  const files = (await readdir(dir)).filter((f) => /^\d{3}_[a-z0-9_]+\.sql$/.test(f)).sort().map((f) => f.replace(/\.sql$/, ''));
+  const ledger = (await client.query<{ t: string | null }>(`SELECT to_regclass('scopely.schema_migrations')::text AS t`)).rows[0]?.t;
+  if (!ledger) return files;
+  const done = new Set((await client.query<{ version: string }>('SELECT version FROM scopely.schema_migrations')).rows.map((r) => r.version));
+  return files.filter((v) => !done.has(v));
+}
