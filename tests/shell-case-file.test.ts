@@ -112,6 +112,25 @@ describe('product shell routes (U2)', () => {
     expect(typeof w.json().name).toBe('string');
   });
 
+  it('loads the landing page typefaces from this server, two families with system fallbacks', async () => {
+    const { call } = await start();
+    const page = (await call('GET', '/')).text;
+    const css = (await call('GET', '/landing.css')).text;
+    // Nothing is fetched from another origin: every href and src is same-origin or a data: URL.
+    for (const m of page.matchAll(/<(?:a|link|script|img)\b[^>]*?\s(?:href|src)="([^"#]+)"/g)) expect(m[1], m[1]).toMatch(/^(?:\/|data:)/);
+    expect(css).not.toMatch(/url\((?!\/fonts\/)/);
+    for (const m of css.matchAll(/url\((\/fonts\/[^)]+)\)/g)) {
+      const r = await call('GET', m[1]!);
+      expect(r.status, m[1]).toBe(200);
+      expect(r.headers.get('content-type'), m[1]).toBe('font/woff2');
+    }
+    // Instrument Serif for display, IBM Plex (Sans and its Mono) for everything else; each stack
+    // ends in a system face so a failed font still leaves readable text.
+    const faces = new Set([...css.matchAll(/@font-face\s*\{[^}]*font-family:\s*"([^"]+)"/g)].map((m) => m[1]));
+    expect([...faces].sort()).toEqual(['IBM Plex Mono', 'IBM Plex Sans', 'Instrument Serif', 'Serif Fallback']);
+    for (const v of ['--font', '--mono', '--serif']) expect(css).toMatch(new RegExp(`${v}: [^;]*(?:sans-serif|monospace|serif);`));
+  });
+
   it('animates the landing page only as an enhancement: nothing is hidden without JavaScript or with reduced motion', async () => {
     const { call } = await start();
     const page = (await call('GET', '/')).text;

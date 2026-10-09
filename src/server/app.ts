@@ -84,6 +84,11 @@ const FONTS: Record<string, string> = {
   '/fonts/geist-mono-400.woff2': 'geist-mono-latin-400.woff2',
   '/fonts/geist-mono-500.woff2': 'geist-mono-latin-500.woff2',
   '/fonts/instrument-serif.woff2': 'instrument-serif-latin-400.woff2',
+  '/fonts/instrument-serif-italic.woff2': 'instrument-serif-latin-400-italic.woff2',
+  // The landing page's text face (IBM Plex Sans) and its evidence face (IBM Plex Mono).
+  '/fonts/plex-sans.woff2': 'ibm-plex-sans-latin-wght.woff2',
+  '/fonts/plex-mono-400.woff2': 'ibm-plex-mono-latin-400.woff2',
+  '/fonts/plex-mono-500.woff2': 'ibm-plex-mono-latin-500.woff2',
   '/fonts/newsreader-400.woff2': 'newsreader-latin-400.woff2',
   '/fonts/newsreader-500.woff2': 'newsreader-latin-500.woff2',
 };
