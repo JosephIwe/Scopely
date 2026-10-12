@@ -492,3 +492,19 @@ body.share { display: flex; flex-direction: column; height: 100vh; overflow: hid
 .share-bar strong { font-weight: 650; }
 .share-bar span { color: rgba(255, 255, 255, .72); }
 .share-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+
+/* ---------------------------------------------------------------- sign-in (A40) */
+.auth { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 32px 16px; }
+.auth-card { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 26px 24px; display: flex; flex-direction: column; gap: 14px; }
+.auth-card h1 { font-size: 20px; font-weight: 650; letter-spacing: -.01em; margin: 0; }
+.auth-sub, .auth-foot { margin: 0; color: var(--ink-2); font-size: 13.5px; }
+.auth-card form { display: flex; flex-direction: column; gap: 12px; }
+.auth-f { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--ink-2); font-weight: 550; }
+.auth-f input { height: 40px; padding: 0 11px; border: 1px solid var(--control); border-radius: 8px; font: inherit; font-size: 15px; color: var(--ink); background: #fff; min-width: 0; }
+.auth-card .btn { height: 40px; background: var(--ink); border-color: var(--ink); color: #fff; }
+.auth-card .btn:hover:not(:disabled) { background: #33312D; }
+.auth-err { margin: 0; color: var(--error); font-size: 13px; }
+.auth-link { font-size: 13px; color: var(--blue); }
+.sh-user { overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.sh-wsel { height: 28px; border: 1px solid var(--control); border-radius: 8px; background: #fff; font: inherit; font-size: 12.5px; max-width: 180px; }
+@media (max-width: 700px) { .sh-user { display: none; } }

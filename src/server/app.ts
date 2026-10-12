@@ -1,13 +1,17 @@
 // The Build Workspace server: a thin HTTP layer over src/build/site/service.ts, plus the preview
 // endpoints. No framework and no new dependency.
 //
-// Authentication is open decision B10, so this server does not pretend to have it: it acts in the
-// one workspace it was started with (SCOPELY_WORKSPACE_ID, like the CLI) and binds to localhost by
-// default. Every request runs in its own transaction inside that workspace. Preview links are the
-// exception: each carries its own signed workspace, project and version, and is checked against
-// the database in that workspace before any byte is served.
+// Two modes (A40). With `auth`, every /api request is signed in: a session cookie names a user,
+// the user's membership of the session's workspace is checked on every request, and the request
+// acts in that workspace only. With `workspaceId` (development preview only; scripts/serve.ts
+// refuses it in production and off localhost) the server acts in that one workspace for whoever
+// can reach it. Every request runs in its own transaction inside its workspace, as the
+// application database role when `dbRole` is set, so row-level security applies. Preview links
+// are the exception: each carries its own signed workspace, project and version, and is checked
+// against the database in that workspace before any byte is served.
 //
 // Logs carry ids and status codes only: never site content, contact details or credentials.
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
@@ -39,11 +43,28 @@ import { createSearch, selectForAnalysis, startSearchRun } from '../discovery/in
 import { DiscoveryProviderRegistry, DiscoveryRefused, ProspectProviderRegistry, runProviderDiscovery } from '../providers/index.js';
 import { FindRejected, searchInputFromBody, selectionFromBody, selectionRefusal } from './discovery-api.js';
 import { withWorkspace } from '../tenancy/index.js';
+import {
+  AttemptLimiter, AuthRejected, SESSION_TTL_SECONDS, type SessionView, acceptInvite, clearCookie, cookieName, createMemberInvite, describeInvite, listMembers,
+  normalEmail, readCookie, resolveSession, sessionCookie, signIn, signOut, switchWorkspace,
+} from '../auth/index.js';
+import { pendingMigrations } from '../db/migrate.js';
 
 export interface ServerConfig {
   pool: pg.Pool;
   store: ObjectStore;
-  workspaceId: string;
+  /** Development preview only: act in this one workspace with no sign-in. Exactly one of this and `auth`. */
+  workspaceId?: string;
+  /** Sign-in (A40): sessions, invites and workspace membership decide every request's workspace. */
+  auth?: {
+    /** Production: Secure + __Host- cookies and HSTS. Needs HTTPS in front of the server. */
+    secureCookies: boolean;
+    /** Anyone may create an account and a new workspace. Off by default: invite-only. */
+    openSignup?: boolean;
+    /** Read the client address from X-Forwarded-For (behind the host's own proxy). */
+    trustProxy?: boolean;
+  };
+  /** A non-owner database role every request transaction switches to, so row-level security applies. */
+  dbRole?: string;
   /** Platform secret for preview links. Never a model credential; never sent to a browser. */
   signingKey: string;
   editLinkTtlSeconds: number;
@@ -77,6 +98,7 @@ const STATIC: Record<string, [string, string]> = {
   '/shell.css': ['shell.css', 'text/css; charset=utf-8'],
   '/find.js': ['find.js', 'text/javascript; charset=utf-8'],
   '/find.css': ['find.css', 'text/css; charset=utf-8'],
+  '/auth.js': ['auth.js', 'text/javascript; charset=utf-8'],
 };
 
 /** The workspace's own typefaces (the same files the site template embeds). */
@@ -125,11 +147,20 @@ async function body(req: IncomingMessage, limit: number): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+/** Who a request is: set once per /api request, read by tx() and by the actor fields of a body. */
+interface RequestScope { workspaceId: string | null; actor: string | null; session: SessionView | null }
+const scope = new AsyncLocalStorage<RequestScope>();
+
+/** Body fields that name the person acting. When someone is signed in, the server fills them with that person, whatever the browser sent. */
+const ACTOR_FIELDS = ['recordedBy', 'approvedBy', 'capturedBy', 'confirmedBy', 'proposedBy', 'requestedBy', 'revokedBy', 'selectedBy', 'verifiedBy', 'createdBy'];
+
 async function jsonBody(req: IncomingMessage): Promise<Record<string, any>> {
   if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) throw new HttpError(415, 'Send JSON.');
   try {
     const v = JSON.parse((await body(req, 256 * 1024)).toString('utf8') || '{}');
     if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error();
+    const actor = scope.getStore()?.actor;
+    if (actor) for (const k of ACTOR_FIELDS) v[k] = actor;
     return v;
   } catch (err) {
     if (err instanceof HttpError) throw err;
@@ -161,17 +192,42 @@ export const SCHEMA_BEHIND_MESSAGE = 'The database is missing a table or column 
   + 'Run pnpm migrate, then restart the server. Nothing was changed.';
 
 export function createHandler(cfg: ServerConfig) {
+  if (Boolean(cfg.workspaceId) === Boolean(cfg.auth)) throw new Error('createHandler needs exactly one of workspaceId (development preview) or auth');
+  if (cfg.dbRole !== undefined && !/^[a-z_][a-z0-9_]{0,62}$/.test(cfg.dbRole)) throw new Error('dbRole must be a plain lower-case role name');
   const log = cfg.log ?? ((l: string) => process.stdout.write(`${l}\n`));
   const fetcher = cfg.fetcher ?? new SafePageFetcher();
   const probe = cfg.probe ?? new DemoAwareProbe();
+  const limiter = new AttemptLimiter();
+  const secure = Boolean(cfg.auth?.secureCookies);
+  const cookie = cookieName(secure);
 
-  /** Runs `fn` in one transaction acting in the server's workspace. */
+  /** Runs `fn` in one transaction acting in the request's workspace, as the application role when one is set. */
   async function tx<T>(fn: (db: pg.PoolClient) => Promise<T>): Promise<T> {
+    const workspaceId = scope.getStore()?.workspaceId ?? cfg.workspaceId;
+    if (!workspaceId) throw new HttpError(401, 'Sign in to continue.');
     const db = await cfg.pool.connect();
     try {
       await db.query('BEGIN');
       await db.query('SET LOCAL search_path = scopely, public');
-      const out = await withWorkspace(db, cfg.workspaceId, () => fn(db));
+      if (cfg.dbRole) await db.query(`SET LOCAL ROLE ${cfg.dbRole}`);
+      const out = await withWorkspace(db, workspaceId, () => fn(db));
+      await db.query('COMMIT');
+      return out;
+    } catch (err) {
+      await db.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      db.release();
+    }
+  }
+
+  /** Runs `fn` in one transaction as the connection's own role with no workspace: sign-in, sessions and invites only. */
+  async function authTx<T>(fn: (db: pg.PoolClient) => Promise<T>): Promise<T> {
+    const db = await cfg.pool.connect();
+    try {
+      await db.query('BEGIN');
+      await db.query('SET LOCAL search_path = scopely, public');
+      const out = await fn(db);
       await db.query('COMMIT');
       return out;
     } catch (err) {
@@ -211,12 +267,15 @@ export function createHandler(cfg: ServerConfig) {
   async function api(req: IncomingMessage, res: ServerResponse, parts: string[], url: URL) {
     const m = req.method;
     const [a, b, c, d, e] = parts;
-    // GET /api/workspace: who the app is acting for. Authentication is B10, so it says so.
+    // GET /api/workspace: who the app is acting for, and whether a person signed in (A40).
     if (m === 'GET' && a === 'workspace' && !b) {
+      const session = scope.getStore()?.session ?? null;
       return json(res, 200, await tx(async (db) => {
         const w = (await db.query('SELECT name FROM scopely.workspaces WHERE id = scopely.current_workspace_id()')).rows[0];
         if (!w) throw new HttpError(404, 'Not found.');
-        return { name: w.name, authenticated: false };
+        return session
+          ? { name: w.name, authenticated: true, role: session.workspace?.role ?? null, user: { name: session.user.displayName, email: session.user.email } }
+          : { name: w.name, authenticated: false, preview: true };
       }));
     }
     // GET /api/opportunities
@@ -692,10 +751,114 @@ export function createHandler(cfg: ServerConfig) {
     throw new HttpError(404, 'Not found.');
   }
 
+  const clientAddress = (req: IncomingMessage) => (cfg.auth?.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0]!.trim() : '')
+    || req.socket.remoteAddress || 'unknown';
+
+  /** Sign-in routes (A40). They need no workspace; everything else under /api does. */
+  async function authApi(req: IncomingMessage, res: ServerResponse, parts: string[], session: SessionView | null, token: string | null): Promise<boolean> {
+    const m = req.method;
+    const [a, b, c] = parts;
+    const setCookie = (t: string) => res.setHeader('set-cookie', sessionCookie(cookie, t, SESSION_TTL_SECONDS, secure));
+    if (a === 'session' && !b && m === 'GET') {
+      if (!cfg.auth) {
+        const ws = await tx(async (db) => (await db.query('SELECT name FROM scopely.workspaces WHERE id = scopely.current_workspace_id()')).rows[0]);
+        json(res, 200, { mode: 'preview', signedIn: false, workspace: ws ? { name: ws.name } : null });
+        return true;
+      }
+      json(res, 200, session
+        ? { mode: 'session', signedIn: true, user: { name: session.user.displayName, email: session.user.email }, workspace: session.workspace, workspaces: session.workspaces }
+        : { mode: 'session', signedIn: false, openSignup: Boolean(cfg.auth.openSignup) });
+      return true;
+    }
+    if (!cfg.auth) {
+      if (a === 'session' || a === 'signup' || a === 'invites' || (a === 'workspace' && (b === 'invites' || b === 'members'))) {
+        throw new HttpError(404, 'Sign-in is off on this development preview server.');
+      }
+      return false;
+    }
+    if (a === 'session' && !b && m === 'POST') {
+      const v = await jsonBody(req);
+      const key = `${clientAddress(req)}|${normalEmail(v.email) ?? ''}`;
+      if (limiter.blocked(key) || limiter.blocked(clientAddress(req))) throw new AuthRejected(429, 'Too many attempts. Wait 15 minutes, then try again.', 'rate_limited');
+      try {
+        const t = await authTx((db) => signIn(db, v.email, v.password));
+        limiter.clear(key);
+        setCookie(t);
+        json(res, 200, { signedIn: true });
+      } catch (err) {
+        limiter.hit(key);
+        limiter.hit(clientAddress(req));
+        throw err;
+      }
+      return true;
+    }
+    if (a === 'session' && !b && m === 'DELETE') {
+      await authTx((db) => signOut(db, token));
+      res.setHeader('set-cookie', clearCookie(cookie, secure));
+      json(res, 200, { signedIn: false });
+      return true;
+    }
+    if (a === 'session' && b === 'workspace' && !c && m === 'POST') {
+      if (!session) throw new AuthRejected(401, 'Sign in to continue.', 'signed_out');
+      const v = await jsonBody(req);
+      await authTx((db) => switchWorkspace(db, session, v.workspaceId));
+      json(res, 200, { ok: true });
+      return true;
+    }
+    if (a === 'invites' && b === 'check' && !c && m === 'POST') {
+      const v = await jsonBody(req);
+      if (limiter.blocked(clientAddress(req))) throw new AuthRejected(429, 'Too many attempts. Wait 15 minutes, then try again.', 'rate_limited');
+      try {
+        json(res, 200, await authTx((db) => describeInvite(db, v.token)));
+      } catch (err) { limiter.hit(clientAddress(req)); throw err; }
+      return true;
+    }
+    if (a === 'signup' && !b && m === 'POST') {
+      const v = await jsonBody(req);
+      if (limiter.blocked(clientAddress(req))) throw new AuthRejected(429, 'Too many attempts. Wait 15 minutes, then try again.', 'rate_limited');
+      try {
+        const t = await authTx((db) => acceptInvite(db, { token: v.invite, email: v.email, password: v.password, displayName: v.name, workspaceName: v.workspaceName },
+          { openSignup: Boolean(cfg.auth!.openSignup) }));
+        setCookie(t);
+        json(res, 200, { signedIn: true });
+      } catch (err) { limiter.hit(clientAddress(req)); throw err; }
+      return true;
+    }
+    if (a === 'workspace' && b === 'invites' && !c && m === 'POST') {
+      if (!session) throw new AuthRejected(401, 'Sign in to continue.', 'signed_out');
+      const v = await jsonBody(req);
+      const inv = await authTx((db) => createMemberInvite(db, session, v.role, v.email));
+      // The link is shown once, to the person who made it. Scopely sends no email.
+      json(res, 200, { url: `/app/#/join/${inv.token}`, expiresAt: inv.expiresAt });
+      return true;
+    }
+    if (a === 'workspace' && b === 'members' && !c && m === 'GET') {
+      if (!session) throw new AuthRejected(401, 'Sign in to continue.', 'signed_out');
+      json(res, 200, { members: await authTx((db) => listMembers(db, session)) });
+      return true;
+    }
+    return false;
+  }
+
+  /** GET /healthz: the process is up, the database answers and its schema is current. No detail beyond counts. */
+  async function health(res: ServerResponse) {
+    try {
+      const db = await cfg.pool.connect();
+      try {
+        const pending = await pendingMigrations(db);
+        return send(res, pending.length ? 503 : 200, JSON.stringify({ ok: pending.length === 0, database: 'up', pendingMigrations: pending.length,
+          auth: cfg.auth ? 'session' : 'preview' }), { ...APP_HEADERS, 'content-type': 'application/json; charset=utf-8' });
+      } finally { db.release(); }
+    } catch {
+      return send(res, 503, JSON.stringify({ ok: false, database: 'down' }), { ...APP_HEADERS, 'content-type': 'application/json; charset=utf-8' });
+    }
+  }
+
   return async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const started = Date.now();
     try {
+      if (secure) res.setHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
       if (req.method === 'GET' && STATIC[url.pathname]) {
         const [file, type] = STATIC[url.pathname]!;
         return send(res, 200, await readFile(path.join(UI_DIR, file)), { ...APP_HEADERS, 'content-type': type });
@@ -706,6 +869,7 @@ export function createHandler(cfg: ServerConfig) {
       }
       const pm = /^\/(p|s)\/([A-Za-z0-9_.-]{20,700})$/.exec(url.pathname);
       if (req.method === 'GET' && pm) return await preview(res, pm[1] as 'p' | 's', pm[2]!, url.searchParams.get('view'));
+      if (req.method === 'GET' && url.pathname === '/healthz') return await health(res);
       if (url.pathname.startsWith('/api/')) {
         if (req.method !== 'GET') {
           // No cross-site writes: a browser form or another site's script cannot set this header.
@@ -713,11 +877,29 @@ export function createHandler(cfg: ServerConfig) {
           const origin = req.headers.origin;
           if (origin !== undefined && !sameHost(origin, req.headers.host)) throw new HttpError(403, 'Refused.');
         }
-        return await api(req, res, url.pathname.slice(5).split('/').filter(Boolean), url);
+        const parts = url.pathname.slice(5).split('/').filter(Boolean);
+        if (!cfg.auth) {
+          return await scope.run({ workspaceId: cfg.workspaceId!, actor: null, session: null }, async () => {
+            if (await authApi(req, res, parts, null, null)) return;
+            return await api(req, res, parts, url);
+          });
+        }
+        // Signed in or not, the browser's own word on its workspace is never taken: the session's
+        // workspace is used only while the user is a member of it.
+        const token = readCookie(req.headers.cookie, cookie);
+        const session = token ? await authTx((db) => resolveSession(db, token)) : null;
+        const actor = session ? (session.user.displayName || session.user.email) : null;
+        return await scope.run({ workspaceId: session?.workspace?.workspaceId ?? null, actor, session }, async () => {
+          if (await authApi(req, res, parts, session, token)) return;
+          if (!session) throw new AuthRejected(401, 'Sign in to continue.', 'signed_out');
+          if (!session.workspace) throw new AuthRejected(403, 'You are not a member of a workspace yet. Ask an owner for an invite.', 'no_workspace');
+          return await api(req, res, parts, url);
+        });
       }
       throw new HttpError(404, 'Not found.');
     } catch (err) {
-      if (err instanceof HttpError) return json(res, err.status, { error: err.message });
+      if (err instanceof HttpError) return json(res, err.status, { error: err.message, ...(err.status === 401 ? { reason: 'signed_out' } : {}) });
+      if (err instanceof AuthRejected) return json(res, err.status, { error: err.message, reason: err.reason });
       if (err instanceof SiteError) return json(res, err.status, { error: err.message });
       if (err instanceof OutcomeRejected) return json(res, err.status, { error: err.message });
       if (err instanceof ProspectRejected) return json(res, err.status, { error: err.message });

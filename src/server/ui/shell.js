@@ -11,6 +11,7 @@
 import { $app, api, fail, go, h, money } from './lib.js';
 import { mountMapSlot } from './map-slot.js';
 import { renderCaseFile } from './case-file.js';
+import { accountBar } from './auth.js';
 
 export const STAGES = [
   { key: 'discover', label: 'Discover', sub: 'Every opportunity Scopely found' },
@@ -90,8 +91,7 @@ async function loadFeed() {
   S.workspace = workspace;
   S.items = items;
   const u = mounted;
-  u.ws.replaceChildren(workspace ? h('span', { text: workspace.name }) : null,
-    h('span', { class: 'sh-auth', title: 'Sign-in is not built yet. This server acts in one workspace.', text: 'Not signed in' }));
+  u.ws.replaceChildren(...accountBar());
   drawStages();
   drawFilters();
 }
