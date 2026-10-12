@@ -59,3 +59,22 @@ export async function pendingMigrations(client: Pick<pg.Client, 'query'>, dir = 
   const done = new Set((await client.query<{ version: string }>('SELECT version FROM scopely.schema_migrations')).rows.map((r) => r.version));
   return files.filter((v) => !done.has(v));
 }
+
+/**
+ * Creates (if missing) the non-owner role the server's requests switch to, grants it the scopely
+ * schema's tables, sequences and functions, and lets the connecting role SET ROLE to it. Run after
+ * each migrate, so new tables are granted too. The role cannot log in.
+ */
+export async function ensureAppRole(client: Pick<pg.Client, 'query'>, role: string): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(role)) throw new Error('SCOPELY_DB_APP_ROLE must be a plain lower-case role name');
+  const exists = (await client.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [role])).rows.length > 0;
+  if (!exists) await client.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
+  const bypass = (await client.query<{ b: boolean; s: boolean }>('SELECT rolbypassrls AS b, rolsuper AS s FROM pg_roles WHERE rolname = $1', [role])).rows[0]!;
+  if (bypass.b || bypass.s) throw new Error(`role ${role} bypasses row-level security; choose a plain role`);
+  await client.query(`GRANT USAGE ON SCHEMA scopely TO ${role}`);
+  await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA scopely TO ${role}`);
+  await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA scopely TO ${role}`);
+  await client.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA scopely TO ${role}`);
+  const member = (await client.query(`SELECT pg_has_role(current_user, $1, 'SET') AS ok`, [role])).rows[0];
+  if (!member?.ok) await client.query(`GRANT ${role} TO current_user`);
+}

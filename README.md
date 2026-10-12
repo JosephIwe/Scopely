@@ -81,10 +81,18 @@ says which stages are built, manual, a boundary only, or deferred.
   person records what shows it (A37–A39). 07 says who to contact, why, how and how sure, read from
   what is on file; 08 Outreach preparation lists what the seller may use, and readiness is the
   Slice 9 gates unchanged. Nothing is sent and no paid enrichment is called.
+- **Release 1 (sell, deliver, verify):** 08 Outreach preparation saves outreach drafts as
+  `messages` rows written only from what is on file, linted by `lint.outreach_draft` v1, edited by a
+  person and approved by a named person through `message_gate`; there is no send route (A41–A43,
+  migration 017). 10 Deliver · verify shows the ladder from stored outcomes, records a delivery as
+  the `delivered` outcome, and re-runs each baseline finding's automated check on its own page after
+  delivery, keeping every PASSED / FAILED / NOT_OBSERVABLE verification as history (A44–A46,
+  migration 019).
 
-There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23), the analysis of a selected business's homepage and booking links (A34) and, when switched on, live Clay discovery and people lookups on the workspace's own key (A32, A38). The AI edit in Slice 5 is
+There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23), the analysis of a selected business's homepage and booking links (A34), a verification's re-check of one finding's own page after delivery (A45) and, when switched on, live Clay discovery and people lookups on the workspace's own key (A32, A38). The AI edit in Slice 5 is
 a deterministic interpreter behind the same seam a model-backed one will use. Nothing here contacts a business:
-`messages.sent_at` records a send made by hand.
+a draft can be approved but never sent from Scopely, and `messages.sent_at` records a send made by
+hand.
 
 ## The Truth Rule
 
@@ -164,12 +172,17 @@ pnpm check                            # typecheck + test
 pnpm record workspace <file.json>     # provision a workspace
 SCOPELY_WORKSPACE_ID=<id> pnpm record <command> <file.json|->   # see docs/MANUAL_VALIDATION.md
 pnpm demo:seed                        # a sample workspace with one website and one fix opportunity; prints its id
-SCOPELY_WORKSPACE_ID=<id> pnpm serve  # the Build Workspace on http://127.0.0.1:4310
+pnpm auth:invite --setup              # a one-time link for the first person to create their workspace
+pnpm serve                            # Scopely on http://127.0.0.1:4310 with sign-in (A40)
+SCOPELY_WORKSPACE_ID=<id> pnpm serve  # development preview: one workspace, no sign-in, localhost only
 ```
 
-`pnpm serve` acts in one workspace, named by `SCOPELY_WORKSPACE_ID`, because nothing authenticates a
-person yet (B10); it listens on 127.0.0.1 only. It reads `PREVIEW_SIGNING_KEY` (at least 32
-characters; a random one is used, with a warning, when unset, so links stop working on restart),
+`pnpm serve` signs people in (A40): open the invite link `pnpm auth:invite` prints, create an account
+and workspace, then sign in at `/app`. Owners and admins invite others from the top bar. The
+development preview (`SCOPELY_WORKSPACE_ID`) skips sign-in for one workspace; it is refused in
+production and on any non-loopback `HOST`. Production settings, deployment and rollback are in
+`docs/RELEASE.md`. It reads `PREVIEW_SIGNING_KEY` (at least 32
+characters; outside production a random one is used, with a warning, when unset, so links stop working on restart),
 `SCOPELY_STORAGE_DIR` (default `.scopely/storage`) and `SHOW_LINK_TTL_HOURS` (default 72, A15).
 No model credential is read or needed.
 

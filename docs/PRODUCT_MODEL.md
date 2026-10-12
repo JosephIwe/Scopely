@@ -60,9 +60,9 @@ USER ─ membership ─ WORKSPACE ─┬─ MAILBOX CONNECTIONS
 | OPPORTUNITY | A sellable problem resting on at least one evidence row. A business can hold several | `opportunities`, `opportunity_evidence`, `OPPORTUNITY_FOUND` / `NO_OPPORTUNITY` | Built |
 | Service | The catalog item the opportunity maps to, or `UNMAPPED` with a reason | `catalog_items`, `opportunity_price_guard` | Built |
 | BUILD/FIX | A `DEMO` before the pitch, or the `DELIVERY` after a win | `build_kinds`, `builds`, `build_evidence`, `src/build` | Built for two kinds: `website` (Slice 5/6, `src/build/site`) and `website_fix` for broken contact links (Slice 7, `src/build/fix`). Other kinds are Boundary |
-| SELL | An approved message to a lawful contact, sent from one of the workspace's mailboxes | `contacts`, `suppression`, `messages`, `mailbox_connections`, `outcomes` | Built, Manual. Automated sending is Deferred |
-| DELIVER | Work done by the seller, or confirmed by the client for `CLIENT_REQUIRED` items | `outcomes` (`delivered`), `builds` (`DELIVERY`) | Built, Manual |
-| VERIFY | The original check passes on a snapshot taken after the evidence | `verifications` | Built, Manual |
+| SELL | An approved message to a lawful contact, sent from one of the workspace's mailboxes | `contacts`, `suppression`, `messages`, `mailbox_connections`, `outcomes`, `src/sell/drafts.ts` | Built. Drafts are written, linted and approved in the Case File (Release 1, A41–A43); sending stays Manual and automated sending is Deferred |
+| DELIVER | Work done by the seller, or confirmed by the client for `CLIENT_REQUIRED` items | `outcomes` (`delivered`), `builds` (`DELIVERY`), `src/sell/deliver.ts` | Built. Recorded from the Case File's 10 Deliver · verify (Release 1, A44) |
+| VERIFY | The original check passes on a snapshot taken after the evidence and the delivery | `verifications` (append-only), `src/verify` | Built. Automated for the v2 contact-link and booking checks (Release 1, A45); a person-checked v1 rule is not re-run |
 | GET PAID | Revenue is the `won` outcome's agreed amount | `outcomes.amount` → `opportunities.deal_value` | Deferred (decision B1) |
 | Learn | Per search, run, stage, opportunity kind and market; unknown values are NULL, never 0 | `v_search_run_summary`, `v_search_run_stage_funnel`, `v_search_performance`, `v_opportunity_feed`, `v_opportunity_ledger`, `v_market_funnel`, `v_opportunity_type_performance` | Built |
 
@@ -408,6 +408,33 @@ PROBLEM → EVIDENCE → CAPTURE → PROPOSED FIX → GENERATE → BEFORE / AFTE
 - **Suppression is per workspace** and can target an email, a domain or a business. One seller's
   opt-out list never reaches another's. An explicit `opt_out` reply suppresses its business in the
   same write (A29, migration 013); `not_interested`, `wrong_person` and every other outcome do not.
+
+### Outreach drafts (Release 1)
+
+- A draft is a `messages` row: opportunity, optional contact, cited evidence (`message_evidence`),
+  the proposed service (`catalog_item_id`, the opportunity's own) and the sender mailbox, NULL until
+  chosen. Without a sender the draft says "No sender set" and is not ready.
+- The first text is deterministic (`scopely:draft/1`) and conservative: the business name, each
+  cited finding's page, date, plain issue and verbatim quote; an INFERRED finding is said as
+  Scopely's reading; the service, and its price only when one is set; a reply-to-opt-out sentence
+  (B4 is open, so no links of Scopely's own).
+- `lint.outreach_draft` v1 runs on create, edit and approval and is stored in `lint_status` /
+  `lint_errors`. Readiness is `READY` only when the lint passes, a sender is set, the contact passes
+  `contact_outreach_blocker` and the evidence passes `evidence_send_blocker` now.
+- A named person approves through `message_gate`. A failed gate is refused with its reason and
+  nothing changes. Nothing sends: there is no send route and the app never writes `sent_at`.
+
+### Deliver and verify (Release 1)
+
+- The ladder is read from stored rows: proposed → pitched → won (or Lost) → delivered → verified,
+  with voided outcomes listed as corrections. Verified is done only when the latest verification of
+  every baseline finding PASSED.
+- A delivery is the `delivered` outcome; `outcome_guard` refuses it before a win and refuses
+  CLIENT_REQUIRED work not confirmed by the client.
+- Verify runs per baseline finding, after the delivery: one SSRF-safe request of the finding's own
+  page, a new snapshot, an observation with the same check code and rule version, and a
+  `verifications` row of PASSED, FAILED or NOT_OBSERVABLE. What Scopely cannot read is
+  NOT_OBSERVABLE, never a pass. Verifications are append-only and shown as history.
 
 ### Prospect Readiness (Slice 9)
 

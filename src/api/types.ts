@@ -5,7 +5,8 @@
 //   * money and credits are decimal strings ("350.00") with their currency, never floats;
 //   * null means NOT KNOWN and must be shown as unknown, never as 0.
 // docs/API_CONTRACT.md describes each shape and the request that returns it.
-
+import type { DeliverView } from './deliver.js';
+import type { OutreachDrafts } from './outreach.js';
 import type { BuyerAssessment } from '../prospects/buyer.js';
 
 export type OpportunityPath = 'WEBSITE' | 'FIX';
@@ -268,7 +269,7 @@ export interface BuildRunView {
   startedAt: string | null;
   finishedAt: string | null;
   errorCode: string | null;
-  /** Free text until authentication exists (B10). */
+  /** Stored as text; since A40 the server fills it with the signed-in person. */
   startedByUserId: string | null;
   cost: CostByPayer[];
 }
@@ -527,6 +528,10 @@ export interface CaseFile {
   };
   /** Slice 9: whether the seller may act on this prospect now, from the database's own gates. */
   readiness: ProspectReadiness;
+  /** Release 1 (A41–A43): saved outreach drafts, each with its lint, approval and readiness. Nothing is sent. */
+  drafts: OutreachDrafts;
+  /** Release 1 (A44–A46): the state ladder, deliveries and verifications. */
+  deliver: DeliverView;
   outreach: {
     /** HIGH findings not yet re-checked on a new snapshot (rule 12): re-check before they reach a prospect. */
     recheckNeeded: { evidenceId: string; plainIssue: string }[];

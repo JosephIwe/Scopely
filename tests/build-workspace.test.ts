@@ -435,7 +435,10 @@ describe('provider connections hold a reference, never a key', () => {
     const cols = (await db().query(`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'scopely'`)).rows
       .map((r) => `${r.table_name}.${r.column_name}`);
     const risky = cols.filter((c) => /(api_?key|secret|password|passwd|private_?key|access_?token|refresh_?token|oauth|bearer|\btoken\b|\.token$|_token$|credential(?!_ref$))/i.test(c));
-    expect(risky).toEqual([]);
+    // A40: user_credentials holds one-way scrypt hashes of sign-in passwords, never a usable
+    // secret; its CHECK refuses anything that is not an encoded scrypt hash (tests/auth.test.ts).
+    const hashOnly = ['user_credentials.user_id', 'user_credentials.password_hash', 'user_credentials.updated_at'];
+    expect(risky.filter((c) => !hashOnly.includes(c))).toEqual([]);
     expect(cols).toContain('provider_connections.credential_ref');
     expect(cols).toContain('mailbox_connections.credential_ref');
   });

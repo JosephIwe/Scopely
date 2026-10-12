@@ -297,3 +297,24 @@
 }
 @media (prefers-reduced-motion: reduce) { .shell * { animation: none !important; transition: none !important; } }
 .shell .sec.intro { gap: 6px; }
+/* A40: room for the Account menu on a phone. */
+@media (max-width: 600px) {
+  .sh-top .logo { font-size: 0; gap: 0; }
+  .sh-top .sh-stagesel { max-width: 128px; }
+  .sh-top .sh-topr { gap: 6px; }
+}
+
+/* ---------------------------------------------------------------- outreach drafts and deliver · verify (release 1) */
+.shell .drafts { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.shell .draft { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; font-size: 13px; min-width: 0; }
+.shell .draft > .row { flex-wrap: wrap; gap: 8px; align-items: center; }
+.shell .draft .kv { margin: 0; }
+.shell .draft .kv dd { overflow-wrap: anywhere; }
+.shell .draft .dSubj { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.shell .draft .dBody { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--paper); font: 12.5px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+.shell .draft .note { margin: 0; }
+.shell .draft textarea, .shell .drafts textarea { width: 100%; max-width: 100%; box-sizing: border-box; font: 12.5px/1.5 var(--mono); }
+.shell .ev.verif .kv dd, .shell .vlist .kv dd { overflow-wrap: anywhere; }
+.shell .vlist { margin: 0 12px; }
+.shell .vlist li .kv { padding: 0; margin-top: 4px; }
+.shell .vlist li .hint { overflow-wrap: anywhere; }

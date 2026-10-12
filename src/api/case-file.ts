@@ -12,6 +12,8 @@ import { normalizeFact } from '../prospects/facts.js';
 import { LOOKUP_ERROR_WORDS, conflictsFor } from '../prospects/lookup.js';
 import type { ProviderErrorCode } from '../providers/gateway.js';
 import { getBusinessDetail } from './queries.js';
+import { listDrafts } from './outreach.js';
+import { getDeliverView } from './deliver.js';
 import type {
   BuildState, BusinessChannel, CaseFile, CaseFileContact, ContactFactView, ProspectLookupView, CaseFileOutcome, CaseFileSuppression, DeliveryState, EvidenceItem, FeedStage, OpportunityBuildInfo,
   ProspectReadiness, ReadinessCheck, SellState,
@@ -28,7 +30,8 @@ const iso = (v: unknown) => (v === null || v === undefined ? null : new Date(v a
 export function stageOf(x: { buildState: BuildState | string; sellState: SellState | string; deliveryState: DeliveryState | string }): FeedStage {
   if (String(x.deliveryState).startsWith('VERIFIED_')) return 'VERIFY';
   if (x.sellState === 'WON') return 'DELIVER';
-  if (['APPROVED', 'SENT', 'PITCHED', 'REPLIED', 'LOST'].includes(x.sellState)) return 'SELL';
+  // A saved outreach draft is selling work (release 1): it moves the opportunity to Sell, never further.
+  if (['DRAFTED', 'APPROVED', 'SENT', 'PITCHED', 'REPLIED', 'LOST'].includes(x.sellState)) return 'SELL';
   if (x.buildState !== 'NONE') return 'BUILD';
   return 'OPPORTUNITIES';
 }
@@ -315,6 +318,8 @@ export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFi
     return { ...view, assessment };
   });
   const suggested = suggestBuyer(contactViews.map((c) => ({ ...c, readyToEmail: readiness.readyContactIds.includes(c.contactId) })));
+  const drafts = (await listDrafts(db, opportunityId))!;
+  const deliver = (await getDeliverView(db, opportunityId))!;
 
   return {
     opportunityId: String(o.opportunity_id), path: o.opportunity_path, kind: o.opportunity_kind, opportunityType: o.opportunity_type,
@@ -349,6 +354,8 @@ export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFi
       businessChannels: prospect.businessChannels, lookups: prospect.lookups,
     },
     readiness,
+    drafts,
+    deliver,
     outreach: {
       // Rule 12: a HIGH finding is re-checked on a new snapshot before it reaches a prospect.
       recheckNeeded,

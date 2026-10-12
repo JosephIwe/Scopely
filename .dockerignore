@@ -1,0 +1,10 @@
+node_modules
+.git
+.claude
+.scopely
+.env
+.env.*
+tests
+fixtures/golden
+docs
+*.log

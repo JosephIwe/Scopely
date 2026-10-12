@@ -7,6 +7,7 @@ import {
 } from './lib.js';
 import { shellView } from './shell.js';
 import { findView } from './find.js';
+import { joinView, loadSession, needsSignIn, signInView } from './auth.js';
 
 function appbar(back) {
   return h('header', { class: 'appbar' },
@@ -25,6 +26,10 @@ async function route() {
   const hsh = location.hash || '#/';
   let m;
   onEscape = null;
+  // A40: who is signed in decides what can open. Signed out, only sign-in and join show.
+  try { await loadSession(); } catch (err) { $app.replaceChildren(h('main', { class: 'auth' }, h('p', { class: 'auth-err', text: err.message }))); return; }
+  if ((m = hsh.match(/^#\/join(?:\/([A-Za-z0-9_-]{43}))?$/))) return joinView(m[1] ?? null, () => { location.hash = '#/'; route(); });
+  if (needsSignIn()) return signInView(() => route());
   if ((m = hsh.match(/^#\/p\/(\d+)\/setup$/))) return setupView(m[1]);
   if ((m = hsh.match(/^#\/p\/(\d+)$/))) return workspaceView(m[1]);
   leaveGuard = null;
@@ -34,6 +39,8 @@ async function route() {
   // Slice 8: the product shell, its stage feeds and the Case File.
   return shellView(hsh, { setEscape: (fn) => { onEscape = fn; } });
 }
+// Any request that finds the session gone (signed out elsewhere, expired) returns to sign-in.
+window.addEventListener('scopely:signed-out', () => { loadSession(true).then(() => route()).catch(() => route()); });
 window.addEventListener('hashchange', () => {
   if (leaveGuard && leaveGuard() && !confirm('You have unsaved changes. Leave without saving?')) return;
   leaveGuard = null;

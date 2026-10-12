@@ -1,7 +1,8 @@
-// Seeds a local database with one sample workspace, one sample website opportunity and one sample
-// fix opportunity (a broken WhatsApp link), so the Build Workspace and the Fix Builder can be tried
-// end to end. The fix business's page is served from fixtures/demo-pages by `pnpm serve`, because
-// a reserved .example domain can never be fetched. Everything it writes is sample data for a fictional
+// Seeds a local database with one sample workspace, one sample website opportunity and two sample
+// fix opportunities (a broken WhatsApp link, and a broken phone link whose demo page shows it fixed),
+// so the Build Workspace, the Fix Builder and Deliver · verify can be tried end to end. The fix
+// businesses' pages are served from fixtures/demo-pages by `pnpm serve`, because a reserved .example
+// domain can never be fetched. Everything it writes is sample data for a fictional
 // business on a reserved .example domain; never run it against a real workspace.
 //
 //   DATABASE_URL=... pnpm demo:seed     # prints the workspace id to pass to `pnpm serve`
@@ -73,6 +74,28 @@ try {
     const fixOpp = await q(`INSERT INTO scopely.opportunities (business_id, opportunity_type, mapping_status, catalog_item_id, currency, service_price)
       VALUES ($1, 'broken_contact_path', 'MAPPED', $2, 'GBP', 120) RETURNING id`, [fixBiz.id, sprint.id]);
     await q('INSERT INTO scopely.opportunity_evidence (opportunity_id, evidence_id) VALUES ($1, $2) RETURNING opportunity_id', [fixOpp.id, fixEv.id]);
+
+    // Release 1 (Deliver and Verify): a fix opportunity whose finding was recorded on 25 September under
+    // the automated contact-link rule (check.contact_links v2): the "Call the clinic" link kept the 0
+    // after +44. The demo page fixtures/demo-pages/quayside.example__contact.html is the AFTER state (the
+    // link corrected), so once a seller records the pitch, the win and the delivery by hand, Verify
+    // re-reads that page and records PASSED. No price is set, so drafts say "Price not set".
+    const quay = await q(`INSERT INTO scopely.businesses (name, domain, website_url, city) VALUES ('Quayside Physio', 'quayside.example', 'https://quayside.example/', 'Sampleton')
+      RETURNING id`);
+    const quaySnap = await q(`INSERT INTO scopely.snapshots (business_id, url, final_url, http_status, fetched_at, fetch_method, html_sha256)
+      VALUES ($1, 'https://quayside.example/contact', 'https://quayside.example/contact', 200, '2026-09-25T09:30:00Z', 'http', repeat('d', 64)) RETURNING id`, [quay.id]);
+    await recordWebsiteStatus(db, quay.id, { status: 'WEBSITE_PRESENT', basis: 'OBSERVED', source: 'demo_seed', checkedAt: '2026-09-25T09:30:00Z' });
+    const links2 = await q(`SELECT id FROM scopely.rule_versions WHERE rule_key = 'check.contact_links' AND version = 2`);
+    const quayObs = await q(`INSERT INTO scopely.observations (snapshot_id, check_code, rule_version_id, state, result, href, visible_text, observed_at)
+      VALUES ($1, 'contact_links.phone', $2, 'OBSERVED', 'defect', 'tel:+44 (0)20 7946 0999', 'Call the clinic', '2026-09-25T09:30:00Z') RETURNING id`,
+      [quaySnap.id, links2.id]);
+    const quayEv = await q(`INSERT INTO scopely.evidence (business_id, observation_id, issue_code, rule_version_id, claim_state, plain_issue, url, quote, observed_at, confidence)
+      VALUES ($1, $2, 'E-TEL-BROKEN', $3, 'OBSERVED', 'The "Call the clinic" phone link keeps the 0 after +44, so the number cannot be dialled',
+              'https://quayside.example/contact', '<a href="tel:+44 (0)20 7946 0999">Call the clinic</a>', '2026-09-25T09:30:00Z', 'HIGH') RETURNING id`,
+      [quay.id, quayObs.id, links2.id]);
+    const quayOpp = await q(`INSERT INTO scopely.opportunities (business_id, opportunity_type, mapping_status, catalog_item_id)
+      VALUES ($1, 'broken_contact_path', 'MAPPED', $2) RETURNING id`, [quay.id, sprint.id]);
+    await q('INSERT INTO scopely.opportunity_evidence (opportunity_id, evidence_id) VALUES ($1, $2) RETURNING opportunity_id', [quayOpp.id, quayEv.id]);
 
     // Slice 10: a saved search whose provider query matches the recorded Clay responses in
     // fixtures/providers/clay, so Find can be tried without a live provider call.

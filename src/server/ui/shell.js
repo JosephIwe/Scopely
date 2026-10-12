@@ -11,14 +11,15 @@
 import { $app, api, fail, go, h, money } from './lib.js';
 import { mountMapSlot } from './map-slot.js';
 import { renderCaseFile } from './case-file.js';
+import { accountBar } from './auth.js';
 
 export const STAGES = [
   { key: 'discover', label: 'Discover', sub: 'Every opportunity Scopely found' },
   { key: 'opportunities', label: 'Opportunities', stage: 'OPPORTUNITIES', sub: 'Ready to review and build' },
   { key: 'build', label: 'Build', stage: 'BUILD', sub: 'Built, not yet pitched' },
   { key: 'sell', label: 'Sell', stage: 'SELL', sub: 'Pitched, replied or closed' },
-  { key: 'deliver', label: 'Deliver', stage: 'DELIVER', planned: true, sub: 'Won work to deliver' },
-  { key: 'verify', label: 'Verify', stage: 'VERIFY', planned: true, sub: 'Rechecked after delivery' },
+  { key: 'deliver', label: 'Deliver', stage: 'DELIVER', sub: 'Won work to deliver' },
+  { key: 'verify', label: 'Verify', stage: 'VERIFY', sub: 'Rechecked after delivery' },
 ];
 
 const WEBSITE_STATUS = {
@@ -90,8 +91,7 @@ async function loadFeed() {
   S.workspace = workspace;
   S.items = items;
   const u = mounted;
-  u.ws.replaceChildren(workspace ? h('span', { text: workspace.name }) : null,
-    h('span', { class: 'sh-auth', title: 'Sign-in is not built yet. This server acts in one workspace.', text: 'Not signed in' }));
+  u.ws.replaceChildren(...accountBar());
   drawStages();
   drawFilters();
 }

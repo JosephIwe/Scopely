@@ -15,6 +15,7 @@ import * as d from '../src/discovery/index.js';
 import * as api from '../src/api/queries.js';
 import { registerManualMailbox, listMailboxes } from '../src/sell/mailbox.js';
 import { createWorkspace, withWorkspace } from '../src/tenancy/index.js';
+import { activateProviderConnection, registerProviderConnection } from '../src/build/providers.js';
 
 type Db = Awaited<ReturnType<typeof connect>>;
 
@@ -44,6 +45,15 @@ const commands: Record<string, (db: Db, input: any) => Promise<unknown>> = {
   'message-sent': (db, i) => r.markMessageSent(db, i.messageId, i.sentAt, i.mailboxConnectionId),
   outcome: (db, i) => r.recordOutcome(db, i),
   cost: (db, i) => r.recordCost(db, i),
+  // A workspace's own provider account (A32/A38): records the connection and its secret reference
+  // (secretref:ws/<id>/<name>; the key itself goes in the server's SCOPELY_SECRET_WS<id>_<NAME>
+  // variable, never here) and activates it.
+  'provider-connection': async (db, i) => {
+    const id = await registerProviderConnection(db, { provider: i.provider, mode: i.mode ?? 'CUSTOMER_KEY', scopes: i.scopes, credentialRef: i.credentialRef,
+      displayName: i.displayName ?? null });
+    await activateProviderConnection(db, id, i.at ?? new Date().toISOString());
+    return { connectionId: id };
+  },
 };
 
 const views: Record<string, (db: Db, arg: string | undefined) => Promise<unknown>> = {

@@ -10,7 +10,7 @@ import type { Db } from '../tenancy/index.js';
 export interface ProviderConnectionInput {
   provider: string;
   mode: 'SCOPELY_MANAGED' | 'CUSTOMER_KEY';
-  scopes: ('build' | 'analysis')[];
+  scopes: ('build' | 'analysis' | 'discovery' | 'prospects')[];
   credentialRef?: string | null;
   displayName?: string | null;
   createdByUserId?: string | null;
