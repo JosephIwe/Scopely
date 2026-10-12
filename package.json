@@ -14,6 +14,7 @@
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test",
     "serve": "tsx scripts/serve.ts",
+    "clay:reference": "tsx scripts/clay-reference.ts",
     "demo:seed": "tsx scripts/demo-seed.ts"
   },
   "dependencies": {

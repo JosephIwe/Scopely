@@ -213,15 +213,23 @@ export interface ContactInput {
   label: 'VERIFIED' | 'PUBLICLY_FOUND' | 'UNVERIFIED';
   mxOk?: boolean;
   outreachBasis: 'corporate_subscriber' | 'consent' | 'not_permitted' | 'unknown';
+  /** Slice 12 (016): a decision maker needs a basis; a relationship needs a basis; VERIFIED says how. */
+  decisionMakerBasis?: string | null;
+  relationship?: 'owner' | 'director' | 'partner' | 'employee' | 'other' | null;
+  relationshipBasis?: string | null;
+  verificationBasis?: string | null;
+  verifiedBy?: string | null;
 }
 
 export async function recordContact(db: Db, c: ContactInput): Promise<string> {
+  const verified = c.label !== 'UNVERIFIED' && c.verificationBasis ? { by: c.verifiedBy ?? null, at: new Date().toISOString() } : { by: null, at: null };
   return (await one<{ id: string }>(db,
     `INSERT INTO scopely.contacts (business_id, full_name, role, is_decision_maker, email, email_kind, source, source_url, label,
-       mx_ok, outreach_basis)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+       mx_ok, outreach_basis, decision_maker_basis, relationship, relationship_basis, verification_basis, verified_by, verified_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
     [c.businessId, c.fullName ?? null, c.role ?? null, c.isDecisionMaker ?? false, c.email ?? null, c.emailKind ?? null,
-     c.source, c.sourceUrl ?? null, c.label, c.mxOk ?? null, c.outreachBasis])).id;
+     c.source, c.sourceUrl ?? null, c.label, c.mxOk ?? null, c.outreachBasis, c.decisionMakerBasis ?? null, c.relationship ?? null,
+     c.relationshipBasis ?? null, c.verificationBasis ?? null, verified.by, verified.at])).id;
 }
 
 /** The reasons the suppression list uses (001). */

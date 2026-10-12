@@ -8,7 +8,7 @@ import type pg from 'pg';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createHandler } from '../src/server/app.js';
 import {
-  ClayBusinessDiscoveryAdapter, ClayMcpTransport, DiscoveryProviderRegistry, EnvSecretResolver, secretEnvName,
+  ClayBusinessDiscoveryAdapter, ClayPublicApiTransport, DiscoveryProviderRegistry, EnvSecretResolver, secretEnvName,
 } from '../src/providers/index.js';
 import { MemoryObjectStore } from '../src/storage/index.js';
 import { StubFetcher } from './fix-helpers.js';
@@ -184,18 +184,15 @@ describe('a live provider behind the Find screen (fake Clay endpoint)', () => {
 
   it('says whether the workspace is connected, and never returns or logs the key', async () => {
     const ws = await currentWs();
-    const fake = (async (_url: string, init: RequestInit) => {
-      const msg = JSON.parse(String(init.body));
-      if (msg.method === 'initialize') return new Response(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: {} }), { status: 200, headers: { 'content-type': 'application/json' } });
-      if (msg.method === 'notifications/initialized') return new Response(null, { status: 202 });
-      const page = { taskId: 't1', hasMore: false, timestampMs: Date.parse('2026-10-05T16:00:00Z'),
-        companies: { 9: { entityId: '9', name: 'Clinic Nine', size: '2-10', country: 'United Kingdom', industry: 'Medical Practices', locality: 'Leeds', domain: 'nine.test' } } };
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: JSON.stringify(page) }] } }),
-        { status: 200, headers: { 'content-type': 'application/json' } });
+    const fake = (async (url: string) => {
+      if (url.endsWith('/search/query-mode')) return new Response(JSON.stringify({ search_id: 'srch-1', source_type: 'companies' }), { status: 200 });
+      const page = { has_more: false,
+        data: [{ entityId: '9', name: 'Clinic Nine', size: '2-10', country: 'United Kingdom', industry: 'Medical Practices', locality: 'Leeds', domain: 'nine.test' }] };
+      return new Response(JSON.stringify(page), { status: 200, headers: { 'content-type': 'application/json' } });
     }) as unknown as typeof fetch;
     const ref = `secretref:ws/${ws}/clay`;
     const discovery = {
-      providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(new ClayMcpTransport({ fetch: fake }))),
+      providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(new ClayPublicApiTransport({ fetch: fake }))),
       secrets: new EnvSecretResolver({ [secretEnvName(ref)]: SECRET }),
     };
     const srv = await start(discovery);

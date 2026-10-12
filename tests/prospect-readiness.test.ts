@@ -46,7 +46,8 @@ async function start(workspaceId?: string) {
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
-const LAWFUL = { fullName: 'Sam Alder', role: 'Director', isDecisionMaker: true, email: 'sam@example-clinic.test', emailKind: 'personal',
+// Slice 12: a decision maker carries what shows it (016).
+const LAWFUL = { fullName: 'Sam Alder', role: 'Director', isDecisionMaker: true, decisionMakerBasis: 'Listed as a director at Companies House', email: 'sam@example-clinic.test', emailKind: 'personal',
   source: 'company_register', label: 'PUBLICLY_FOUND', outreachBasis: 'corporate_subscriber' };
 
 /** A GB website opportunity on one HIGH finding that has not been re-checked, and a server over it. */
@@ -335,6 +336,18 @@ describe('suppression from the Case File', () => {
 // ---------------------------------------------------------------- 12-13 readiness
 
 describe('prospect readiness', () => {
+  it('never says evidence was re-checked when it was not, even when the gate lets it through', async () => {
+    const p = await prospect();
+    // A MEDIUM finding needs no re-check to pass the gate, and none is recorded.
+    await db().query(`UPDATE evidence SET confidence = 'MEDIUM' WHERE id = $1`, [p.seed.evidenceId]);
+    let ev = (await p.cf()).readiness.checks.find((c: { key: string }) => c.key === 'evidence');
+    expect(ev).toEqual({ key: 'evidence', state: 'done', label: 'Evidence clear to use',
+      detail: '1 finding has not been re-checked. Only a high-confidence finding must be.' });
+    await p.recheck({ result: 'confirmed' });
+    ev = (await p.cf()).readiness.checks.find((c: { key: string }) => c.key === 'evidence');
+    expect(ev).toMatchObject({ state: 'done', label: 'Evidence re-checked and holds', detail: null });
+  });
+
   it('reports each missing requirement from the gates, and becomes READY when all are met', async () => {
     const p = await prospect();
     let cf = await p.cf();

@@ -73,8 +73,16 @@ says which stages are built, manual, a boundary only, or deferred.
   OBSERVED defects become evidence, and opportunities open only through the catalog (A35). The
   seller reads what Scopely saw and opens the Case File. Reserved `.example` hosts are answered from
   `fixtures/demo-pages` instead of the network.
+- **Slice 12 (prospect intelligence):** the Case File's 07 Buyer · prospect finds the people at a
+  business through a prospect provider (Clay first, behind `ProspectIntelligenceProvider`) and
+  keeps every person and channel (email, phone, WhatsApp, LinkedIn, Instagram, X, contact page)
+  with its source, call, time, confidence and VERIFIED / PUBLICLY_FOUND / UNVERIFIED label
+  (migration 016). Whatever a provider returns is UNVERIFIED and never a decision maker until a
+  person records what shows it (A37–A39). 07 says who to contact, why, how and how sure, read from
+  what is on file; 08 Outreach preparation lists what the seller may use, and readiness is the
+  Slice 9 gates unchanged. Nothing is sent and no paid enrichment is called.
 
-There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23), the analysis of a selected business's homepage and booking links (A34) and, when switched on, live Clay discovery on the workspace's own key (A32). The AI edit in Slice 5 is
+There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23), the analysis of a selected business's homepage and booking links (A34) and, when switched on, live Clay discovery and people lookups on the workspace's own key (A32, A38). The AI edit in Slice 5 is
 a deterministic interpreter behind the same seam a model-backed one will use. Nothing here contacts a business:
 `messages.sent_at` records a send made by hand.
 
@@ -166,11 +174,13 @@ characters; a random one is used, with a warning, when unset, so links stop work
 No model credential is read or needed.
 
 Discovery replays the recorded Clay responses in `fixtures/providers/clay/` unless
-`SCOPELY_CLAY_LIVE=1`. Live mode calls Clay's MCP endpoint with the workspace's own key: the
-workspace needs an ACTIVE `CUSTOMER_KEY` connection for `clay` with the `discovery` scope, and the
-server reads the key named by its `credential_ref` from the environment
-(`secretref:ws/<id>/<name>` → `SCOPELY_SECRET_WS<id>_<NAME>`). The key never reaches the database or
-the browser.
+`SCOPELY_CLAY_LIVE=1`. Live mode calls Clay's Public API (`https://api.clay.com/public/v0`, header
+`clay-api-key`, no bearer token) with the workspace's own Public API key: the workspace needs an
+ACTIVE `CUSTOMER_KEY` connection for `clay` with the `discovery` scope, and the server reads the key
+named by its `credential_ref` from the environment (`secretref:ws/<id>/<name>` →
+`SCOPELY_SECRET_WS<id>_<NAME>`). The key never reaches the database or the browser. A live people
+lookup is refused, unsent, until Clay's exact-company filter is confirmed from its query reference;
+`pnpm clay:reference` fetches that reference (free, read-only) with the same connection and key.
 
 Tests read `TEST_DATABASE_ADMIN_URL` (default `postgres://scopely:scopely@localhost:5432/postgres`)
 and create and drop their own `scopely_test_<random>` database. Every test runs in a transaction

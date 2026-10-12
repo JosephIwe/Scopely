@@ -8,10 +8,17 @@
 // stop working when the server restarts), SHOW_LINK_TTL_HOURS (72).
 //
 // Discovery (Slice 10): Find replays recorded Clay responses (fixtures/providers/clay) unless
-// SCOPELY_CLAY_LIVE=1, which calls Clay with the workspace's own connection. A live search then
+// SCOPELY_CLAY_LIVE=1, which calls Clay's Public API with the workspace's own Public API key
+// (header clay-api-key). A live search then
 // needs an ACTIVE 'discovery' provider connection for clay whose credential_ref
 // secretref:ws/<id>/<name> names the server variable SCOPELY_SECRET_WS<id>_<NAME>. Nothing else
 // ever reads that variable, and it never reaches a browser.
+//
+// Prospect intelligence (Slice 12): the Case File's Find people replays recorded Clay people
+// lookups (fixtures/providers/clay/demo-people-search.json, synthetic people at the demo's .example
+// businesses) unless SCOPELY_CLAY_LIVE=1. A live lookup needs an ACTIVE provider connection for
+// clay with the 'prospects' scope and a customer key, exactly like discovery. Over the Public API a live
+// people lookup is refused, unsent, until Clay's exact-company filter is confirmed. Nothing paid is called.
 //
 // Analysis (Slice 11): analysing a selected business requests its own website with the SSRF-safe
 // probe (src/analysis/fetch.ts); reserved .example hosts are answered from fixtures/demo-pages.
@@ -20,12 +27,16 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import pg from 'pg';
 import { databaseUrl } from '../src/db/client.js';
+import { pendingMigrations } from '../src/db/migrate.js';
 import { DEFAULT_SHOW_LINK_TTL_SECONDS } from '../src/build/site/index.js';
 import { DemoAwarePageFetcher } from '../src/build/fix/index.js';
 import { DemoAwareProbe } from '../src/analysis/index.js';
 import { createHandler } from '../src/server/app.js';
 import { FileObjectStore } from '../src/storage/index.js';
-import { ClayBusinessDiscoveryAdapter, ClayMcpTransport, DiscoveryProviderRegistry, EnvSecretResolver, RecordedClayTransport, type ClayRecording } from '../src/providers/index.js';
+import {
+  ClayBusinessDiscoveryAdapter, ClayPublicApiTransport, ClayProspectAdapter, DiscoveryProviderRegistry, EnvSecretResolver, ProspectProviderRegistry, RecordedClayTransport,
+  type ClayRecording,
+} from '../src/providers/index.js';
 
 const workspaceId = process.env.SCOPELY_WORKSPACE_ID;
 if (!workspaceId || !/^\d+$/.test(workspaceId)) {
@@ -43,11 +54,20 @@ if (!Number.isFinite(showHours) || showHours <= 0 || showHours > 24 * 30) {
   process.exit(1);
 }
 const pool = new pg.Pool({ connectionString: databaseUrl(), max: 8 });
+// A database behind the code is reported here, by name; the server never migrates it.
+try {
+  const pending = await pendingMigrations(pool);
+  if (pending.length) console.warn(`The database has not applied ${pending.length} migration(s): ${pending.join(', ')}. Pages that need them will say so. Run pnpm migrate, then restart.`);
+} catch (err) {
+  console.warn(`Could not check the database's migrations (${(err as { code?: string }).code ?? 'no code'}).`);
+}
 const live = process.env.SCOPELY_CLAY_LIVE === '1';
-const clay = live ? new ClayMcpTransport()
-  : new RecordedClayTransport(['2026-10-05-company-search.json', '2026-10-05-company-search-country.json'].flatMap((f) =>
+const clay = live ? new ClayPublicApiTransport()
+  : new RecordedClayTransport(['2026-10-05-company-search.json', '2026-10-05-company-search-country.json', 'demo-people-search.json'].flatMap((f) =>
     (JSON.parse(readFileSync(new URL(`../fixtures/providers/clay/${f}`, import.meta.url), 'utf8')) as { searches: ClayRecording[] }).searches));
-const discovery = { providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(clay)), secrets: live ? new EnvSecretResolver() : undefined };
+const secrets = live ? new EnvSecretResolver() : undefined;
+const discovery = { providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(clay)), secrets };
+const prospects = { providers: new ProspectProviderRegistry().register(new ClayProspectAdapter(clay)), secrets };
 const handler = createHandler({
   pool, workspaceId, signingKey,
   store: new FileObjectStore(process.env.SCOPELY_STORAGE_DIR ?? '.scopely/storage'),
@@ -57,6 +77,7 @@ const handler = createHandler({
   fetcher: new DemoAwarePageFetcher(),
   probe: new DemoAwareProbe(),
   discovery,
+  prospects,
 });
 const port = Number(process.env.PORT ?? 4310);
 const host = process.env.HOST ?? '127.0.0.1';
