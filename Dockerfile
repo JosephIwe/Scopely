@@ -9,5 +9,5 @@ RUN pnpm install --frozen-lockfile --prod
 COPY . .
 ENV SCOPELY_ENV=production HOST=0.0.0.0 PORT=8080 SCOPELY_STORAGE_DIR=/data/storage
 EXPOSE 8080
-USER node
+# Runs as the image's root user so the platform volume mounted at /data is writable.
 CMD ["pnpm", "start"]
