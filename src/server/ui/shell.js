@@ -18,8 +18,8 @@ export const STAGES = [
   { key: 'opportunities', label: 'Opportunities', stage: 'OPPORTUNITIES', sub: 'Ready to review and build' },
   { key: 'build', label: 'Build', stage: 'BUILD', sub: 'Built, not yet pitched' },
   { key: 'sell', label: 'Sell', stage: 'SELL', sub: 'Pitched, replied or closed' },
-  { key: 'deliver', label: 'Deliver', stage: 'DELIVER', planned: true, sub: 'Won work to deliver' },
-  { key: 'verify', label: 'Verify', stage: 'VERIFY', planned: true, sub: 'Rechecked after delivery' },
+  { key: 'deliver', label: 'Deliver', stage: 'DELIVER', sub: 'Won work to deliver' },
+  { key: 'verify', label: 'Verify', stage: 'VERIFY', sub: 'Rechecked after delivery' },
 ];
 
 const WEBSITE_STATUS = {

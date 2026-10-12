@@ -21,6 +21,11 @@ import { getCaseFile, opportunityBuildInfo, stageOf } from '../api/case-file.js'
 import { isDemoBusiness } from '../api/sample.js';
 import { getSearch, listOpportunities, listSearches } from '../api/queries.js';
 import { OutcomeRejected, recordManualOutcome } from '../sell/outcomes.js';
+import { DraftRejected, approveDraft, createDraft, editDraft } from '../sell/drafts.js';
+import { DeliveryRejected, recordDelivery } from '../sell/deliver.js';
+import { listDrafts } from '../api/outreach.js';
+import { getDeliverView } from '../api/deliver.js';
+import { VerifyRefused, verifyEvidence } from '../verify/index.js';
 import {
   ProspectRejected, checkCaseFact, recordCaseFact, recordCaseRecheck, recordCompanyRegister, saveCaseContact, suppressFromCaseFile, useFactAsEmail,
 } from '../sell/prospect.js';
@@ -152,7 +157,7 @@ interface RequestScope { workspaceId: string | null; actor: string | null; sessi
 const scope = new AsyncLocalStorage<RequestScope>();
 
 /** Body fields that name the person acting. When someone is signed in, the server fills them with that person, whatever the browser sent. */
-const ACTOR_FIELDS = ['recordedBy', 'approvedBy', 'capturedBy', 'confirmedBy', 'proposedBy', 'requestedBy', 'revokedBy', 'selectedBy', 'verifiedBy', 'createdBy'];
+const ACTOR_FIELDS = ['recordedBy', 'draftedBy', 'editedBy', 'approvedBy', 'capturedBy', 'confirmedBy', 'proposedBy', 'requestedBy', 'revokedBy', 'selectedBy', 'verifiedBy', 'createdBy'];
 
 async function jsonBody(req: IncomingMessage): Promise<Record<string, any>> {
   if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) throw new HttpError(415, 'Send JSON.');
@@ -429,6 +434,73 @@ export function createHandler(cfg: ServerConfig) {
       const suppressionId = await tx((db) => suppressFromCaseFile(db, oid, { target: String(bd.target ?? ''), contactId: bd.contactId ?? null, reason: String(bd.reason ?? '') }));
       log(`suppression ${suppressionId} opportunity ${oid} ${String(bd.target)}`);
       return json(res, 200, { suppressionId });
+    }
+    // Release 1, outreach drafts (A41–A43). Saved, linted and approved by a named person; never sent.
+    // There is deliberately no send route: nothing in this server writes sent_at.
+    // GET /api/opportunities/:id/drafts
+    if (m === 'GET' && a === 'opportunities' && c === 'drafts' && !d) {
+      const oid = id(b);
+      return json(res, 200, await tx(async (db) => {
+        const v = await listDrafts(db, oid);
+        if (!v) throw new HttpError(404, 'Not found.');
+        return v;
+      }));
+    }
+    // POST /api/opportunities/:id/drafts: Scopely's first version, from what is on file.
+    if (m === 'POST' && a === 'opportunities' && c === 'drafts' && !d) {
+      const oid = id(b);
+      const bd = await jsonBody(req);
+      const out = await tx((db) => createDraft(db, oid, { draftedBy: String(bd.draftedBy ?? ''), contactId: bd.contactId ?? null,
+        evidenceIds: Array.isArray(bd.evidenceIds) ? bd.evidenceIds.map(String) : null, mailboxId: bd.mailboxId ?? null }));
+      log(`draft ${out.messageId} opportunity ${oid} created lint=${out.lint.status}`);
+      return json(res, 200, out);
+    }
+    // POST /api/opportunities/:id/drafts/:mid: a person's edit, while the draft is not approved.
+    if (m === 'POST' && a === 'opportunities' && c === 'drafts' && d && !e) {
+      const oid = id(b);
+      const mid = id(d);
+      const bd = await jsonBody(req);
+      const out = await tx((db) => editDraft(db, oid, mid, { subject: String(bd.subject ?? ''), body: String(bd.body ?? ''), editedBy: String(bd.editedBy ?? ''),
+        ...('contactId' in bd ? { contactId: bd.contactId ?? null } : {}), ...('mailboxId' in bd ? { mailboxId: bd.mailboxId ?? null } : {}) }));
+      log(`draft ${mid} opportunity ${oid} edited lint=${out.lint.status}`);
+      return json(res, 200, out);
+    }
+    // POST /api/opportunities/:id/drafts/:mid/approve: a named person's approval, through message_gate.
+    if (m === 'POST' && a === 'opportunities' && c === 'drafts' && d && e === 'approve' && !parts[5]) {
+      const oid = id(b);
+      const mid = id(d);
+      const bd = await jsonBody(req);
+      const out = await tx((db) => approveDraft(db, oid, mid, { approvedBy: String(bd.approvedBy ?? '') }));
+      log(`draft ${mid} opportunity ${oid} approved`);
+      return json(res, 200, { ok: true, approvedAt: out.approvedAt, approvedByIsAuthenticated: false });
+    }
+    // Release 1, deliver and verify (A44–A46).
+    // GET /api/opportunities/:id/deliver: the state ladder, deliveries and verifications.
+    if (m === 'GET' && a === 'opportunities' && c === 'deliver' && !d) {
+      const oid = id(b);
+      return json(res, 200, await tx(async (db) => {
+        const v = await getDeliverView(db, oid);
+        if (!v) throw new HttpError(404, 'Not found.');
+        return v;
+      }));
+    }
+    // POST /api/opportunities/:id/delivery: a delivered outcome, judged by outcome_guard.
+    if (m === 'POST' && a === 'opportunities' && c === 'delivery' && !d) {
+      const oid = id(b);
+      const bd = await jsonBody(req);
+      const outcomeId = await tx((db) => recordDelivery(db, oid, { occurredOn: String(bd.occurredOn ?? ''), deliveredBy: String(bd.deliveredBy ?? ''),
+        clientConfirmed: typeof bd.clientConfirmed === 'boolean' ? bd.clientConfirmed : null, notes: bd.notes ?? null, recordedBy: String(bd.recordedBy ?? '') }));
+      log(`delivery ${outcomeId} opportunity ${oid}`);
+      return json(res, 200, { outcomeId });
+    }
+    // POST /api/opportunities/:id/evidence/:eid/verify: re-run the finding's check on its own page.
+    if (m === 'POST' && a === 'opportunities' && c === 'evidence' && d && e === 'verify' && !parts[5]) {
+      const oid = id(b);
+      const eid = id(d);
+      const bd = await jsonBody(req);
+      const out = await tx((db) => verifyEvidence(db, { probe }, oid, eid, { requestedBy: String(bd.requestedBy ?? '') }));
+      log(`verification ${out.verificationId} evidence ${eid} opportunity ${oid} ${out.status} requests=${out.requests}`);
+      return json(res, 200, out);
     }
     // POST /api/opportunities/:id/website
     if (m === 'POST' && a === 'opportunities' && c === 'website' && !d) {
@@ -903,6 +975,9 @@ export function createHandler(cfg: ServerConfig) {
       if (err instanceof SiteError) return json(res, err.status, { error: err.message });
       if (err instanceof OutcomeRejected) return json(res, err.status, { error: err.message });
       if (err instanceof ProspectRejected) return json(res, err.status, { error: err.message });
+      if (err instanceof DraftRejected) return json(res, err.status, { error: err.message });
+      if (err instanceof DeliveryRejected) return json(res, err.status, { error: err.message });
+      if (err instanceof VerifyRefused) return json(res, err.status, { error: err.message });
       if (err instanceof FindRejected) return json(res, err.status, { error: err.message });
       if (err instanceof AnalysisRefused) return json(res, err.status, { error: err.message });
       if (err instanceof DiscoveryRefused) return json(res, 422, { error: err.message, reason: err.reason });

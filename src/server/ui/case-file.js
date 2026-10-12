@@ -11,6 +11,11 @@
 // act on now, the business's own channels, the facts to cite and suppression. Sell moves to 09 and
 // the planned Deliver chain to 10.
 //
+// Release 1 adds saved outreach drafts to 08 (written from what is on file, linted, approved by a named
+// person through the database's gates, never sent) and replaces the planned 10 with Deliver · verify:
+// the state ladder from stored outcomes, recording a delivery, and Scopely's re-check of each baseline
+// finding on its own page after delivery, with every verification kept as history.
+//
 // Slice 9 (Prospect Readiness) adds the writers a seller needs to make the opportunity actionable,
 // each next to what it changes: a re-check under each finding (02), the company register facts (03),
 // contacts and suppression (07), and a readiness summary under the business name that says, from the
@@ -108,7 +113,7 @@ export function renderCaseFile(cf, ctx) {
       h('header', { class: 'sec intro' },
         h('span', { class: 'eyebrow', text: [cf.business.vertical, cf.business.location.city].filter(Boolean).join(' · ') || 'Business' }),
         h('h2', { class: 'bizName', text: cf.business.name }), readiness(cf)),
-      situation(cf, top), evidence(cf, ctx), business(cf, ctx), service(cf), build(cf), beforeAfter(cf), buyer(cf, ctx), outreach(cf, ctx), sell(cf, ctx), deliver(cf)));
+      situation(cf, top), evidence(cf, ctx), business(cf, ctx), service(cf), build(cf), beforeAfter(cf), buyer(cf, ctx), outreach(cf, ctx), sell(cf, ctx), deliver(cf, ctx)));
   return root;
 }
 
@@ -667,6 +672,7 @@ function outreach(cf, ctx) {
   for (const x of cf.outreach.noLongerHolds) {
     s.append(h('div', { class: 'note error' }, h('b', { text: 'Do not cite this. ' }), `“${x.plainIssue}” was ${x.result === 'gone' ? 'no longer there' : 'changed'} when re-checked.`));
   }
+  s.append(drafts(cf, ctx));
   s.append(h('div', { class: 'label', style: 'margin-top:6px', text: 'Suppression' }));
   if (sup.length) {
     s.append(h('ul', { class: 'supl' }, sup.map((x) => h('li', {},
@@ -770,17 +776,204 @@ function recorder(cf, ctx) {
     h('span', { class: 'note', text: 'Records are permanent. A mistake is corrected with a new record, never erased.' })));
 }
 
-// ---------------------------------------------------------------- 10 deliver, verify, get paid (planned)
+// ---------------------------------------------------------------- 08 outreach drafts (release 1)
 
-function deliver(cf) {
-  const top = cf.evidence[0];
-  const row = (ok, n, title, sub) => h('li', {}, h('i', { class: ok ? 'ok' : '', text: ok ? '✓' : String(n) }), h('span', {}, title, h('br'), h('small', { text: sub })));
-  return sec('10', 'Deliver · verify · get paid', { planned: true },
-    h('ol', { class: 'chain' },
-      row(Boolean(top), 1, 'Original evidence', top ? when(top.observedAt) : 'None linked'),
-      row(false, 2, 'Solution delivered', 'After the work is won and delivered'),
-      row(false, 3, 'New observation', 'Scopely re-checks the same page'),
-      row(false, 4, 'Verified', 'The original problem is gone'),
-      row(false, 5, 'Paid', 'Recorded when the business pays')),
-    h('p', { class: 'hint', text: 'Planned. Scopely does not record delivery, verification or payment from here yet.' }));
+const DRAFT_WORD = { READY: 'READY TO APPROVE', NOT_READY: 'NOT READY', BLOCKED: 'BLOCKED', APPROVED: 'APPROVED', REJECTED: 'REJECTED', SENT: 'RECORDED AS SENT' };
+const DRAFT_CLASS = { READY: 'b-ver', NOT_READY: 'b-rev', BLOCKED: 'b-sup', APPROVED: 'b-ver', REJECTED: 'b-sup', SENT: 'b-obs' };
+const usable = (m) => ['MANUAL', 'CONNECTED'].includes(m.state);
+const mailboxWord = (m) => m ? `${m.displayName ? `${m.displayName} · ` : ''}${m.email}${usable(m) ? '' : ` (${m.state.toLowerCase()})`}` : 'No sender set';
+
+/** A contact picker with the business's contacts that have an email address. */
+function contactSelect(cf, value) {
+  const list = [['', 'No contact chosen yet'], ...cf.buyer.contacts.filter((c) => c.email).map((c) => [c.contactId, [c.name, c.email].filter(Boolean).join(' · ')])];
+  return select('To', list, value ?? '');
+}
+/** A sender picker with the workspace's mailboxes. */
+function senderSelect(cf, value) {
+  return select('From', [['', 'No sender set'], ...cf.drafts.mailboxes.map((m) => [m.mailboxId, mailboxWord(m)])], value ?? '');
+}
+
+/** Saved outreach drafts: written from what is on file, linted, approved by a named person, never sent by Scopely. */
+function drafts(cf, ctx) {
+  const box = h('div', { class: 'drafts' });
+  box.append(h('div', { class: 'label', style: 'margin-top:6px', text: 'Drafts' }));
+  const list = cf.drafts.drafts;
+  if (!list.length) box.append(h('p', { class: 'unk', text: 'No draft saved yet.' }));
+  for (const d of list) box.append(draftCard(cf, ctx, d));
+  const suggested = cf.buyer.contacts.find((c) => c.contactId === cf.buyer.suggestedContactId && c.email);
+  const to = contactSelect(cf, suggested?.contactId ?? '');
+  const from = senderSelect(cf, cf.drafts.mailboxes.find(usable)?.mailboxId ?? '');
+  const by = byInput();
+  box.append(h('div', { class: 'acts' }, writer('Write a draft', [
+    h('p', { class: 'hint', text: 'Scopely writes a first draft from what is on file only: the findings that still hold, as observed, with their page and the link as published; the service, and its price only if one is set; and the opt-out sentence. It adds nothing else. You can edit it before approving.' }),
+    field('To', to, cf.buyer.contacts.some((c) => c.email) ? null : 'No contact with an email address is on file. You can choose one later.'),
+    field('From', from, cf.drafts.mailboxes.length ? null : 'No sender set: this workspace has no mailbox yet. The draft is saved, but it cannot be approved until one is added (pnpm record mailbox).'),
+    field('Recording as', by),
+  ], 'Save draft', async () => {
+    if (!needBy(by)) return false;
+    await api('POST', `/opportunities/${cf.opportunityId}/drafts`, { draftedBy: by.value.trim(), contactId: to.value || null, mailboxId: from.value || null });
+    return 'Draft saved. Nothing was sent.';
+  }, ctx, 'A draft is saved, never sent. Approval is a separate step.')));
+  box.append(h('p', { class: 'note', text: 'The opt-out wording is conservative while the first-message notice wording (B4) is still open.' }));
+  return box;
+}
+
+const recheckWord = (r) => r === 'confirmed' ? 'still there' : r === 'gone' ? 'no longer there' : 'changed';
+
+function draftCard(cf, ctx, d) {
+  const r = d.readiness;
+  const pending = d.approval.status === 'pending' && !d.sentAt;
+  const card = h('div', { class: 'draft' },
+    h('div', { class: 'row' }, h('span', { class: `badge ${DRAFT_CLASS[r.status]}`, text: DRAFT_WORD[r.status] }),
+      h('span', { class: `badge ${d.lint.status === 'pass' ? 'b-obs' : d.lint.status === 'fail' ? 'b-sup' : 'b-rev'}`, text: `LINT ${d.lint.status.toUpperCase()}` }),
+      h('span', { class: 'muted', text: `Saved ${when(d.createdAt)}${d.draftedBy ? ` by ${d.draftedBy}` : ''}${d.edited ? ` · edited ${when(d.edited.at)} by ${d.edited.by}` : ''}` })),
+    kv([
+      ['To', d.contact ? [d.contact.name, d.contact.email].filter(Boolean).join(' · ') || 'A contact with no address' : notKnown('No contact chosen')],
+      ['From', d.sender ? mailboxWord(d.sender) : h('span', { class: 'bad', text: 'No sender set' })],
+      ['Service', d.service ? `${d.service.name ?? 'Mapped service'} · ${d.service.price !== null ? money(d.service.currency, d.service.price) : 'Price not set'}` : notKnown('No service mapped')],
+      ['Approval', d.approval.status === 'pending' ? notKnown('Not approved') : d.approval.approvedAt
+        ? `Approved by ${d.approval.approvedBy}, ${when(d.approval.approvedAt)} (a name typed here, not a signed-in person)` : d.approval.status],
+    ]),
+    h('div', { class: 'k', text: 'Subject' }), h('p', { class: 'dSubj', text: d.subject }),
+    h('pre', { class: 'dBody', text: d.body }),
+    h('div', { class: 'k', text: 'Evidence it cites' }),
+    h('ul', { class: 'facts' }, d.evidence.map((e) => h('li', {},
+      h('div', { class: 'row' }, h('span', { class: `badge ${e.claimState === 'OBSERVED' ? 'b-obs' : 'b-inf'}`, text: e.claimState }), h('span', { text: e.plainIssue })),
+      h('small', { class: e.recheck === 'changed' || e.recheck === 'gone' ? 'bad' : 'muted',
+        text: `${e.url} · ${date(e.observedAt)}${e.recheck ? ` · re-checked: ${recheckWord(e.recheck)}` : ''}` })))),
+    h('div', { class: 'k', text: 'Before it can be approved' }),
+    h('ul', { class: 'rchecks' }, r.checks.map((c) => h('li', { class: c.state },
+      h('i', { 'aria-hidden': 'true', text: c.state === 'done' ? '✓' : c.state === 'blocked' ? '✕' : '!' }),
+      h('span', {}, h('b', { text: c.label }), c.detail ? h('small', { text: c.detail }) : null)))),
+    d.lint.status === 'fail' && d.lint.errors.length ? h('div', { class: 'note error' }, h('b', { text: 'Lint at the last save. ' }), d.lint.errors.map((e) => e.message).join(' ')) : null);
+  const acts = h('div', { class: 'acts' }, h('button', { class: 'btn sm', type: 'button', onclick: () => copy(`Subject: ${d.subject}\n\n${d.body}`, 'Draft') }, 'Copy text'));
+  if (pending) {
+    const subj = input('Subject', d.subject, { maxlength: 200 });
+    const body = h('textarea', { rows: 12, maxlength: 5000, 'aria-label': 'Message' });
+    body.value = d.body;
+    const to = contactSelect(cf, d.contact?.contactId);
+    const from = senderSelect(cf, d.sender?.mailboxId);
+    const by = byInput();
+    acts.append(writer('Edit', [field('To', to), field('From', from), field('Subject', subj), field('Message', body), field('Editing as', by)], 'Save changes', async () => {
+      if (!needBy(by)) return false;
+      const out = await api('POST', `/opportunities/${cf.opportunityId}/drafts/${d.messageId}`, { subject: subj.value, body: body.value, editedBy: by.value.trim(),
+        contactId: to.value || null, mailboxId: from.value || null });
+      return out.lint.status === 'pass' ? 'Saved. Lint passed.' : 'Saved. Lint failed: see what to fix.';
+    }, ctx, 'Saving re-runs the lint. Approval stays unset.'));
+    const ap = byInput();
+    ap.setAttribute('aria-label', 'Approving as');
+    acts.append(writer('Approve', [
+      h('p', { class: 'hint', text: r.status === 'READY' ? 'Every check passes now. Approving records your name and the time. It does not send anything.' : 'Not every check passes yet, so approval will be refused with the reason.' }),
+      field('Approving as', ap)], 'Approve draft', async () => {
+      if (!needBy(ap)) return false;
+      await api('POST', `/opportunities/${cf.opportunityId}/drafts/${d.messageId}/approve`, { approvedBy: ap.value.trim() });
+      return 'Approved. Nothing was sent: send it from your own inbox, then record the pitch in 09.';
+    }, ctx, 'The database checks the contact, suppression and the lint again.'));
+  }
+  card.append(acts);
+  return card;
+}
+
+// ---------------------------------------------------------------- 10 deliver · verify (release 1)
+
+const LADDER_CLASS = { done: 'done', current: 'cur', todo: '', failed: 'lost', lost: 'lost' };
+const VSTATUS = { PASSED: ['PASSED', 'b-ver'], FAILED: ['STILL THERE', 'b-sup'], NOT_OBSERVABLE: ['NOT OBSERVABLE', 'b-rev'], CLIENT_REQUIRED_UNCONFIRMED: ['CLIENT TO CONFIRM', 'b-rev'] };
+const DELIVERED_BY = [['operator', 'I did the work'], ['client', 'The business did the work']];
+const vstatus = (s) => VSTATUS[s] ?? [s, 'b-rev'];
+
+function verificationRow(v) {
+  const [label, cls] = vstatus(v.status);
+  return h('li', {},
+    h('div', { class: 'row' }, h('span', { class: `badge ${cls}`, text: label }), h('span', { class: 'mono', text: when(v.verifiedAt) }),
+      v.requestedBy ? h('span', { class: 'muted', text: `asked by ${v.requestedBy}` }) : null),
+    v.fact ? h('p', { class: 'hint', text: v.fact }) : null,
+    kv([
+      ['Requested', h('span', { class: 'mono', text: v.source.url })],
+      v.source.finalUrl && v.source.finalUrl !== v.source.url ? ['Answered from', h('span', { class: 'mono', text: v.source.finalUrl })] : null,
+      ['Answer', v.source.httpStatus !== null ? `HTTP ${v.source.httpStatus}` : notKnown('No answer')],
+      ['Checked', v.observation ? h('span', { class: 'mono', text: `${v.observation.checkCode} · ${v.observation.state}${v.observation.result ? ` ${v.observation.result}` : ''}` }) : notKnown()],
+      ['What changed', v.changed ?? notKnown()],
+      ['Still unknown', v.unknown ?? notKnown()],
+    ]));
+}
+
+function deliveryWriter(cf, ctx) {
+  const x = cf.deliver;
+  const on = h('input', { type: 'date', value: today(), max: today(), 'aria-label': 'Date' });
+  const whoDid = select('Who did the work', DELIVERED_BY, x.implementationType === 'CLIENT_REQUIRED' ? 'client' : 'operator');
+  const confirmed = h('input', { type: 'checkbox', 'aria-label': 'The client confirmed the work is done' });
+  const notes = h('textarea', { rows: 3, maxlength: 2000, 'aria-label': 'What was delivered' });
+  const by = byInput();
+  return writer('Record delivery', [
+    x.implementationType === 'CLIENT_REQUIRED' ? h('p', { class: 'note amber', text: 'This service needs the business to do the work. It can only be recorded as delivered by the client, with their confirmation.' }) : null,
+    field('Delivered on', on), field('Who did the work', whoDid),
+    h('label', { class: 'check' }, confirmed, 'The client confirmed the work is done'),
+    field('What was delivered', notes, 'In your words. Recording it does not verify anything: Scopely re-checks the page afterwards.'),
+    field('Recording as', by)].filter(Boolean), 'Record delivery', async () => {
+    if (!needBy(by)) return false;
+    await api('POST', `/opportunities/${cf.opportunityId}/delivery`, { occurredOn: on.value, deliveredBy: whoDid.value, clientConfirmed: confirmed.checked,
+      notes: notes.value || null, recordedBy: by.value.trim() });
+    return 'Delivery recorded';
+  }, ctx, 'Records are permanent. Nothing about payment is recorded.');
+}
+
+function verifyWriter(cf, ctx, e) {
+  const by = byInput();
+  return writer('Verify now', [
+    h('p', { class: 'hint', text: `Scopely requests ${e.url} once (safely, nothing submitted), re-runs ${e.rule.key} v${e.rule.version} on what it serves, and records the result. A page it cannot read is recorded as not observable, never as a pass.` }),
+    field('Asking as', by)], 'Run verification', async () => {
+    if (!needBy(by)) return false;
+    const out = await api('POST', `/opportunities/${cf.opportunityId}/evidence/${e.evidenceId}/verify`, { requestedBy: by.value.trim() });
+    return out.status === 'PASSED' ? 'Verified: the problem is no longer observed' : out.status === 'FAILED' ? 'The problem is still on the page' : 'Not observable: nothing could be judged';
+  }, ctx, 'Each verification is kept. A later one never replaces the history.');
+}
+
+function deliver(cf, ctx) {
+  const x = cf.deliver;
+  const s = sec('10', 'Deliver · verify', null);
+  s.append(h('ol', { class: 'steps sell', 'aria-label': 'Deliver progress' }, x.ladder.map((st) => h('li', { class: LADDER_CLASS[st.state] ?? '' },
+    st.state === 'failed' ? 'NOT VERIFIED' : st.label.toUpperCase()))));
+  const lines = x.ladder.filter((st) => st.at || st.detail).map((st) => [st.label, [st.at ? date(st.at) : null, st.detail].filter(Boolean).join(' · ')]);
+  if (lines.length) s.append(kv(lines));
+  for (const c of x.corrections) {
+    s.append(h('div', { class: 'note' }, h('b', { text: `A ${c.correctedKind} was corrected on ${date(c.occurredAt)}. ` }), c.notes ?? ''));
+  }
+  s.append(h('p', { class: 'hint', text: 'Sold means a won outcome is recorded. A demo, a draft or an offer is never shown as sold or delivered.' }));
+
+  s.append(h('div', { class: 'label', text: 'Delivered work' }));
+  if (x.deliveries.length) {
+    s.append(h('ol', { class: 'ledger' }, x.deliveries.map((d) => h('li', {},
+      h('div', { class: 'row' }, h('b', { text: 'Delivered' }), h('span', { class: 'mono', text: date(d.occurredAt) }),
+        h('span', { class: 'muted', text: d.deliveredBy === 'client' ? 'by the client' : 'by you' }),
+        d.clientConfirmed ? h('span', { class: 'badge b-ver', text: 'CLIENT CONFIRMED' }) : h('span', { class: 'badge b-rev', text: 'NOT CONFIRMED BY CLIENT' })),
+      d.notes ? h('p', { class: 'hint', text: d.notes }) : null,
+      h('p', { class: 'hint', text: `Recorded by ${d.recordedBy}, ${when(d.recordedAt)}` })))));
+  } else {
+    s.append(h('p', { class: 'unk', text: 'No delivery recorded.' }));
+  }
+  for (const b of x.deliveryBuilds) {
+    s.append(h('p', { class: 'hint', text: `Delivery build, version ${b.versionNo ?? 'not numbered'}: ${b.title} · ${VERSION_WORD[b.status] ?? b.status}${b.approvedBy ? `, approved by ${b.approvedBy}` : ''}` }));
+  }
+  s.append(x.can.deliver ? h('div', { class: 'acts' }, deliveryWriter(cf, ctx)) : h('p', { class: 'muted', text: x.blockers.deliver }));
+
+  s.append(h('div', { class: 'label', text: 'Verification of each original finding' }));
+  if (!x.evidence.length) s.append(h('p', { class: 'unk', text: 'No finding is linked to this opportunity.' }));
+  for (const e of x.evidence) {
+    const history = x.verifications.filter((v) => v.evidenceId === e.evidenceId);
+    s.append(h('div', { class: 'ev verif' },
+      h('div', { class: 'row1' }, h('span', { class: `badge ${e.claimState === 'OBSERVED' ? 'b-obs' : 'b-inf'}`, text: e.claimState }),
+        e.latest ? h('span', { class: `badge ${vstatus(e.latest.status)[1]}`, text: vstatus(e.latest.status)[0] }) : h('span', { class: 'muted', text: 'Not verified yet' })),
+      h('p', { class: 'evIssue', text: e.plainIssue }),
+      kv([
+        ['Original page', h('span', { class: 'mono', text: e.url })],
+        ['Seen', h('span', { class: 'mono', text: when(e.observedAt) })],
+        e.baseline.href ? ['Link was', h('span', { class: 'mono', text: e.baseline.href })] : null,
+        ['Rule', h('span', { class: 'mono', text: `${e.rule.key} v${e.rule.version}` })],
+      ]),
+      history.length ? h('ol', { class: 'ledger vlist', 'aria-label': 'Verification history' }, history.map(verificationRow)) : null,
+      h('div', { class: 'evAct' }, !e.verifiable ? h('p', { class: 'muted', text: e.verifyBlocker })
+        : x.can.verify ? verifyWriter(cf, ctx, e) : h('p', { class: 'muted', text: x.blockers.verify }))));
+  }
+  s.append(h('p', { class: 'note', text: 'Verified means Scopely re-read the finding’s own page after delivery and the same check no longer finds the problem. A finished build is never treated as verified. Payment is not recorded here.' }));
+  return s;
 }

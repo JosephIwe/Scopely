@@ -81,10 +81,18 @@ says which stages are built, manual, a boundary only, or deferred.
   person records what shows it (A37–A39). 07 says who to contact, why, how and how sure, read from
   what is on file; 08 Outreach preparation lists what the seller may use, and readiness is the
   Slice 9 gates unchanged. Nothing is sent and no paid enrichment is called.
+- **Release 1 (sell, deliver, verify):** 08 Outreach preparation saves outreach drafts as
+  `messages` rows written only from what is on file, linted by `lint.outreach_draft` v1, edited by a
+  person and approved by a named person through `message_gate`; there is no send route (A41–A43,
+  migration 017). 10 Deliver · verify shows the ladder from stored outcomes, records a delivery as
+  the `delivered` outcome, and re-runs each baseline finding's automated check on its own page after
+  delivery, keeping every PASSED / FAILED / NOT_OBSERVABLE verification as history (A44–A46,
+  migration 019).
 
-There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23), the analysis of a selected business's homepage and booking links (A34) and, when switched on, live Clay discovery and people lookups on the workspace's own key (A32, A38). The AI edit in Slice 5 is
+There is **no crawler, no model call, no sending and no cloud resource**. The only outbound requests are the Fix Builder's one-page capture (A23), the analysis of a selected business's homepage and booking links (A34), a verification's re-check of one finding's own page after delivery (A45) and, when switched on, live Clay discovery and people lookups on the workspace's own key (A32, A38). The AI edit in Slice 5 is
 a deterministic interpreter behind the same seam a model-backed one will use. Nothing here contacts a business:
-`messages.sent_at` records a send made by hand.
+a draft can be approved but never sent from Scopely, and `messages.sent_at` records a send made by
+hand.
 
 ## The Truth Rule
 
