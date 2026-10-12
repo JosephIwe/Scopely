@@ -5,6 +5,7 @@
 //
 // Scoped like the rest of src/api: an explicit current_workspace_id() predicate on every query, on
 // top of row-level security. An opportunity in another workspace reads as not found.
+import { isDemoBusiness } from './sample.js';
 import type { Db } from '../tenancy/index.js';
 import { assessBuyer, suggestBuyer } from '../prospects/buyer.js';
 import { normalizeFact } from '../prospects/facts.js';
@@ -106,7 +107,8 @@ async function prospectReadiness(db: Db, opportunityId: string, businessId: stri
   suppressions: CaseFileSuppression[], highUnchecked: number): Promise<ProspectReadiness> {
   // Judged now, the same time the show and send gates use.
   const ev = (await db.query(
-    `SELECT count(*)::int AS holding, scopely.evidence_send_blocker(array_agg(e.id), now()) AS blocker
+    `SELECT count(*)::int AS holding, count(*) FILTER (WHERE e.recheck_result = 'confirmed')::int AS confirmed,
+            scopely.evidence_send_blocker(array_agg(e.id), now()) AS blocker
        FROM scopely.opportunity_evidence oe JOIN scopely.evidence e ON e.id = oe.evidence_id
       WHERE oe.opportunity_id = $1 AND e.${WS}
         AND e.recheck_result IS DISTINCT FROM 'changed' AND e.recheck_result IS DISTINCT FROM 'gone'`, [opportunityId])).rows[0];
@@ -125,7 +127,12 @@ async function prospectReadiness(db: Db, opportunityId: string, businessId: stri
     : evidenceBlocker
       ? { key: 'evidence', state: 'missing', label: 'Evidence needs re-check',
           detail: highUnchecked ? `${plural(highUnchecked, 'high-confidence finding has', 'high-confidence findings have')} not been re-checked on a new visit.` : evidenceBlocker }
-      : { key: 'evidence', state: 'done', label: 'Evidence re-checked and holds', detail: null });
+      // The gate needs a re-check only for HIGH findings, so passing it does not mean anything was
+      // re-checked: say so rather than claim a visit that never happened.
+      : Number(ev.confirmed) === holding
+        ? { key: 'evidence', state: 'done', label: 'Evidence re-checked and holds', detail: null }
+        : { key: 'evidence', state: 'done', label: 'Evidence clear to use',
+            detail: `${plural(holding - Number(ev.confirmed), 'finding has', 'findings have')} not been re-checked. Only a high-confidence finding must be.` });
 
   const withEmail = contacts.filter((c) => c.email);
   checks.push(withEmail.length
@@ -316,7 +323,7 @@ export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFi
     situation: { whyItMatters: o.why_it_matters, notObservable: o.not_observable_notes },
     evidence: items,
     business: {
-      businessId: business.businessId, name: business.name, domain: business.domain, websiteUrl: business.websiteUrl,
+      businessId: business.businessId, name: business.name, domain: business.domain, websiteUrl: business.websiteUrl, demo: isDemoBusiness(business.domain, business.websiteUrl),
       phone: business.phone, vertical: business.vertical, subvertical: business.subvertical, specialty: business.specialty,
       location: business.location, website: business.website, company: business.company, firmographics: business.firmographics,
       sources: business.sources.map((x) => ({ provider: x.provider, sourceType: x.sourceType, foundAt: x.foundAt })),

@@ -80,6 +80,8 @@ export function assertCapturableUrl(raw: string): URL {
 }
 
 export type Resolver = (host: string) => Promise<string[]>;
+/** Resolver error codes that mean the name does not exist, as opposed to a lookup that failed. */
+const NO_SUCH_HOST = new Set(['ENOTFOUND', 'ENODATA']);
 const systemResolver: Resolver = async (host) => (await lookup(host, { all: true, verbatim: true })).map((a) => a.address);
 
 /** The one public address a request to `u` will connect to, or a refusal. */
@@ -87,7 +89,12 @@ export async function pinnedAddress(u: URL, resolve: Resolver): Promise<string> 
   const host = u.hostname.replace(/^\[|\]$/g, '');
   if (isIP(host)) return host;
   let addresses: string[];
-  try { addresses = await resolve(host); } catch { throw new CaptureError(`${host} could not be found.`, 'dns_not_found'); }
+  try { addresses = await resolve(host); } catch (err) {
+    // Only an answer that the name does not exist says so. A resolver that failed or timed out
+    // (EAI_AGAIN, SERVFAIL, a refused or unreachable resolver) says nothing about the site.
+    if (NO_SUCH_HOST.has(String((err as { code?: string })?.code ?? ''))) throw new CaptureError(`${host} could not be found.`, 'dns_not_found');
+    throw new CaptureError(`${host} could not be looked up just now.`, 'other');
+  }
   if (addresses.length === 0) throw new CaptureError(`${host} could not be found.`, 'dns_not_found');
   if (addresses.some(isBlockedAddress)) throw new CaptureError('That page address is not on the public web.', 'blocked');
   return addresses[0]!;
@@ -139,7 +146,8 @@ function networkCode(err: unknown): FetchErrorCode {
   const code = String((err as { code?: string })?.code ?? '');
   if (code === 'ECONNREFUSED') return 'connection_refused';
   if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT') return 'timeout';
-  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'dns_not_found';
+  // EAI_AGAIN is a temporary lookup failure, not an answer: it stays 'other' (not observable).
+  if (code === 'ENOTFOUND') return 'dns_not_found';
   if (/CERT|TLS|SSL|EPROTO/.test(code)) return 'tls';
   return 'other';
 }

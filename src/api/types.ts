@@ -500,7 +500,9 @@ export interface CaseFile {
   /** This opportunity's own evidence, strongest first. */
   evidence: (EvidenceItem & { observedHref: string | null; visibleText: string | null })[];
   business: Pick<BusinessDetail, 'businessId' | 'name' | 'domain' | 'websiteUrl' | 'phone' | 'vertical' | 'subvertical' | 'specialty'
-    | 'location' | 'website' | 'company' | 'firmographics'> & { sources: { provider: string | null; sourceType: string; foundAt: string }[] };
+    | 'location' | 'website' | 'company' | 'firmographics'> & { sources: { provider: string | null; sourceType: string; foundAt: string }[];
+    /** On a reserved documentation or test address (src/api/sample.ts): demo data, never a live prospect. */
+    demo: boolean };
   service: { mappingStatus: 'MAPPED' | 'UNMAPPED'; catalogKey: string | null; name: string | null; price: string | null; currency: string | null;
              unmappedReason: string | null };
   build: {

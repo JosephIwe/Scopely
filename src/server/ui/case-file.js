@@ -102,7 +102,8 @@ export function renderCaseFile(cf, ctx) {
   const badge = web ? h('span', { class: 'badge b-web', text: 'WEBSITE OPPORTUNITY' }) : fix ? h('span', { class: 'badge b-fix', text: 'FIX OPPORTUNITY' }) : null;
 
   root.append(
-    h('div', { class: 'cHead' }, h('a', { class: 'back', href: ctx.back }, '← Back'), h('span', { class: 'eyebrow', text: 'Case file' }), h('span', { class: 'cHeadR' }, badge)),
+    h('div', { class: 'cHead' }, h('a', { class: 'back', href: ctx.back }, '← Back'), h('span', { class: 'eyebrow', text: 'Case file' }), h('span', { class: 'cHeadR' },
+      cf.business.demo ? h('span', { class: 'badge b-demo', title: 'A fictional business on a reserved address, for trying Scopely. Not a real prospect.', text: 'DEMO DATA' }) : null, badge)),
     h('div', { class: 'scroll' },
       h('header', { class: 'sec intro' },
         h('span', { class: 'eyebrow', text: [cf.business.vertical, cf.business.location.city].filter(Boolean).join(' · ') || 'Business' }),

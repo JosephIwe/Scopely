@@ -474,6 +474,22 @@ describe('the buyer reading', () => {
 // ---------------------------------------------------------------- 6. the Case File, end to end through the server
 
 describe('the Case File’s buyer and outreach preparation', () => {
+  it('calls no provider and records no provider call when a seller only reads', async () => {
+    const s = await seedWebsiteOpportunity(db());
+    const stub = new StubProvider([{ people: [person('p1', 'Morgan Reyes', 'Practice Owner')] }]);
+    const { call } = await start(stub);
+    const ops = async () => (await one<{ n: string }>(db(), 'SELECT count(*) AS n FROM provider_operations')).n;
+    const before = await ops();
+    for (const path of ['/api/workspace', '/api/opportunities', `/api/opportunities/${s.opportunityId}`, '/api/discovery']) {
+      expect((await call('GET', path)).status, path).toBe(200);
+    }
+    expect(stub.calls).toBe(0);
+    expect(await ops()).toBe(before);
+    // Only the seller's explicit request looks anyone up.
+    await call('POST', `/api/opportunities/${s.opportunityId}/prospects/lookup`, { provider: 'stubco' });
+    expect(stub.calls).toBe(1);
+  });
+
   it('shows who, why, how and how sure, and stays NOT READY on provider data alone', async () => {
     const s = await seedWebsiteOpportunity(db());
     const stub = new StubProvider([{ people: [person('p1', 'Morgan Reyes', 'Practice Owner'), person('p2', 'Priya Nand', 'Receptionist')] }]);

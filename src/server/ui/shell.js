@@ -159,6 +159,8 @@ function card(o) {
   const web = o.path === 'WEBSITE';
   const status = o.sellState !== 'NOT_STARTED' ? SELL_WORD[o.sellState] : BUILD_WORD[o.buildState] ?? null;
   const badge = web ? h('span', { class: 'badge b-web', text: 'WEBSITE OPPORTUNITY' }) : o.path === 'FIX' ? h('span', { class: 'badge b-fix', text: 'FIX OPPORTUNITY' }) : null;
+  // A fictional business on a reserved address (the API decides): never read it as a live prospect.
+  const demo = o.demo ? h('span', { class: 'badge b-demo', title: 'A fictional business on a reserved address, for trying Scopely. Not a real prospect.', text: 'DEMO DATA' }) : null;
   const head = h('div', { class: 'cBiz' }, h('span', { text: o.business }), h('span', { text: o.city ?? '' }));
   const foot = h('div', { class: 'cFoot' }, h('span', { text: o.service ?? 'No service mapped' }), h('b', { text: o.service ? money(o.currency, o.price) : '' }));
   const steps = h('ol', { class: 'flow', 'aria-label': web ? 'Website path' : 'Fix path' }, flow(o).map(([label, st]) => h('li', { class: st }, label)));
@@ -170,12 +172,12 @@ function card(o) {
         h('b', { text: o.business }),
         h('span', { text: [o.vertical, o.rating !== null && o.reviewCount !== null ? `${Number(o.rating)} ★ (${o.reviewCount})` : null].filter(Boolean).join(' · ') || 'Listing details not known' }),
         h('span', {}, 'Website ', h('em', { text: WEBSITE_STATUS[o.websiteStatus] ?? 'not checked' })))),
-      h('div', { class: 'cBody' }, h('div', { class: 'row' }, badge, status ? h('span', { class: 'chip', text: status }) : null),
+      h('div', { class: 'cBody' }, h('div', { class: 'row' }, badge, demo, status ? h('span', { class: 'chip', text: status }) : null),
         h('div', { class: 'cOpp', text: o.issue ?? 'Needs a website' }), steps, foot,
         o.buildable && !o.projectId ? h('button', { class: 'cAct web', onclick: (e) => { e.stopPropagation(); startBuild(o, e.currentTarget); } }, 'Build website') : null),
     ];
   } else {
-    body = [h('div', { class: 'cBody' }, h('div', { class: 'row' }, badge, status ? h('span', { class: 'chip', text: status }) : null), head,
+    body = [h('div', { class: 'cBody' }, h('div', { class: 'row' }, badge, demo, status ? h('span', { class: 'chip', text: status }) : null), head,
       h('div', { class: 'cOpp', text: o.issue ?? 'Observed problem' }),
       o.observed ? h('div', { class: 'quote' }, h('span', { class: 'eyebrow', text: 'Observed' }), h('span', { text: o.observed.text || o.observed.url })) : null,
       steps, foot)];
