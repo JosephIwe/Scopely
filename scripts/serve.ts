@@ -84,7 +84,10 @@ try {
   if (production) refuse(`Could not reach the database (${(err as { code?: string }).code ?? 'no code'}).`);
   console.warn(`Could not check the database's migrations (${(err as { code?: string }).code ?? 'no code'}).`);
 }
-const live = process.env.SCOPELY_CLAY_LIVE === '1';
+// Production never replays recorded provider responses into a real workspace: Find is live, and a
+// workspace without its own connected key is told to connect one (A32). Recorded replays are for
+// development and tests.
+const live = production || process.env.SCOPELY_CLAY_LIVE === '1';
 const clay = live ? new ClayPublicApiTransport()
   : new RecordedClayTransport(['2026-10-05-company-search.json', '2026-10-05-company-search-country.json', 'demo-people-search.json'].flatMap((f) =>
     (JSON.parse(readFileSync(new URL(`../fixtures/providers/clay/${f}`, import.meta.url), 'utf8')) as { searches: ClayRecording[] }).searches));
