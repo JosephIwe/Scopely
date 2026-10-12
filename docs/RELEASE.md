@@ -30,7 +30,7 @@ Evidence kinds:
 | 6 | Production refuses an unsafe start | VERIFIED | tests/auth.test.ts spawns `serve.ts`. It refuses the preview in production and off loopback, a missing app role, a missing signing key, and an unreachable database or pending migrations |
 | 7 | Hosting created | VERIFIED | Railway project `scopely-production` (founder's approval, 2026-10-12): service `scopely`, its own Postgres, volume `/data` |
 | 8 | Deployed and healthy | see the final report | Railway health check `/healthz` gates every deploy |
-| 9 | Production smoke tests | see the final report | |
+| 9 | Production smoke tests | see the final report | `scripts/smoke.mjs`, run from GitHub Actions (`smoke` workflow), read-only and signed out |
 | 10 | Rollback documented | VERIFIED | below |
 
 ## Product areas

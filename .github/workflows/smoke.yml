@@ -1,0 +1,30 @@
+name: smoke
+
+# Production smoke test, read-only and signed out (scripts/smoke.mjs). Run it by hand after a
+# deploy; it also runs on each push to main, after Railway has had time to roll the deploy out.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Base URL to test
+        default: https://scopely-production.up.railway.app
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Give the deploy time to roll out
+        if: github.event_name == 'push'
+        run: sleep 240
+      - run: node scripts/smoke.mjs "$SMOKE_URL"
+        env:
+          SMOKE_URL: ${{ inputs.url || 'https://scopely-production.up.railway.app' }}
