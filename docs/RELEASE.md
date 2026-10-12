@@ -87,13 +87,30 @@ Evidence kinds:
 
 ## Runbook
 
-**First owner** (once). From a shell where `DATABASE_URL` points at production, such as `railway run` or the service's shell, run:
+**First owner** (once). Run the CLI **inside the deployed container**, because production Postgres is only reachable on Railway's private network. A local checkout cannot reach it: `railway run` injects the private `DATABASE_URL`, but the host does not resolve outside Railway, and older branches do not have the script at all. `railway ssh` needs an SSH key registered with Railway. Run this from a machine with the Railway CLI logged in and linked to `scopely-production` / `scopely`:
 
 ```
-SCOPELY_PUBLIC_URL=https://scopely-production.up.railway.app pnpm auth:invite --setup --email you@yourcompany.com
+ssh-keygen -t ed25519 -N "" -C scopely-railway -f ~/.ssh/railway_ed25519
+railway ssh keys add --key ~/.ssh/railway_ed25519.pub --name scopely-railway
+railway ssh -i ~/.ssh/railway_ed25519
 ```
 
-Open the printed link, choose a password and name the workspace. The link works once and lasts 7 days.
+Then, in the container's shell:
+
+```
+cd /app
+test -n "$DATABASE_URL" && echo "database variable present"
+pnpm auth:invite --setup --email you@yourcompany.com
+exit
+```
+
+`SCOPELY_PUBLIC_URL` is already set on the service, so the full link is printed. Open it, choose a password and name the workspace. The link works once, lasts 7 days, and only works for that email. Do not paste it anywhere else. Afterwards you can remove the key with `railway ssh keys remove`.
+
+If the shell reports no database variable, read them from the app process in the same shell. This prints nothing:
+
+```
+export $(tr '\0' '\n' < /proc/1/environ | grep -E '^(DATABASE_URL|SCOPELY_PUBLIC_URL)=' | xargs)
+```
 
 **Connect a workspace's Clay key:**
 
