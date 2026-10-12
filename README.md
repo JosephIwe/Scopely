@@ -164,12 +164,17 @@ pnpm check                            # typecheck + test
 pnpm record workspace <file.json>     # provision a workspace
 SCOPELY_WORKSPACE_ID=<id> pnpm record <command> <file.json|->   # see docs/MANUAL_VALIDATION.md
 pnpm demo:seed                        # a sample workspace with one website and one fix opportunity; prints its id
-SCOPELY_WORKSPACE_ID=<id> pnpm serve  # the Build Workspace on http://127.0.0.1:4310
+pnpm auth:invite --setup              # a one-time link for the first person to create their workspace
+pnpm serve                            # Scopely on http://127.0.0.1:4310 with sign-in (A40)
+SCOPELY_WORKSPACE_ID=<id> pnpm serve  # development preview: one workspace, no sign-in, localhost only
 ```
 
-`pnpm serve` acts in one workspace, named by `SCOPELY_WORKSPACE_ID`, because nothing authenticates a
-person yet (B10); it listens on 127.0.0.1 only. It reads `PREVIEW_SIGNING_KEY` (at least 32
-characters; a random one is used, with a warning, when unset, so links stop working on restart),
+`pnpm serve` signs people in (A40): open the invite link `pnpm auth:invite` prints, create an account
+and workspace, then sign in at `/app`. Owners and admins invite others from the top bar. The
+development preview (`SCOPELY_WORKSPACE_ID`) skips sign-in for one workspace; it is refused in
+production and on any non-loopback `HOST`. Production settings, deployment and rollback are in
+`docs/RELEASE.md`. It reads `PREVIEW_SIGNING_KEY` (at least 32
+characters; outside production a random one is used, with a warning, when unset, so links stop working on restart),
 `SCOPELY_STORAGE_DIR` (default `.scopely/storage`) and `SHOW_LINK_TTL_HOURS` (default 72, A15).
 No model credential is read or needed.
 

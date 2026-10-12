@@ -82,8 +82,8 @@ route is a thin wrapper that authenticates, checks membership and calls one of t
   false, `showBlocker` says why: a DELIVERY is delivered not shown, already shown, superseded by
   build N, discarded, needs a recorded human approval, cannot be shown before it was approved,
   cites no evidence, or the evidence re-check reason. A screen never recomputes a gate.
-- **`approval.approvedByIsAuthenticated` is always `false`** today: `approvedBy` is a free-text
-  label, not a signed-in user (B10).
+- **`approval.approvedByIsAuthenticated` is always `false`**: `approved_by` is stored as text. Since
+  A40 the server fills it with the signed-in person's name, but the column is not a user id.
 - **`currentVersion`** is the newest version that is not `SUPERSEDED` or `DISCARDED`, or `null`.
 - **Cost by payer** (`CostByPayer[]`): one row per `SCOPELY`, `WORKSPACE` and `UNATTRIBUTED`
   (payer not recorded) with events, amount and currency (`null` when unknown or when currencies
@@ -130,7 +130,12 @@ refused operation and why.
 
 ### Build Workspace HTTP (`pnpm serve`, `src/server/app.ts`)
 
-JSON over HTTP, acting in the one workspace the server was started with (B10). Every non-GET
+JSON over HTTP. With sign-in (A40, the default) every `/api` route except the sign-in routes below
+needs a session cookie and acts in the session's workspace while the user is a member of it:
+signed out is `401 { reason: 'signed_out' }`, no workspace is `403 { reason: 'no_workspace' }`, and
+another workspace's row reads as `404`. Actor fields in a body (`recordedBy`, `approvedBy`,
+`selectedBy`, ...) are replaced with the signed-in person. The development preview
+(`SCOPELY_WORKSPACE_ID`) acts in its one workspace instead. Every non-GET
 request must send `x-scopely-request: 1`, and an `Origin` header, when present, must be this
 server; anything else is `403`. Each request is one transaction. Errors are `{ error }` with a
 readable message; an unexpected failure is `500` with no detail. Responses carry no storage keys
@@ -139,7 +144,16 @@ or hashes.
 | Route | Body → result |
 |---|---|
 | `GET /api/opportunities` | Opportunities with their first plain-language issue, `buildable` and `projectId`, and for a Fix opportunity `fixable` and `fixProjectId`. Slice 8 adds `stage` (`OPPORTUNITIES`, `BUILD`, `SELL`, `DELIVER`, `VERIFY`, from `stageOf`), `captured`, `sellState`, `deliveryState`, `vertical`, `city`, `websiteStatus`, `rating`, `reviewCount` and `observed` (the strongest finding's visible text, quote, page, claim state and date). `demo` is true when the business's only addresses are reserved documentation or test names (`.example`, `.test`, `.invalid`, `.localhost`, `example.com/.net/.org`; `src/api/sample.ts`), and the app then labels it Demo data |
-| `GET /api/workspace` | `{ name, authenticated: false }` (Slice 8; authentication is B10) |
+| `GET /api/workspace` | `{ name, authenticated: true, role, user: { name, email } }` when signed in; `{ name, authenticated: false, preview: true }` on the development preview |
+| `GET /api/session` | `{ mode: 'session', signedIn: false, openSignup }`, or `{ mode: 'session', signedIn: true, user, workspace: { workspaceId, name, role } \| null, workspaces }`, or on the preview `{ mode: 'preview', signedIn: false, workspace: { name } }` (A40) |
+| `POST /api/session` | `{ email, password }` → `{ signedIn: true }` and the session cookie. A wrong email or password is the same `401`; repeated failures per address and email are `429` for 15 minutes |
+| `DELETE /api/session` | Ends the session (revoked in the database) and clears the cookie |
+| `POST /api/session/workspace` | `{ workspaceId }` → switches to another of the user's workspaces; any other id is `404` |
+| `POST /api/invites/check` | `{ token }` → `{ kind: 'setup' \| 'join', workspaceName, role, emailRequired }`; used, expired and unknown links are the same `404` |
+| `POST /api/signup` | `{ invite?, email, password, name?, workspaceName? }` → `{ signedIn: true }` and the cookie. A setup invite (or open sign-up) creates a workspace with the person as owner; a workspace invite adds a membership. Passwords are 12–256 characters. An existing account joins with its own password; an account with no password can be claimed only by an invite bound to its email (`409` otherwise). Without an invite and without open sign-up: `403 invite_required` |
+| `POST /api/workspace/invites` | Owners and admins: `{ role?: 'member' \| 'admin' \| 'owner', email? }` → `{ url, expiresAt }`, a one-time link shown once (admins cannot invite owners; members get `403`). Scopely sends no email |
+| `GET /api/workspace/members` | `{ members: [{ userId, name, email, role, joinedAt }] }`; emails only for owners and admins (and yourself) |
+| `GET /healthz` | `200 { ok: true, database: 'up', pendingMigrations: 0, auth }`, or `503` when the database is down or behind the code |
 | `GET /api/opportunities/:id` | `CaseFile` (Slice 8, `src/api/case-file.ts`): situation, the opportunity's own evidence, business, service, build (with `showLink`, the active prospect link, and for a fix its `steps`, capture and correction), buyer contacts with `emailBlocker` from `contact_outreach_blocker`, outreach cautions (`recheckNeeded`, `noLongerHolds`) and sell (states, dates, the seller-entered `agreedAmount`, the append-only ledger and which records `can` be added). `404` in another workspace. Slice 9 adds `buyer.suppressions` (the workspace's entries that reach this business: business, domain or a contact's address) and `readiness` (`status` `READY` / `NOT_READY` / `SUPPRESSED`, `checks` with `key`, `state` `done` / `missing` / `blocked`, `label` and `detail`, `readyContactIds`, `evidenceBlocker`). Slice 12 adds to each contact `relationship`, `relationshipBasis`, `decisionMakerBasis`, `verification` (`by`, `basis`, `at`), `observedAt`, `confidence`, `provenance` (provider, operation, transport, time; null for a seller's contact), `facts` (`ContactFactView`: kind, value, source, source URL, observed time, label, the source's confidence, `fromProvider`, `recordedBy`, verification), `conflicts` (kinds where sources disagree, with their values) and `assessment` (`tier` `DECISION_MAKER` / `LIKELY_BUYER` / `NAMED_CONTACT` / `SHARED_ADDRESS`, `reasons` each `OBSERVED` / `RECORDED` / `REPORTED` / `INFERRED`, `summary`; computed on read, A39); and to `buyer` `suggestedContactId`, `businessChannels` (the business's own phone, WhatsApp, email and contact page, from OBSERVED analysis observations with `broken` when the analysis found a defect, plus business-level facts), `lookups` (the last 20 prospect calls with status, count and cost basis) and `providers` (`key`, `label`, `transport`, `kinds`, `ready`; a live provider is ready only with an ACTIVE `prospects` connection). `business.demo` as in the feed. A readiness `evidence` check passes as "Evidence re-checked and holds" only when every finding that still holds has a confirmed re-check; otherwise "Evidence clear to use", saying how many were not re-checked |
 | `POST /api/opportunities/:id/outcomes` | `{ kind: 'pitched' \| 'replied' \| 'call' \| 'won' \| 'lost' \| 'voided', occurredOn: 'YYYY-MM-DD', recordedBy, channel?, replyClass?, amount?, currency?, notes?, correctsOutcomeId? }` → `{ outcomeId }` (Slice 8, `recordManualOutcome`). A pitch needs a channel, a reply its class, a win an amount in the opportunity's currency (typed only when it has none), a correction the record it voids and a reason. `delivered` is never recorded here. The ledger's refusals come back as `409` with a plain message. Nothing is sent. Since Slice 9 a `replied` record of class `opt_out` also puts the business on the workspace's suppression list (A29) |
 | `POST /api/opportunities/:id/evidence/:eid/recheck` | `{ result: 'confirmed' \| 'gone' \| 'changed', recordedBy, notes? }` → `{ recheckId, rechecked }` (Slice 9). A person's visit to the evidence's own page, recorded on a new manual snapshot; `changed` needs `notes`. `404` for evidence the opportunity does not cite or another workspace's; `409` for an inferred finding marked still there or gone, or when a later re-check exists |

@@ -115,14 +115,17 @@ export function accountBar() {
       h('span', { class: 'sh-auth', title: 'Development preview: this server acts in one workspace with no sign-in. Never used in production.', text: 'Development preview' })];
   }
   if (!s.signedIn) return [];
-  const switcher = s.workspaces.length > 1
+  const switcher = () => s.workspaces.length > 1
     ? h('select', { class: 'sh-wsel', 'aria-label': 'Workspace', onchange: async (e) => {
         try { await api('POST', '/session/workspace', { workspaceId: e.target.value }); location.replace('/app/#/'); location.reload(); } catch (err) { fail(err); }
       } }, s.workspaces.map((w) => h('option', { value: w.workspaceId, selected: s.workspace?.workspaceId === w.workspaceId }, w.name)))
     : h('span', { text: s.workspace?.name ?? 'No workspace' });
   const canInvite = s.workspace && (s.workspace.role === 'owner' || s.workspace.role === 'admin');
-  return [switcher,
-    canInvite ? h('button', { class: 'btn sm ghost', onclick: invite }, 'Invite') : null,
-    h('span', { class: 'sh-user', title: s.user.email, text: s.user.name || s.user.email }),
+  const controls = () => [canInvite ? h('button', { class: 'btn sm ghost', onclick: invite }, 'Invite') : null,
     h('button', { class: 'btn sm ghost', onclick: signOut }, 'Sign out')];
+  // Wide screens show everything inline; narrow ones fold it into an Account menu.
+  return [h('span', { class: 'sh-acct' }, switcher(), ...controls().slice(0, 1), h('span', { class: 'sh-user', title: s.user.email, text: s.user.name || s.user.email }), ...controls().slice(1)),
+    h('details', { class: 'sh-acctm' }, h('summary', { class: 'btn sm', 'aria-label': 'Account' }, 'Account'),
+      h('div', { class: 'sh-acctm-p' }, h('b', { text: s.user.name || s.user.email }), h('small', { text: s.user.email }),
+        switcher(), ...controls()))];
 }

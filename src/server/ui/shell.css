@@ -297,3 +297,9 @@
 }
 @media (prefers-reduced-motion: reduce) { .shell * { animation: none !important; transition: none !important; } }
 .shell .sec.intro { gap: 6px; }
+/* A40: room for the Account menu on a phone. */
+@media (max-width: 600px) {
+  .sh-top .logo { font-size: 0; gap: 0; }
+  .sh-top .sh-stagesel { max-width: 128px; }
+  .sh-top .sh-topr { gap: 6px; }
+}

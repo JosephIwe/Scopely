@@ -508,3 +508,11 @@ body.share { display: flex; flex-direction: column; height: 100vh; overflow: hid
 .sh-user { overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
 .sh-wsel { height: 28px; border: 1px solid var(--control); border-radius: 8px; background: #fff; font: inherit; font-size: 12.5px; max-width: 180px; }
 @media (max-width: 700px) { .sh-user { display: none; } }
+.sh-acct { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sh-acctm { display: none; position: relative; }
+.sh-acctm summary { list-style: none; }
+.sh-acctm summary::-webkit-details-marker { display: none; }
+.sh-acctm-p { position: absolute; right: 0; top: 36px; z-index: 50; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 220px; max-width: calc(100vw - 24px);
+  padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 30px rgba(27, 26, 24, .12); white-space: normal; }
+.sh-acctm-p small { color: var(--muted); overflow-wrap: anywhere; }
+@media (max-width: 860px) { .sh-acct { display: none; } .sh-acctm { display: block; } }
