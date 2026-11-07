@@ -11,6 +11,7 @@
 // against the database in that workspace before any byte is served.
 //
 // Logs carry ids and status codes only: never site content, contact details or credentials.
+import { type ErrorReport, type ErrorReporter, describeError, errorLine, newRequestId, routeOf } from './observe.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -78,6 +79,8 @@ export interface ServerConfig {
   /** How the Fix Builder captures a page (F3). Defaults to the SSRF-safe live fetcher. */
   fetcher?: PageFetcher;
   log?: (line: string) => void;
+  /** P2: where unexpected (5xx) errors are reported, stripped of values (src/server/observe.ts). Off when unset. */
+  reporter?: ErrorReporter | null;
   /** Slice 10: business discovery providers and the server-side secret resolver for live ones. */
   discovery?: { providers: DiscoveryProviderRegistry; secrets?: SecretResolver };
   /** Slice 11: how an analysis requests a business's pages. Defaults to the SSRF-safe probe (demo hosts from fixtures). */
@@ -153,7 +156,7 @@ async function body(req: IncomingMessage, limit: number): Promise<Buffer> {
 }
 
 /** Who a request is: set once per /api request, read by tx() and by the actor fields of a body. */
-interface RequestScope { workspaceId: string | null; actor: string | null; session: SessionView | null }
+interface RequestScope { workspaceId: string | null; actor: string | null; session: SessionView | null; requestId?: string }
 const scope = new AsyncLocalStorage<RequestScope>();
 
 /** Body fields that name the person acting. When someone is signed in, the server fills them with that person, whatever the browser sent. */
@@ -929,6 +932,9 @@ export function createHandler(cfg: ServerConfig) {
   return async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const started = Date.now();
+    const requestId = newRequestId();
+    res.setHeader('x-request-id', requestId);
+    let who: { workspaceId: string | null; userId: string | null } = { workspaceId: cfg.workspaceId ?? null, userId: null };
     try {
       if (secure) res.setHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
       if (req.method === 'GET' && STATIC[url.pathname]) {
@@ -961,6 +967,7 @@ export function createHandler(cfg: ServerConfig) {
         const token = readCookie(req.headers.cookie, cookie);
         const session = token ? await authTx((db) => resolveSession(db, token)) : null;
         const actor = session ? (session.user.displayName || session.user.email) : null;
+        who = { workspaceId: session?.workspace?.workspaceId ?? null, userId: session?.user.userId ?? null };
         return await scope.run({ workspaceId: session?.workspace?.workspaceId ?? null, actor, session }, async () => {
           if (await authApi(req, res, parts, session, token)) return;
           if (!session) throw new AuthRejected(401, 'Sign in to continue.', 'signed_out');
@@ -984,11 +991,14 @@ export function createHandler(cfg: ServerConfig) {
       if (err instanceof ProspectLookupRefused) return json(res, err.reason === 'not_found' ? 404 : 422, { error: err.message, reason: err.reason });
       if (err instanceof EditRejected) return json(res, 400, { error: err.reason, index: err.index });
       const code = (err as { code?: string }).code ?? '';
-      log(`error ${req.method} ${url.pathname.replace(/\/[A-Za-z0-9_.-]{20,}$/, '/…')} ${code}`);
-      if (SCHEMA_BEHIND.has(code)) return json(res, 503, { error: SCHEMA_BEHIND_MESSAGE, reason: 'schema_behind' });
-      return json(res, 500, { error: 'Something went wrong. Nothing was changed.' });
+      const status = SCHEMA_BEHIND.has(code) ? 503 : 500;
+      const report: ErrorReport = { requestId, route: routeOf(url.pathname), method: req.method ?? null, status, ...who, error: describeError(err), source: 'request' };
+      log(errorLine(report));
+      cfg.reporter?.report(report);
+      if (status === 503) return json(res, 503, { error: SCHEMA_BEHIND_MESSAGE, reason: 'schema_behind', requestId });
+      return json(res, 500, { error: 'Something went wrong. Nothing was changed.', requestId });
     } finally {
-      if (url.pathname.startsWith('/api/')) log(`${req.method} ${url.pathname} ${res.statusCode} ${Date.now() - started}ms`);
+      if (url.pathname.startsWith('/api/')) log(`${req.method} ${routeOf(url.pathname)} ${res.statusCode} ${Date.now() - started}ms rid=${requestId}`);
     }
   };
 }
