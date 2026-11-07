@@ -36,6 +36,8 @@ export interface DraftView {
   sentAt: string | null;
   /** For an approved, unsent draft whose lint passed: the final text to copy and a safe mailto link. Otherwise null. */
   handoff: Handoff | null;
+  /** Where the wording came from: Scopely's deterministic draft or a person, or an AI suggestion (never authoritative). */
+  origin: { kind: 'scopely' | 'person' } | { kind: 'ai'; provider: string; model: string; promptVersion: string; task: string; suggestionId: string };
   readiness: DraftReadiness;
 }
 
@@ -45,6 +47,8 @@ export interface OutreachDrafts {
   mailboxes: { mailboxId: string; email: string; displayName: string | null; state: string }[];
   /** Whether the opt-out wording's decision (B4) is settled; see src/sell/wording.ts. */
   wording: { decision: string; settled: boolean };
+  /** Whether AI rewording is available (A49); filled by the server from its configuration. */
+  ai: { enabled: boolean; provider: string | null };
 }
 
 /** The opportunity's drafts, newest first, or null when the opportunity is not in this workspace. */
@@ -54,12 +58,13 @@ export async function listDrafts(db: Db, opportunityId: string): Promise<Outreac
   const rows = (await db.query(
     `SELECT m.*, c.full_name AS contact_name, c.email AS contact_email, c.label AS contact_label,
             mb.email AS mailbox_email, mb.display_name AS mailbox_name, mb.state AS mailbox_state,
-            ci.service AS draft_service, rv.rule_key AS lint_rule_key, rv.version AS lint_rule_version
+            ci.service AS draft_service, ai.provider AS ai_provider, ai.model AS ai_model, ai.prompt_version AS ai_prompt_version, ai.task AS ai_task, rv.rule_key AS lint_rule_key, rv.version AS lint_rule_version
        FROM scopely.messages m
        LEFT JOIN scopely.contacts c ON c.id = m.contact_id AND c.${WS}
        LEFT JOIN scopely.mailbox_connections mb ON mb.id = m.mailbox_connection_id AND mb.${WS}
        LEFT JOIN scopely.catalog_items ci ON ci.id = m.catalog_item_id
        LEFT JOIN scopely.rule_versions rv ON rv.id = m.lint_rule_version_id
+       LEFT JOIN scopely.ai_suggestions ai ON ai.id = m.ai_suggestion_id AND ai.${WS}
       WHERE m.opportunity_id = $1 AND m.${WS} ORDER BY m.created_at DESC, m.id DESC`, [opp.id])).rows;
   const ev = (await db.query(
     `SELECT e.id, e.plain_issue, e.url, e.claim_state, e.observed_at, e.recheck_result
@@ -86,10 +91,13 @@ export async function listDrafts(db: Db, opportunityId: string): Promise<Outreac
       sentAt: iso(m.sent_at),
       handoff: handoffOf({ approvalStatus: m.approval_status, sentAt: iso(m.sent_at), lintStatus: m.lint_status, recipientEmail: m.recipient_email,
         senderEmail: m.mailbox_email ?? null, subject: m.subject, body: m.body }),
+      origin: m.ai_suggestion_id !== null
+        ? { kind: 'ai', provider: m.ai_provider, model: m.ai_model, promptVersion: m.ai_prompt_version, task: m.ai_task, suggestionId: String(m.ai_suggestion_id) }
+        : { kind: String(m.generator).startsWith('scopely:') ? 'scopely' : 'person' },
       readiness: await draftReadiness(db, opp, m),
     });
   }
   const mailboxes = (await db.query(`SELECT id, email, display_name, state FROM scopely.mailbox_connections WHERE ${WS} ORDER BY id`)).rows
     .map((x) => ({ mailboxId: String(x.id), email: x.email, displayName: x.display_name, state: x.state }));
-  return { drafts, mailboxes, wording: { decision: OUTREACH_WORDING.decision, settled: OUTREACH_WORDING.settled } };
+  return { drafts, mailboxes, ai: { enabled: false, provider: null }, wording: { decision: OUTREACH_WORDING.decision, settled: OUTREACH_WORDING.settled } };
 }

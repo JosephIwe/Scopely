@@ -83,6 +83,7 @@ Evidence kinds:
   - `SCOPELY_WORKSPACE_ID`, which production refuses.
   - `SCOPELY_SIGNUP`, so sign-up stays invite-only.
   - Any `SCOPELY_SECRET_*`: no provider key is configured.
+  - `SCOPELY_AI_PROVIDER` / `SCOPELY_AI_API_KEY`, so AI rewording (A49) is off.
 - **Cost:** usage-billed on the existing plan. Two small always-on containers plus a 0.5 GB volume should cost a few dollars a month. That figure is inferred from Railway's published rates ($10/GB-month RAM, $20/vCPU-month, $0.15/GB-month volume), not measured.
 
 ## Runbook
@@ -94,6 +95,8 @@ SCOPELY_PUBLIC_URL=https://scopely-production.up.railway.app pnpm auth:invite --
 ```
 
 Open the printed link, choose a password and name the workspace. The link works once and lasts 7 days.
+
+**Turn on AI rewording of drafts (A49, optional):** set `SCOPELY_AI_PROVIDER=anthropic` and `SCOPELY_AI_API_KEY` on the `scopely` service. `SCOPELY_AI_MODEL` defaults to `claude-haiku-5-5`, the low-cost model. Each call is billed by Anthropic to that key and recorded in `cost_events` (tokens; the amount stays unknown). The model sees only a draft's wording with the contact's name and address masked. Remove the two variables to turn it off.
 
 **Connect a workspace's Clay key:**
 

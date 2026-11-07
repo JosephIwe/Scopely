@@ -22,6 +22,8 @@ import { getCaseFile, opportunityBuildInfo, stageOf } from '../api/case-file.js'
 import { isDemoBusiness } from '../api/sample.js';
 import { getSearch, listOpportunities, listSearches } from '../api/queries.js';
 import { OutcomeRejected, recordManualOutcome } from '../sell/outcomes.js';
+import { AssistRejected, suggestDraftRewrite } from '../ai/assist.js';
+import type { ModelProvider } from '../build/agents.js';
 import { DraftRejected, approveDraft, createDraft, editDraft, recordDraftSent } from '../sell/drafts.js';
 import { DeliveryRejected, recordDelivery } from '../sell/deliver.js';
 import { listDrafts } from '../api/outreach.js';
@@ -81,6 +83,8 @@ export interface ServerConfig {
   log?: (line: string) => void;
   /** Slice 10: business discovery providers and the server-side secret resolver for live ones. */
   discovery?: { providers: DiscoveryProviderRegistry; secrets?: SecretResolver };
+  /** Bounded AI assistance for draft wording (A49). Null or absent: assistance is off. */
+  assist?: ModelProvider | null;
   /** Slice 11: how an analysis requests a business's pages. Defaults to the SSRF-safe probe (demo hosts from fixtures). */
   probe?: Probe;
   /** Slice 12: prospect intelligence providers, and the same server-side secret resolver for live ones. */
@@ -198,6 +202,8 @@ export const SCHEMA_BEHIND_MESSAGE = 'The database is missing a table or column 
   + 'Run pnpm migrate, then restart the server. Nothing was changed.';
 
 export function createHandler(cfg: ServerConfig) {
+  // Whether a person can ask for an AI rewrite of a draft (A49), and which model would answer.
+  const aiInfo = { enabled: Boolean(cfg.assist), provider: cfg.assist?.provider ?? null };
   if (Boolean(cfg.workspaceId) === Boolean(cfg.auth)) throw new Error('createHandler needs exactly one of workspaceId (development preview) or auth');
   if (cfg.dbRole !== undefined && !/^[a-z_][a-z0-9_]{0,62}$/.test(cfg.dbRole)) throw new Error('dbRole must be a plain lower-case role name');
   const log = cfg.log ?? ((l: string) => process.stdout.write(`${l}\n`));
@@ -329,6 +335,7 @@ export function createHandler(cfg: ServerConfig) {
       return json(res, 200, await tx(async (db) => {
         const cf = await getCaseFile(db, oid);
         if (!cf) throw new HttpError(404, 'Not found.');
+        cf.drafts.ai = aiInfo;
         // The prospect link the seller can cite, when one is active. Never an edit link.
         let showLink: { url: string; versionNo: number; expiresAt: string } | null = null;
         if (cf.build.projectId) {
@@ -445,6 +452,7 @@ export function createHandler(cfg: ServerConfig) {
       return json(res, 200, await tx(async (db) => {
         const v = await listDrafts(db, oid);
         if (!v) throw new HttpError(404, 'Not found.');
+        v.ai = aiInfo;
         return v;
       }));
     }
@@ -475,6 +483,17 @@ export function createHandler(cfg: ServerConfig) {
       const out = await tx((db) => approveDraft(db, oid, mid, { approvedBy: String(bd.approvedBy ?? '') }));
       log(`draft ${mid} opportunity ${oid} approved`);
       return json(res, 200, { ok: true, approvedAt: out.approvedAt, approvedByIsAuthenticated: false });
+    }
+    // POST /api/opportunities/:id/drafts/:mid/assist: a person asks the model to reword a draft (A49).
+    // The answer is checked, then saved only as a new pending draft citing the same evidence.
+    if (m === 'POST' && a === 'opportunities' && c === 'drafts' && d && e === 'assist' && !parts[5]) {
+      const oid = id(b);
+      const mid = id(d);
+      const bd = await jsonBody(req);
+      const out = await tx((db) => suggestDraftRewrite(db, cfg.assist ?? null, oid, mid, { task: String(bd.task ?? ''), requestedBy: String(bd.requestedBy ?? '') }));
+      log(`draft ${mid} opportunity ${oid} ai suggestion ${out.suggestionId} ${out.status}${out.messageId ? ` draft ${out.messageId}` : ''}`);
+      return json(res, out.status === 'accepted' ? 200 : 409, out.status === 'accepted' ? out
+        : { ...out, error: `Scopely refused the AI suggestion because it changed what the draft says. Nothing was saved as a draft. ${out.reasons.join(' ')}`.trim() });
     }
     // POST /api/opportunities/:id/drafts/:mid/sent: a person records that they sent the approved
     // draft from their own inbox. Nothing is sent; the pitch is recorded with the message it cites.
@@ -998,6 +1017,7 @@ export function createHandler(cfg: ServerConfig) {
       if (err instanceof OutcomeRejected) return json(res, err.status, { error: err.message });
       if (err instanceof ProspectRejected) return json(res, err.status, { error: err.message });
       if (err instanceof DraftRejected) return json(res, err.status, { error: err.message });
+      if (err instanceof AssistRejected) return json(res, err.status, { error: err.message, reasons: err.reasons });
       if (err instanceof DeliveryRejected) return json(res, err.status, { error: err.message });
       if (err instanceof VerifyRefused) return json(res, err.status, { error: err.message });
       if (err instanceof FindRejected) return json(res, err.status, { error: err.message });

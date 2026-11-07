@@ -35,6 +35,8 @@
 // Analysis (Slice 11): analysing a selected business requests its own website with the SSRF-safe
 // probe (src/analysis/fetch.ts); reserved .example hosts are answered from fixtures/demo-pages.
 import { randomBytes } from 'node:crypto';
+import { assistProviderFromEnv } from '../src/ai/anthropic.js';
+import type { ModelProvider } from '../src/build/agents.js';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import pg from 'pg';
@@ -94,8 +96,11 @@ const clay = live ? new ClayPublicApiTransport()
 const secrets = live ? new EnvSecretResolver() : undefined;
 const discovery = { providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(clay)), secrets };
 const prospects = { providers: new ProspectProviderRegistry().register(new ClayProspectAdapter(clay)), secrets };
+// Bounded AI assistance (A49) is off unless SCOPELY_AI_PROVIDER and SCOPELY_AI_API_KEY are set.
+let assist: ModelProvider | null = null;
+try { assist = assistProviderFromEnv(process.env); } catch (err) { refuse((err as Error).message); }
 const handler = createHandler({
-  pool, signingKey, dbRole,
+  pool, signingKey, dbRole, assist,
   ...(workspaceId ? { workspaceId } : { auth: { secureCookies: production || process.env.SCOPELY_SECURE_COOKIES === '1', openSignup: process.env.SCOPELY_SIGNUP === 'open',
     trustProxy: process.env.SCOPELY_TRUST_PROXY === '1' } }),
   store: new FileObjectStore(process.env.SCOPELY_STORAGE_DIR ?? '.scopely/storage'),
@@ -110,5 +115,5 @@ const handler = createHandler({
 const port = Number(process.env.PORT ?? 4310);
 createServer((req, res) => { void handler(req, res); }).listen(port, host, () => {
   console.log(`Scopely on http://${host}:${port} (${workspaceId ? `development preview, workspace ${workspaceId}, no sign-in` : `sign-in, ${process.env.SCOPELY_SIGNUP === 'open' ? 'open sign-up' : 'invite-only'}`}`
-    + `${production ? ', production' : ''}); Clay: ${live ? 'live' : 'recorded responses'}`);
+    + `${production ? ', production' : ''}); Clay: ${live ? 'live' : 'recorded responses'}; AI assistance: ${assist ? `${assist.provider}` : 'off'}`);
 });
