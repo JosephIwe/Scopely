@@ -47,6 +47,24 @@ async function start(workspaceId?: string) {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/** Stages the product ships. The landing page may never mark one of these PLANNED (the B1 "get paid"
+ *  step and the map are still planned and may be). Add a stage here the day it ships. */
+const SHIPPED = ['Discover', 'Prove', 'Build', 'Sell', 'Deliver', 'Verify'] as const;
+
+/** Throws when the line carrying any PLANNED marker (its nearest enclosing <h3>, <p> or <li>) names a
+ *  shipped stage. */
+function expectNoShippedStagePlanned(page: string): void {
+  const marker = '<span class="plan">PLANNED</span>';
+  for (let at = page.indexOf(marker); at !== -1; at = page.indexOf(marker, at + 1)) {
+    const before = page.slice(0, at);
+    const open = Math.max(before.lastIndexOf('<h3'), before.lastIndexOf('<p'), before.lastIndexOf('<li'));
+    const text = before.slice(open).replace(/<[^>]+>/g, ' ');
+    for (const stage of SHIPPED) {
+      if (new RegExp(`\\b${stage}\\b`, 'i').test(text)) throw new Error(`shipped stage ${stage} is marked PLANNED: ${text.trim()}`);
+    }
+  }
+}
+
 describe('product shell routes (U2)', () => {
   it('serves the product at /app and keeps the root for the landing page, under the app policy', async () => {
     const { call } = await start();
@@ -87,12 +105,22 @@ describe('product shell routes (U2)', () => {
     expect(demo).toContain('harbourlane.example');
     expect(demo).toMatch(/fictional business/);
     expect(page.match(/\.example\b/g)!.length).toBe(page.slice(page.indexOf('<figure'), page.indexOf('</figure>')).match(/\.example\b/g)!.length);
-    // Deliver and Verify stay planned, wherever they appear.
+    // A shipped stage is never rendered as planned (see SHIPPED below).
+    expectNoShippedStagePlanned(page);
     const steps = page.slice(page.indexOf('class="lp-steps"'), page.indexOf('</ol>', page.indexOf('class="lp-steps"')));
-    for (const stage of ['Deliver', 'Verify']) expect(steps).toMatch(new RegExp(`<h3>${stage} <span class="plan">PLANNED</span></h3>`));
-    expect(demo).toMatch(/Deliver · verify · get paid<\/b> <span class="plan">PLANNED<\/span>/);
+    for (const stage of SHIPPED) expect(steps).toContain(`<h3>${stage}</h3>`);
+    expect(steps).not.toMatch(/class="later"|not built yet/);
+    expect(page).not.toMatch(/Sign-in is not built/);
     // No invented results: no percentages, customer counts or testimonials.
     expect(page).not.toMatch(/\d+\s*%|testimonial|customers? (?:love|trust)|\d+[,\d]* (?:businesses|clients|customers)/i);
+  });
+
+  it('refuses a page that renders a shipped stage as PLANNED', () => {
+    for (const stage of SHIPPED) {
+      expect(() => expectNoShippedStagePlanned(`<li><h3>${stage} <span class="plan">PLANNED</span></h3></li>`)).toThrow();
+      expect(() => expectNoShippedStagePlanned(`<p class="planned"><b>${stage.toLowerCase()} · x</b> <span class="plan">PLANNED</span></p>`)).toThrow();
+    }
+    expect(() => expectNoShippedStagePlanned('<p class="planned"><b>Get paid</b> <span class="plan">PLANNED</span></p>')).not.toThrow();
   });
 
   it('keeps the map a placeholder: no provider, tiles or coordinates (U3)', async () => {
