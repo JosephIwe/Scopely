@@ -302,7 +302,7 @@ export async function markMessageSent(db: Db, messageId: string, sentAt: string,
 
 export interface OutcomeInput {
   opportunityId: string;
-  kind: 'pitched' | 'replied' | 'call' | 'won' | 'lost' | 'delivered' | 'voided';
+  kind: 'pitched' | 'replied' | 'call' | 'won' | 'lost' | 'paid' | 'delivered' | 'voided';
   occurredAt: string;
   recordedBy: string;
   channel?: string;

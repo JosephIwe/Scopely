@@ -237,7 +237,8 @@ async function prospectIntelligence(db: Db, businessId: string) {
 /** One opportunity's Case File, or null when it is not in this workspace. */
 export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFile | null> {
   const o = (await db.query(
-    `SELECT f.*, op.why_it_matters, op.not_observable_notes, op.unmapped_reason, op.pitched_at, op.reply_at, op.won_at, op.lost_at, op.deal_value
+    `SELECT f.*, op.why_it_matters, op.not_observable_notes, op.unmapped_reason, op.pitched_at, op.reply_at, op.won_at, op.lost_at, op.deal_value,
+            op.paid_amount, op.paid_at, scopely.payment_status(op.won_at, op.deal_value, op.paid_amount) AS payment_status
        FROM scopely.v_opportunity_feed f JOIN scopely.opportunities op ON op.id = f.opportunity_id
       WHERE f.opportunity_id = $1 AND f.${WS}`, [opportunityId])).rows[0];
   if (!o) return null;
@@ -365,14 +366,17 @@ export async function getCaseFile(db: Db, opportunityId: string): Promise<CaseFi
     sell: {
       sellState: o.sell_state, deliveryState: o.delivery_state,
       pitchedAt: iso(o.pitched_at), replyAt: iso(o.reply_at), wonAt: iso(o.won_at), lostAt: iso(o.lost_at),
-      agreedAmount: s(o.deal_value), currency: o.currency,
+      quotedAmount: s(o.service_price), agreedAmount: s(o.deal_value),
+      paidAmount: s(o.paid_amount), paidAt: iso(o.paid_at), paymentStatus: o.payment_status, currency: o.currency,
       outcomes: outcomeViews,
       terminalOutcomeId: terminal?.outcomeId ?? null,
       // Advisory only: the outcome ledger's own guards decide (append-only, pitch before a result, one result).
       can: {
         pitched: true, replied: pitched, call: pitched,
-        won: pitched && !terminal, lost: pitched && !terminal, voided: Boolean(terminal),
+        won: pitched && !terminal, lost: pitched && !terminal, paid: terminal?.kind === 'won',
+        voided: Boolean(terminal) || outcomeViews.some((x) => x.kind === 'paid' && !x.voided),
       },
+      correctable: outcomeViews.filter((x) => !x.voided && (x.outcomeId === terminal?.outcomeId || x.kind === 'paid')).map((x) => x.outcomeId),
     },
   };
 }

@@ -439,11 +439,11 @@ export interface ProspectLookupView {
 
 export interface CaseFileOutcome {
   outcomeId: string;
-  kind: 'pitched' | 'replied' | 'call' | 'won' | 'lost' | 'delivered' | 'voided';
+  kind: 'pitched' | 'replied' | 'call' | 'won' | 'lost' | 'paid' | 'delivered' | 'voided';
   occurredAt: string;
   channel: string | null;
   replyClass: string | null;
-  /** A won outcome's agreed amount, as the seller entered it. Never a payment. */
+  /** Won: the agreed amount, as the seller entered it (never a payment). Paid: money received. */
   amount: string | null;
   currency: string | null;
   notes: string | null;
@@ -545,12 +545,20 @@ export interface CaseFile {
     sellState: SellState;
     deliveryState: DeliveryState;
     pitchedAt: string | null; replyAt: string | null; wonAt: string | null; lostAt: string | null;
+    /** The service's quoted price from the catalog (what Scopely would have proposed). Not agreed, not paid. */
+    quotedAmount: string | null;
     /** The won outcome's amount, entered by the seller. Not a payment. */
     agreedAmount: string | null;
+    /** P4: money actually received, the sum of standing paid outcomes. The only revenue. */
+    paidAmount: string | null;
+    paidAt: string | null;
+    paymentStatus: 'not_won' | 'awaiting_payment' | 'part_paid' | 'paid_in_full' | 'paid_more_than_agreed';
     currency: string | null;
     /** The append-only ledger, oldest first. */
     outcomes: CaseFileOutcome[];
     terminalOutcomeId: string | null;
-    can: { pitched: boolean; replied: boolean; call: boolean; won: boolean; lost: boolean; voided: boolean };
+    can: { pitched: boolean; replied: boolean; call: boolean; won: boolean; lost: boolean; paid: boolean; voided: boolean };
+    /** Records a correction may name: the standing win or loss, and each standing payment. */
+    correctable: string[];
   };
 }

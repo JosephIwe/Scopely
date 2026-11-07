@@ -5,7 +5,11 @@
 // by a voided row that names what it corrects, and the opportunity's currency.
 //
 // Nothing here infers a sale, a payment or an amount. A won outcome carries the amount the seller
-// typed and nothing else; there is no default currency or price.
+// agreed and nothing else; there is no default currency or price.
+//
+// P4: revenue is money actually received. A `paid` outcome records an amount the business paid, in
+// the opportunity's currency, on the day it arrived; several may be recorded (deposit, balance) and
+// a wrong one is corrected by a voided outcome naming it. The agreed amount is never revenue.
 import { recordOutcome } from '../record/index.js';
 import type { Db } from '../tenancy/index.js';
 
@@ -13,7 +17,7 @@ export class OutcomeRejected extends Error {
   constructor(readonly status: 400 | 404 | 409, message: string) { super(message); }
 }
 
-export const MANUAL_OUTCOME_KINDS = ['pitched', 'replied', 'call', 'won', 'lost', 'voided'] as const;
+export const MANUAL_OUTCOME_KINDS = ['pitched', 'replied', 'call', 'won', 'lost', 'paid', 'voided'] as const;
 export type ManualOutcomeKind = (typeof MANUAL_OUTCOME_KINDS)[number];
 
 /** How the seller reached the business. Recorded, never used to send. */
@@ -27,12 +31,12 @@ export interface ManualOutcomeInput {
   recordedBy: string;
   channel?: string | null;
   replyClass?: string | null;
-  /** Won only: the amount the seller agreed with the business. */
+  /** Won: the amount the seller agreed with the business. Paid: the money that actually arrived. */
   amount?: string | number | null;
-  /** Won only, and only when the opportunity has no currency yet. */
+  /** Won only, and only when the opportunity has no currency yet. A payment is always in the opportunity's currency. */
   currency?: string | null;
   notes?: string | null;
-  /** Voided only: the won or lost outcome it corrects. */
+  /** Voided only: the won, lost or paid outcome it corrects. */
   correctsOutcomeId?: string | null;
 }
 
@@ -55,11 +59,15 @@ const text = (v: unknown, max: number) => {
 function plain(message: string, currency: string | null): string | null {
   if (/before a pitched outcome/.test(message)) return 'Record the pitch first. A reply, win or loss follows a pitch.';
   if (/already has terminal outcome/.test(message)) return 'This opportunity is already marked won or lost. Correct that record first.';
+  if (/payment before a won outcome/.test(message)) return 'Record the win first. A payment is money received for won work.';
+  if (/payment cannot predate the pitch/.test(message)) return 'A payment cannot be dated before the pitch.';
+  if (/cannot void a win that a payment rests on/.test(message)) return 'A payment rests on this win. Correct the payment first.';
+  if (/payment needs the opportunity's currency/.test(message)) return 'Record the win, with its currency, before a payment.';
   if (/currency .* differs/.test(message)) return `Use the opportunity’s currency${currency ? `, ${currency}` : ''}.`;
   if (/cannot void a win that a delivery rests on/.test(message)) return 'A delivery rests on this win, so it cannot be corrected here.';
   if (/is already voided/.test(message)) return 'That record has already been corrected.';
   if (/correction cannot predate/.test(message)) return 'A correction cannot be dated before the record it corrects.';
-  if (/only a won or lost outcome can be voided|must name an outcome of the same opportunity/.test(message)) return 'Only a win or a loss on this opportunity can be corrected.';
+  if (/only a won, lost or paid outcome can be voided|must name an outcome of the same opportunity/.test(message)) return 'Only a win, a loss or a payment on this opportunity can be corrected.';
   return null;
 }
 
@@ -70,7 +78,7 @@ export async function recordManualOutcome(db: Db, opportunityId: string, input: 
   if (!opp) throw new OutcomeRejected(404, 'That opportunity does not exist.');
   const kind = String(input.kind ?? '') as ManualOutcomeKind;
   // Delivery is planned (Deliver & verify), so it is never recorded from here.
-  if (!MANUAL_OUTCOME_KINDS.includes(kind)) throw new OutcomeRejected(400, 'Choose what happened: a pitch, a reply, a call, a win, a loss or a correction.');
+  if (!MANUAL_OUTCOME_KINDS.includes(kind)) throw new OutcomeRejected(400, 'Choose what happened: a pitch, a reply, a call, a win, a loss, a payment or a correction.');
   const recordedBy = text(input.recordedBy, 120);
   if (!recordedBy) throw new OutcomeRejected(400, 'Say who is recording this.');
   const at = occurredAt(String(input.occurredOn ?? ''), now);
@@ -97,8 +105,17 @@ export async function recordManualOutcome(db: Db, opportunityId: string, input: 
     currency = opp.currency ?? typed ?? undefined;
     if (!currency || !/^[A-Z]{3}$/.test(currency)) throw new OutcomeRejected(400, 'Enter the currency of the amount, for example GBP.');
     if (typed && opp.currency && typed !== opp.currency) throw new OutcomeRejected(409, `Use the opportunity’s currency, ${opp.currency}.`);
+  } else if (kind === 'paid') {
+    const raw = String(input.amount ?? '').replace(/[\s,]/g, '');
+    if (!/^\d{1,10}(\.\d{1,2})?$/.test(raw) || Number(raw) <= 0) throw new OutcomeRejected(400, 'Enter the amount the business actually paid.');
+    amount = Number(raw);
+    if (!opp.currency) throw new OutcomeRejected(409, 'Record the win, with its currency, before a payment.');
+    const typed = text(input.currency, 3)?.toUpperCase() ?? null;
+    // Never converted: a payment in another currency is refused, not translated.
+    if (typed && typed !== opp.currency) throw new OutcomeRejected(409, `Use the opportunity’s currency, ${opp.currency}. Scopely never converts currencies.`);
+    currency = opp.currency;
   } else if (input.amount !== undefined && input.amount !== null && String(input.amount).trim() !== '') {
-    throw new OutcomeRejected(400, 'Only a win records an amount.');
+    throw new OutcomeRejected(400, 'Only a win or a payment records an amount.');
   }
   let corrects: string | undefined;
   if (kind === 'voided') {

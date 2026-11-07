@@ -30,7 +30,10 @@ const BASIS = { corporate_subscriber: 'Corporate subscriber', consent: 'Consent'
 const CHANNELS = [['email', 'Email'], ['phone', 'Phone'], ['in_person', 'In person'], ['linkedin', 'LinkedIn'], ['whatsapp', 'WhatsApp'], ['social', 'Other social'], ['other', 'Other']];
 const REPLIES = [['positive', 'Interested'], ['question', 'Asked a question'], ['pricing', 'Asked about price'], ['not_now', 'Not now'],
   ['not_interested', 'Not interested'], ['opt_out', 'Asked not to be contacted'], ['wrong_person', 'Wrong person']];
-const KIND_WORD = { pitched: 'Pitched', replied: 'Reply', call: 'Call', won: 'Won', lost: 'Lost', delivered: 'Delivered', voided: 'Correction' };
+const KIND_WORD = { pitched: 'Pitched', replied: 'Reply', call: 'Call', won: 'Won', lost: 'Lost', paid: 'Payment received', delivered: 'Delivered', voided: 'Correction' };
+// P4: revenue is money received. The agreed amount and the catalog quote are shown beside it, never as it.
+const PAYMENT_WORD = { not_won: 'Not won', awaiting_payment: 'Awaiting payment', part_paid: 'Part paid', paid_in_full: 'Paid in full',
+  paid_more_than_agreed: 'Paid more than agreed' };
 const FIX_STEPS = [['problem', 'Problem'], ['proof', 'Proof'], ['fix', 'Fix'], ['beforeAfter', 'Before / After'], ['confirm', 'Confirm'], ['show', 'Show']];
 const VERSION_WORD = { DRAFT: 'Draft', APPROVED: 'Approved', SHOWN: 'Shown' };
 
@@ -695,10 +698,11 @@ function sell(cf, ctx) {
   const x = cf.sell;
   const s = sec('09', 'Sell · outcome', null);
   const lost = x.sellState === 'LOST';
-  const order = ['NOT', 'PITCHED', 'REPLIED', 'WON'];
-  const at = x.sellState === 'WON' || lost ? 3 : x.sellState === 'REPLIED' ? 2 : x.sellState === 'PITCHED' ? 1 : 0;
+  const order = ['NOT', 'PITCHED', 'REPLIED', 'WON', 'PAID'];
+  const at = x.paidAmount !== null && !lost ? 4 : x.sellState === 'WON' || lost ? 3 : x.sellState === 'REPLIED' ? 2 : x.sellState === 'PITCHED' ? 1 : 0;
   s.append(h('ol', { class: 'steps sell', 'aria-label': 'Sell progress' }, order.map((k, i) => h('li', {
-    class: lost && i === 3 ? 'lost' : i < at ? 'done' : i === at ? 'cur' : '' }, lost && i === 3 ? 'LOST' : k === 'NOT' ? 'NOT PITCHED' : k))));
+    class: lost && i === 3 ? 'lost' : i < at || (i === 4 && x.paymentStatus === 'paid_in_full') ? 'done' : i === at ? 'cur' : '' },
+    lost && i === 3 ? 'LOST' : k === 'NOT' ? 'NOT PITCHED' : k))));
   if (['DRAFTED', 'APPROVED', 'SENT'].includes(x.sellState)) {
     s.append(h('p', { class: 'hint', text: `A pitch message is ${x.sellState.toLowerCase()} in the message ledger. Record the pitch here once it has gone out.` }));
   }
@@ -708,16 +712,21 @@ function sell(cf, ctx) {
     h('div', {}, h('span', { text: 'Reply' }), h('b', { text: x.replyAt ? date(x.replyAt) : x.pitchedAt && !lost ? 'Waiting' : '—' })),
     h('div', {}, h('span', { text: 'Calls' }), h('b', { text: calls ? String(calls) : '—' })),
     h('div', {}, h('span', { text: 'Result' }), h('b', { class: x.sellState === 'WON' ? 'sageT' : '', text: x.sellState === 'WON' ? 'Won' : lost ? 'Lost' : 'Open' }))));
-  if (x.sellState === 'WON') {
-    s.append(h('div', { class: 'note sage' }, h('b', { text: `Agreed amount: ${x.agreedAmount !== null ? money(x.currency, x.agreedAmount) : 'not recorded'}. ` }),
-      'Entered by you when you marked it won. Scopely has not recorded any payment.'));
+  if (x.sellState === 'WON' || x.paidAmount !== null) {
+    const amt = (v) => (v !== null ? money(x.currency, v) : 'not recorded');
+    s.append(h('div', { class: 'out money', 'aria-label': 'Money' },
+      h('div', {}, h('span', { text: 'Quoted' }), h('b', { text: x.quotedAmount !== null ? amt(x.quotedAmount) : '—' })),
+      h('div', {}, h('span', { text: 'Agreed' }), h('b', { text: amt(x.agreedAmount) })),
+      h('div', {}, h('span', { text: 'Paid' }), h('b', { class: x.paidAmount !== null ? 'sageT' : '', text: x.paidAmount !== null ? amt(x.paidAmount) : 'Nothing yet' })),
+      h('div', {}, h('span', { text: 'Payment' }), h('b', { text: PAYMENT_WORD[x.paymentStatus] ?? x.paymentStatus }))),
+      h('p', { class: 'hint', text: 'Only money received counts as revenue. Quoted is the catalog price; agreed is what you entered when you marked it won. Scopely does not invoice or take payments.' }));
   }
   if (x.outcomes.length) {
     s.append(h('div', { class: 'label', text: 'What happened' }), h('ol', { class: 'ledger' }, x.outcomes.map((o) => h('li', { class: o.voided ? 'voided' : '' },
       h('div', { class: 'row' }, h('b', { text: KIND_WORD[o.kind] ?? o.kind }), h('span', { class: 'mono', text: date(o.occurredAt) }),
         o.channel ? h('span', { class: 'muted', text: CHANNELS.find(([k]) => k === o.channel)?.[1] ?? o.channel }) : null,
         o.replyClass ? h('span', { class: 'muted', text: REPLIES.find(([k]) => k === o.replyClass)?.[1] ?? o.replyClass }) : null,
-        o.amount !== null ? h('span', { text: `Agreed ${money(o.currency, o.amount)}` }) : null,
+        o.amount !== null ? h('span', { text: `${o.kind === 'paid' ? 'Received' : o.kind === 'delivered' ? 'Cost' : 'Agreed'} ${money(o.currency, o.amount)}` }) : null,
         o.voided ? h('span', { class: 'badge b-rev', text: 'CORRECTED' }) : null),
       o.notes ? h('p', { class: 'hint', text: o.notes }) : null,
       h('p', { class: 'hint', text: `Recorded by ${o.recordedBy}, ${when(o.recordedAt)}` })))));
@@ -730,7 +739,7 @@ function sell(cf, ctx) {
 
 function recorder(cf, ctx) {
   const x = cf.sell;
-  const kinds = [['pitched', 'Pitch'], ['replied', 'Reply'], ['call', 'Call'], ['won', 'Won'], ['lost', 'Lost'], ['voided', 'Correct']].filter(([k]) => x.can[k]);
+  const kinds = [['pitched', 'Pitch'], ['replied', 'Reply'], ['call', 'Call'], ['won', 'Won'], ['lost', 'Lost'], ['paid', 'Payment'], ['voided', 'Correct']].filter(([k]) => x.can[k]);
   let kind = kinds[0][0];
   const fields = h('div', { class: 'recf' });
   const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'What to record' });
@@ -739,12 +748,16 @@ function recorder(cf, ctx) {
   const channel = h('select', { 'aria-label': 'Channel' }, h('option', { value: '' }, 'Choose…'), CHANNELS.map(([k, l]) => h('option', { value: k }, l)));
   const reply = h('select', { 'aria-label': 'Reply' }, h('option', { value: '' }, 'Choose…'), REPLIES.map(([k, l]) => h('option', { value: k }, l)));
   reply.addEventListener('change', () => drawFields());
-  const amount = h('input', { type: 'text', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off', 'aria-label': 'Agreed amount' });
+  const amount = h('input', { type: 'text', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off', 'aria-label': 'Amount' });
   const currency = h('input', { type: 'text', maxlength: 3, placeholder: 'GBP', autocomplete: 'off', 'aria-label': 'Currency', value: x.currency ?? '', readonly: Boolean(x.currency) });
   const notes = h('textarea', { rows: 3, maxlength: 2000, 'aria-label': 'Notes' });
   const by = h('input', { type: 'text', value: remember('scopely.approver'), placeholder: 'Your name', maxlength: 120, autocomplete: 'name', 'aria-label': 'Recording as' });
   const field = (label, el, hint) => h('label', { class: 'field' }, h('span', { class: 'lab', text: label }), el, hint ? h('span', { class: 'hint', text: hint }) : null);
-  const target = x.outcomes.find((o) => o.outcomeId === x.terminalOutcomeId);
+  const correctable = x.outcomes.filter((o) => (x.correctable ?? []).includes(o.outcomeId));
+  const targetSel = h('select', { 'aria-label': 'Record to correct' }, correctable.map((o) => h('option', { value: o.outcomeId },
+    `${KIND_WORD[o.kind]} · ${date(o.occurredAt)}${o.amount !== null ? ` · ${money(o.currency, o.amount)}` : ''}`)));
+  targetSel.addEventListener('change', () => drawFields());
+  const target = () => x.outcomes.find((o) => o.outcomeId === targetSel.value);
   function drawFields() {
     const rows = [field(kind === 'voided' ? 'Date of the correction' : 'Date', on)];
     if (kind === 'pitched' || kind === 'replied' || kind === 'call') rows.push(field(kind === 'pitched' ? 'How you pitched' : 'Channel (optional)', channel));
@@ -753,7 +766,14 @@ function recorder(cf, ctx) {
       rows.push(h('div', { class: 'amt' }, field('Agreed amount', amount), field('Currency', currency, x.currency ? 'The opportunity’s currency.' : null)),
         h('p', { class: 'hint', text: 'The amount you agreed with the business. It is not a payment and Scopely does not invoice.' }));
     }
-    if (kind === 'voided' && target) rows.push(h('p', { class: 'note', text: `Corrects “${KIND_WORD[target.kind]}” recorded ${date(target.occurredAt)}. The original stays in the record, marked as corrected.` }));
+    if (kind === 'paid') {
+      rows.push(h('div', { class: 'amt' }, field('Amount received', amount), field('Currency', currency, 'The opportunity’s currency. Never converted.')),
+        h('p', { class: 'hint', text: 'Money that has actually arrived, on the day it arrived. Record a deposit and the balance separately. Only this counts as revenue.' }));
+    }
+    if (kind === 'voided' && target()) {
+      rows.push(field('Record to correct', targetSel),
+        h('p', { class: 'note', text: `Corrects “${KIND_WORD[target().kind]}” recorded ${date(target().occurredAt)}. The original stays in the record, marked as corrected.` }));
+    }
     rows.push(field(kind === 'voided' ? 'Why it was wrong' : 'Notes (optional)', notes), field('Recording as', by));
     fields.replaceChildren(...rows);
   }
@@ -764,8 +784,8 @@ function recorder(cf, ctx) {
     try {
       await api('POST', `/opportunities/${cf.opportunityId}/outcomes`, {
         kind, occurredOn: on.value, recordedBy: by.value.trim(), channel: channel.value || null, replyClass: reply.value || null,
-        amount: kind === 'won' ? amount.value : null, currency: kind === 'won' ? currency.value : null, notes: notes.value || null,
-        correctsOutcomeId: kind === 'voided' ? x.terminalOutcomeId : null,
+        amount: kind === 'won' || kind === 'paid' ? amount.value : null, currency: kind === 'won' || kind === 'paid' ? currency.value : null, notes: notes.value || null,
+        correctsOutcomeId: kind === 'voided' ? targetSel.value : null,
       });
       toast(kind === 'replied' && reply.value === 'opt_out' ? 'Recorded. The business is now on your suppression list.' : 'Recorded');
       await refresh(ctx);
@@ -914,7 +934,7 @@ function deliveryWriter(cf, ctx) {
     await api('POST', `/opportunities/${cf.opportunityId}/delivery`, { occurredOn: on.value, deliveredBy: whoDid.value, clientConfirmed: confirmed.checked,
       notes: notes.value || null, recordedBy: by.value.trim() });
     return 'Delivery recorded';
-  }, ctx, 'Records are permanent. Nothing about payment is recorded.');
+  }, ctx, 'Records are permanent. Payments are recorded under Sell · outcome.');
 }
 
 function verifyWriter(cf, ctx, e) {
