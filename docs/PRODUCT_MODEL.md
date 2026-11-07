@@ -63,7 +63,7 @@ USER ─ membership ─ WORKSPACE ─┬─ MAILBOX CONNECTIONS
 | SELL | An approved message to a lawful contact, sent from one of the workspace's mailboxes | `contacts`, `suppression`, `messages`, `mailbox_connections`, `outcomes`, `src/sell/drafts.ts` | Built. Drafts are written, linted and approved in the Case File (Release 1, A41–A43); sending stays Manual and automated sending is Deferred |
 | DELIVER | Work done by the seller, or confirmed by the client for `CLIENT_REQUIRED` items | `outcomes` (`delivered`), `builds` (`DELIVERY`), `src/sell/deliver.ts` | Built. Recorded from the Case File's 10 Deliver · verify (Release 1, A44) |
 | VERIFY | The original check passes on a snapshot taken after the evidence and the delivery | `verifications` (append-only), `src/verify` | Built. Automated for the v2 contact-link and booking checks (Release 1, A45); a person-checked v1 rule is not re-run |
-| GET PAID | Revenue is the `won` outcome's agreed amount | `outcomes.amount` → `opportunities.deal_value` | Deferred (decision B1) |
+| GET PAID | Revenue is money received: a person's `paid` outcome after a standing win. The `won` amount is agreed value, shown beside it | `outcomes` (`paid`) → `opportunities.paid_amount` / `paid_at`; `won` → `deal_value`; `payment_status()` | Built (A47). Recorded by hand from the Case File; no invoicing or payment provider |
 | Learn | Per search, run, stage, opportunity kind and market; unknown values are NULL, never 0 | `v_search_run_summary`, `v_search_run_stage_funnel`, `v_search_performance`, `v_opportunity_feed`, `v_opportunity_ledger`, `v_market_funnel`, `v_opportunity_type_performance` | Built |
 
 ## Discovered is not analysed is not an opportunity
