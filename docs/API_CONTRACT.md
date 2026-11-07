@@ -222,6 +222,7 @@ styling.
 | `createSearch(db, SearchInput)` | Saves an ICP | inverted ranges, revenue without currency, unknown opportunity kind |
 | `startSearchRun(db, searchId)` | Starts a run with frozen criteria and limits | search archived or in another workspace |
 | `runDiscovery(db, registry, runId, provider)` / `recordDiscoveredBusiness(db, runId, business)` | Adds candidates, deduplicated per workspace | past `max_discovered_per_run` |
+| `createList(db, listInputFromBody(body))` (`src/lists`, `POST /api/lists`) | P3: a list of businesses a person typed (`entries: [{ name, domain, companyNumber? }]`) or imported (`csv`, columns name, domain, company number), with `companyRegister: 'uk_companies_house'` when numbers are given. Creates a `kind = 'list'` search, its one run, sources of kind `manual` / `csv_import`, and pre-qualifies under `qualify.list_entry` v1 (no domain → `NEEDS_REVIEW`). Returns per-row `new` / `existing` / `repeat` and counts. Then select → analyse as any run | any row invalid (all reported in `rows`, nothing imported); more than 200 rows; a company number without a register; an IP, port, credential or non-public host; a provider run, provider operation or provider source on a list (database) |
 | `prequalifyRun(db, runId, asOf)` | Qualifies, rejects or flags every `DISCOVERED` business | — |
 | `resolveReview(db, runId, businessId, { state, reviewedBy, note })` | Settles a `NEEDS_REVIEW` | no reviewer or note |
 | `selectForAnalysis(db, runId, picks, by, at)` | Selects qualified businesses | not qualified; past the analysis cap |

@@ -210,11 +210,11 @@ export async function getSearchPerformance(db: Db, searchId?: string): Promise<S
 
 export async function listSearches(db: Db, opts: { includeArchived?: boolean } = {}): Promise<SearchListItem[]> {
   const r = await db.query(
-    `SELECT s.id, s.name, s.created_at, s.archived_at, count(r.id) AS runs, max(r.started_at) AS last_run_at
+    `SELECT s.id, s.name, s.kind, s.created_at, s.archived_at, count(r.id) AS runs, max(r.started_at) AS last_run_at
        FROM scopely.searches s LEFT JOIN scopely.search_runs r ON r.search_id = s.id AND r.${WS}
       WHERE s.${WS} AND ($1 OR s.archived_at IS NULL)
       GROUP BY s.id ORDER BY s.created_at DESC, s.id DESC`, [opts.includeArchived ?? false]);
-  return r.rows.map((x) => ({ searchId: String(x.id), name: x.name, runs: n(x.runs), lastRunAt: iso(x.last_run_at),
+  return r.rows.map((x) => ({ searchId: String(x.id), name: x.name, kind: x.kind, runs: n(x.runs), lastRunAt: iso(x.last_run_at),
     createdAt: iso(x.created_at)!, archivedAt: iso(x.archived_at) }));
 }
 
@@ -226,7 +226,7 @@ export async function getSearch(db: Db, searchId: string): Promise<SearchDefinit
   const runs = await db.query(`SELECT id, status, started_at, completed_at FROM scopely.search_runs WHERE search_id = $1 AND ${WS}
                                 ORDER BY started_at DESC, id DESC`, [searchId]);
   return {
-    searchId: String(x.id), name: x.name, description: x.description, playbookKey: x.playbook_key,
+    searchId: String(x.id), name: x.name, kind: x.kind, description: x.description, playbookKey: x.playbook_key,
     geography: { countryCode: x.country_code, region: x.region, city: x.city, postalPrefix: x.postal_prefix,
                  center: x.center_latitude === null ? null : { latitude: String(x.center_latitude), longitude: String(x.center_longitude) },
                  radiusKm: s(x.radius_km) },

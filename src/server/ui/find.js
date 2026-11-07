@@ -3,7 +3,8 @@
 // the server's, never worked out here.
 //
 // Routes (hash, under /app):
-//   #/find            searches, the providers this server offers, and a new search
+//   #/find            searches and lists, the providers this server offers, a new search, and
+//                     "Analyse websites": a list typed by hand or imported from a CSV (P3, no provider)
 //   #/find/run/<id>   one run: provider calls, then its businesses, select for analysis, analyse
 //
 // Slice 11: a selected business is analysed one request at a time (so the screen can show
@@ -24,6 +25,7 @@ const FINDING_NOTE = {
   opened: 'Opened as an opportunity', already_held: 'Already in an open opportunity', no_service: 'No service in your catalog covers this',
   not_a_lead: 'Recorded; never the lead of a pitch',
 };
+const PROVENANCE_WORD = { manual: 'Added by hand', csv_import: 'From your CSV' };
 const STATE_WORD = { OBSERVED: 'Observed', INFERRED: 'Inferred', NOT_OBSERVABLE: 'Not observable' };
 const ERROR_WORD = {
   auth: 'credential refused', rate_limited: 'rate limited', invalid_request: 'search refused', not_recorded: 'not recorded',
@@ -32,7 +34,7 @@ const ERROR_WORD = {
 const CRITERION_WORD = {
   country: 'country', region: 'region', city: 'city', postal_prefix: 'postcode', radius_km: 'distance', vertical: 'industry', subvertical: 'niche',
   specialty: 'specialty', employees: 'employees', revenue: 'revenue', website_required: 'website', website_absent: 'website', website_status: 'website',
-  suppressed: 'on your do-not-contact list', excluded_domain: 'excluded domain',
+  suppressed: 'on your do-not-contact list', excluded_domain: 'excluded domain', website_address: 'website address',
 };
 
 function bar(back) {
@@ -71,14 +73,22 @@ async function homeView() {
 
   main.replaceChildren(
     h('div', { class: 'fd-head' }, h('div', {}, h('span', { class: 'eyebrow', text: 'Find' }), h('h1', { text: 'Find businesses' }),
-      h('p', { class: 'lead muted', text: 'Search a data provider for businesses that fit who you sell to. Scopely checks every one against your search before you spend anything analysing it.' })),
+      h('p', { class: 'lead muted', text: 'Add websites you already know, or search a data provider for businesses that fit who you sell to. Scopely checks every one before you spend anything analysing it.' })),
       h('div', { class: 'fd-chips', 'aria-label': 'Providers' }, pchips)),
     h('div', { class: 'fd-grid' }, h('section', { 'aria-label': 'Your searches' }, h('h2', { class: 'fd-h2', text: 'Your searches' }), list),
-      h('section', { class: 'card fd-form', 'aria-label': 'New search' }, newSearchForm())));
+      h('div', {}, h('section', { class: 'card fd-form', 'aria-label': 'Analyse websites' }, newListForm()),
+        h('section', { class: 'card fd-form', style: 'margin-top:20px', 'aria-label': 'New search' }, newSearchForm()))));
 }
 
 function searchRow(s, providers, runs) {
   const mine = runs.filter((r) => r.searchId === s.searchId);
+  if (s.kind === 'list') {
+    const r = mine[0];
+    return h('article', { class: 'card fd-search' },
+      h('div', { class: 'row' }, h('div', { class: 'grow' }, h('b', { text: s.name }),
+        h('div', { class: 'small muted', text: `List · ${r ? `${plural(r.discovered, 'business', 'businesses')}, ${r.qualified} ready to select` : 'empty'}` })),
+        r ? h('a', { class: 'btn sm primary', href: `#/find/run/${r.searchRunId}` }, 'Open list') : null));
+  }
   const run = async (p, btn) => {
     btn.disabled = true;
     btn.textContent = `Searching ${p.label}…`;
@@ -101,6 +111,53 @@ function searchRow(s, providers, runs) {
         onclick: (e) => run(p, e.currentTarget) }, `Run with ${p.label}`))),
     mine.length ? h('ol', { class: 'fd-runs' }, mine.slice(0, 4).map((r) => h('li', {},
       h('a', { href: `#/find/run/${r.searchRunId}`, text: when(r.startedAt) }), h('span', { class: 'muted', text: ` · ${plural(r.discovered, 'business', 'businesses')} found, ${r.qualified} qualified` })))) : null);
+}
+
+// P3: analyse websites without a provider. One business typed in, or a CSV with name, domain and
+// an optional company number. The server checks every row and imports nothing if any row is wrong.
+function newListForm() {
+  const f = {};
+  const input = (key, attrs = {}) => (f[key] = h('input', { name: key, ...attrs }));
+  const field = (label, el, hint, opt) => h('label', { class: 'field' }, h('span', { class: 'lab' }, label, opt ? h('em', { text: 'optional' }) : null), el,
+    hint ? h('div', { class: 'hint', text: hint }) : null);
+  const problems = h('ul', { class: 'fd-problems small', 'aria-live': 'polite' });
+  const file = h('input', { type: 'file', name: 'csv', accept: '.csv,text/csv' });
+  const ch = h('input', { type: 'checkbox', name: 'companiesHouse' });
+  const save = h('button', { class: 'btn primary block', type: 'submit' }, 'Add to Scopely');
+  const form = h('form', { onsubmit: async (e) => {
+    e.preventDefault();
+    problems.replaceChildren();
+    save.disabled = true;
+    try {
+      const body = { name: f.listName.value, companyRegister: ch.checked ? 'uk_companies_house' : null };
+      if (file.files && file.files[0]) {
+        if (file.files[0].size > 200 * 1024) throw new Error('That CSV is too large. A list holds up to 200 businesses.');
+        body.csv = await file.files[0].text();
+      } else {
+        body.entries = [{ name: f.bizName.value, domain: f.domain.value, companyNumber: f.companyNumber.value }];
+      }
+      const r = await api('POST', '/lists', body);
+      const c = r.counts;
+      toast(`Added ${plural(c.businesses, 'business', 'businesses')}${c.existing ? `, ${c.existing} already known` : ''}${c.repeats ? `, ${c.repeats} repeated` : ''}. ${c.needsReview ? `${c.needsReview} need review.` : ''}`);
+      go(`#/find/run/${r.searchRunId}`);
+    } catch (err) {
+      save.disabled = false;
+      if (err.rows && err.rows.length) problems.replaceChildren(...err.rows.slice(0, 30).map((p) => h('li', { text: `Row ${p.row}: ${p.problem}` })));
+      fail(err);
+    }
+  } },
+    h('h2', { class: 'fd-h2', text: 'Analyse websites' }),
+    h('p', { class: 'hint', text: 'Add businesses you already know, without a data provider. Scopely records only what you type: industry, location and size stay unknown.' }),
+    field('List name', input('listName', { required: true, maxlength: 120, placeholder: 'Validation run, clinics' })),
+    field('Business name', input('bizName', { maxlength: 200 })),
+    field('Domain', input('domain', { maxlength: 300, placeholder: 'example-clinic.co.uk', autocapitalize: 'none', inputmode: 'url' }), 'Without a domain the business waits for review.'),
+    field('Company number', input('companyNumber', { maxlength: 12 }), null, true),
+    h('div', { class: 'field' }, h('span', { class: 'lab' }, 'Or import a CSV'), file,
+      h('div', { class: 'hint', text: 'Columns: name, domain, company number (optional). Up to 200 rows. A CSV replaces the single business above.' })),
+    h('label', { class: 'field row' }, ch, h('span', { text: ' Company numbers are UK Companies House numbers' })),
+    problems,
+    h('div', { style: 'margin-top:18px' }, save));
+  return form;
 }
 
 function newSearchForm() {
@@ -269,7 +326,7 @@ async function runView(id) {
           b.knownBefore ? h('span', { class: 'badge', title: 'This workspace already held this business', text: 'Known' }) : null),
           h('div', { class: 'small muted' }, [b.domain ?? 'No website address', where, b.vertical, size(b.employees)].filter(Boolean).join(' · ')),
           h('div', { class: 'small fd-why', text: reason(b) }), analysisLine(id, b)),
-        h('div', { class: 'fd-prov small muted' }, prov ? [h('span', { text: prov.provider ? `From ${prov.provider[0].toUpperCase()}${prov.provider.slice(1)}` : 'Recorded by hand' }),
+        h('div', { class: 'fd-prov small muted' }, prov ? [h('span', { text: PROVENANCE_WORD[prov.provider] ?? (prov.provider ? `From ${prov.provider[0].toUpperCase()}${prov.provider.slice(1)}` : 'Recorded by hand') }),
           h('span', { text: when(prov.observedAt) })] : null));
     }) : [h('div', { class: 'empty muted', text: 'Nothing in this view.' })]));
   };
@@ -280,11 +337,12 @@ async function runView(id) {
   sync();
 
   main.replaceChildren(
-    h('div', { class: 'fd-head' }, h('div', {}, h('span', { class: 'eyebrow', text: 'Search run' }), h('h1', { text: v.searchName }),
+    h('div', { class: 'fd-head' }, h('div', {}, h('span', { class: 'eyebrow', text: v.kind === 'list' ? 'List' : 'Search run' }), h('h1', { text: v.searchName }),
       h('p', { class: 'muted', text: `${v.operations[0] ? when(v.operations[0].startedAt) : ''}${v.maxDiscoveredPerRun ? ` · finds up to ${v.maxDiscoveredPerRun}` : ''}${v.maxBusinessesToAnalyze ? ` · analyses up to ${v.maxBusinessesToAnalyze}` : ''}` }))),
     h('div', { class: 'fd-stats' }, stat('Found', v.businesses.length), stat('Qualified', c.QUALIFIED ?? 0, 'ok'), stat('Needs review', c.NEEDS_REVIEW ?? 0, 'warn'),
       stat('Rejected', c.REJECTED ?? 0), stat('Selected', selectedNow, 'sel')),
-    h('section', { class: 'card fd-econ', 'aria-label': 'Provider calls' },
+    v.kind === 'list' ? h('p', { class: 'small muted', text: 'Added by a person. No data provider was called and no contact was looked up.' })
+    : h('section', { class: 'card fd-econ', 'aria-label': 'Provider calls' },
       h('div', { class: 'row' }, h('h2', { class: 'fd-h2 grow', text: 'Provider calls' }), recorded ? h('span', { class: 'badge amber', text: 'Recorded responses · no live call' }) : null),
       h('p', { class: 'small muted', text: `${plural(e.operations, 'call', 'calls')} · ${plural(e.results, 'result', 'results')} · ${e.failed} failed · ${(e.totalLatencyMs / 1000).toFixed(2)} s · ${cost}` }),
       v.operations.length ? opsTable : null,

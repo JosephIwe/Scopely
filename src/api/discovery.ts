@@ -56,6 +56,8 @@ export interface RunDiscoveryView {
   searchRunId: string;
   searchId: string;
   searchName: string;
+  /** P3: a 'list' was filled by a person and never ran a provider. */
+  kind: 'search' | 'list';
   status: string;
   maxDiscoveredPerRun: number | null;
   maxBusinessesToAnalyze: number | null;
@@ -81,7 +83,7 @@ const STATE_GROUP: Record<string, number> = {
 };
 
 export async function getRunDiscovery(db: Db, runId: string): Promise<RunDiscoveryView | null> {
-  const run = (await db.query(`SELECT r.id, r.search_id, s.name, r.status, r.max_discovered_per_run, r.max_businesses_to_analyze
+  const run = (await db.query(`SELECT r.id, r.search_id, s.name, s.kind, r.status, r.max_discovered_per_run, r.max_businesses_to_analyze
       FROM scopely.search_runs r JOIN scopely.searches s ON s.id = r.search_id WHERE r.id = $1 AND r.${WS}`, [runId])).rows[0];
   if (!run) return null;
   const ops = (await db.query(`SELECT * FROM scopely.provider_operations WHERE search_run_id = $1 AND ${WS} ORDER BY started_at, id`, [runId])).rows;
@@ -110,7 +112,7 @@ export async function getRunDiscovery(db: Db, runId: string): Promise<RunDiscove
   for (const r of rows) counts[r.state] = (counts[r.state] ?? 0) + 1;
   const reported = ops.filter((o) => o.cost_basis === 'REPORTED');
   return {
-    searchRunId: String(run.id), searchId: String(run.search_id), searchName: run.name, status: run.status,
+    searchRunId: String(run.id), searchId: String(run.search_id), searchName: run.name, kind: run.kind, status: run.status,
     maxDiscoveredPerRun: run.max_discovered_per_run, maxBusinessesToAnalyze: run.max_businesses_to_analyze,
     operations: ops.map((o) => ({
       operationId: String(o.id), provider: o.provider, operation: o.operation, transport: o.transport, status: o.status, errorCode: o.error_code,

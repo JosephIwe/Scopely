@@ -33,7 +33,7 @@ export async function api(method, path, body, headers) {
   try { res = await fetch(`/api${path}`, init); } catch { throw new Error('Scopely cannot be reached. Check your connection and try again.'); }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && data.reason === 'signed_out' && path !== '/session') window.dispatchEvent(new Event('scopely:signed-out'));
-  if (!res.ok) throw Object.assign(new Error(data.error || 'Something went wrong.'), { status: res.status, reason: data.reason });
+  if (!res.ok) throw Object.assign(new Error(data.error || 'Something went wrong.'), { status: res.status, reason: data.reason, rows: data.rows });
   return data;
 }
 

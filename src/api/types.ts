@@ -205,6 +205,8 @@ export interface SearchPerformance {
 export interface SearchDefinition {
   searchId: string;
   name: string;
+  /** P3: 'list' when a person added the businesses by hand or CSV; a list never runs a provider. */
+  kind: 'search' | 'list';
   description: string | null;
   playbookKey: string | null;
   geography: { countryCode: string | null; region: string | null; city: string | null; postalPrefix: string | null;
@@ -230,6 +232,7 @@ export interface SearchDefinition {
 export interface SearchListItem {
   searchId: string;
   name: string;
+  kind: 'search' | 'list';
   runs: number;
   lastRunAt: string | null;
   createdAt: string;
