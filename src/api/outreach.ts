@@ -5,6 +5,8 @@
 // Scoped like the rest of src/api: an explicit current_workspace_id() predicate on every query, on
 // top of row-level security. Another workspace's opportunity reads as no drafts.
 import { type DraftReadiness, DraftRejected, type LintError, draftOpportunity, draftReadiness } from '../sell/drafts.js';
+import { type Handoff, handoffOf } from '../sell/handoff.js';
+import { OUTREACH_WORDING } from '../sell/wording.js';
 import type { Db } from '../tenancy/index.js';
 
 const WS = 'workspace_id = scopely.current_workspace_id()';
@@ -30,8 +32,10 @@ export interface DraftView {
   approval: { status: 'pending' | 'approved' | 'edited' | 'rejected'; approvedBy: string | null; approvedAt: string | null;
               /** Always false: approvedBy is stored as text; since A40 the server fills it with the signed-in person. */
               approvedByIsAuthenticated: false };
-  /** Recorded by hand outside Scopely (pnpm record); the app never sends. */
+  /** When a person recorded that they sent it from their own inbox; the app never sends. */
   sentAt: string | null;
+  /** For an approved, unsent draft whose lint passed: the final text to copy and a safe mailto link. Otherwise null. */
+  handoff: Handoff | null;
   readiness: DraftReadiness;
 }
 
@@ -39,6 +43,8 @@ export interface OutreachDrafts {
   drafts: DraftView[];
   /** The workspace's mailboxes a draft may name as its sender. */
   mailboxes: { mailboxId: string; email: string; displayName: string | null; state: string }[];
+  /** Whether the opt-out wording's decision (B4) is settled; see src/sell/wording.ts. */
+  wording: { decision: string; settled: boolean };
 }
 
 /** The opportunity's drafts, newest first, or null when the opportunity is not in this workspace. */
@@ -78,10 +84,12 @@ export async function listDrafts(db: Db, opportunityId: string): Promise<Outreac
         rule: m.lint_rule_key ? `${m.lint_rule_key} v${m.lint_rule_version}` : null },
       approval: { status: m.approval_status, approvedBy: m.approved_by, approvedAt: iso(m.approved_at), approvedByIsAuthenticated: false },
       sentAt: iso(m.sent_at),
+      handoff: handoffOf({ approvalStatus: m.approval_status, sentAt: iso(m.sent_at), lintStatus: m.lint_status, recipientEmail: m.recipient_email,
+        senderEmail: m.mailbox_email ?? null, subject: m.subject, body: m.body }),
       readiness: await draftReadiness(db, opp, m),
     });
   }
   const mailboxes = (await db.query(`SELECT id, email, display_name, state FROM scopely.mailbox_connections WHERE ${WS} ORDER BY id`)).rows
     .map((x) => ({ mailboxId: String(x.id), email: x.email, displayName: x.display_name, state: x.state }));
-  return { drafts, mailboxes };
+  return { drafts, mailboxes, wording: { decision: OUTREACH_WORDING.decision, settled: OUTREACH_WORDING.settled } };
 }

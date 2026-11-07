@@ -308,6 +308,11 @@
 .shell .drafts { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .shell .draft { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; font-size: 13px; min-width: 0; }
 .shell .draft > .row { flex-wrap: wrap; gap: 8px; align-items: center; }
+.shell .handoff { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--sage); border-radius: 10px; background: var(--panel); }
+.shell .handoff .hsteps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.shell .handoff .hsteps li.done { color: var(--muted); }
+.shell .handoff .hsteps li.done::marker { content: "✓  "; color: var(--sage); }
+.shell .handoff .mono { overflow-wrap: anywhere; }
 .shell .draft .kv { margin: 0; }
 .shell .draft .kv dd { overflow-wrap: anywhere; }
 .shell .draft .dSubj { margin: 0; font-weight: 600; overflow-wrap: anywhere; }

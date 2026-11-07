@@ -13,10 +13,12 @@
 // Every save runs the lint (lint.outreach_draft v1) and records lint_status and lint_errors. Approval
 // stays unset on create and on every edit. approveDraft is the only approval path: a named person,
 // every readiness check passing, and then the database's own message_gate and message_draft_guard
-// judge the UPDATE. There is no send: nothing here writes sent_at, sender_email or recipient_email.
+// judge the UPDATE. There is no send: Scopely never transmits a message. recordDraftSent records a
+// person's own statement that they sent the approved text from their inbox (P5 handoff, A48).
 //
 // Logs and errors never carry the subject, the body or contact details.
 import type { Db } from '../tenancy/index.js';
+import { OUTREACH_WORDING } from './wording.js';
 
 export class DraftRejected extends Error {
   constructor(readonly status: 400 | 404 | 409, message: string) { super(message); }
@@ -24,8 +26,8 @@ export class DraftRejected extends Error {
 
 export const DRAFT_GENERATOR = 'scopely:draft/1';
 export const LINT_RULE = { key: 'lint.outreach_draft', version: 1 } as const;
-/** The opt-out sentence every draft carries. Article 14 wording is open decision B4: this is the conservative form. */
-export const OPT_OUT_SENTENCE = 'If you would rather not hear from me, reply "no thanks" and I won\'t contact you again.';
+/** The opt-out sentence every draft carries. Article 14 wording is open decision B4: see src/sell/wording.ts. */
+export const OPT_OUT_SENTENCE = OUTREACH_WORDING.optOutSentence;
 export const MAX_SUBJECT = 200;
 export const MAX_BODY = 5000;
 
@@ -92,7 +94,7 @@ export function composeDraft(f: DraftFacts): { subject: string; body: string } {
       ? `The service I would propose is ${f.service.name}. The price is ${priceWords(f.service.currency, f.service.price)}.`
       : `The service I would propose is ${f.service.name}.`, '');
   }
-  lines.push('If you would like the details, reply to this email.', '', OPT_OUT_SENTENCE);
+  lines.push(OUTREACH_WORDING.closingLine, '', OPT_OUT_SENTENCE);
   if (f.senderName) lines.push('', f.senderName);
   return { subject, body: lines.join('\n') };
 }
@@ -120,7 +122,7 @@ const CURRENCY_CODES = 'GBP|USD|EUR|CAD|AUD|NZD|CHF|SEK|NOK|DKK|PLN|ZAR|INR|JPY|
 const AMOUNT = new RegExp(`([£$€])\\s?(\\d[\\d,]*(?:\\.\\d+)?)|\\b(${CURRENCY_CODES})\\s?(\\d[\\d,]*(?:\\.\\d+)?)|(\\d[\\d,]*(?:\\.\\d+)?)\\s?(${CURRENCY_CODES}|pounds?|dollars?|euros?)\\b`, 'gi');
 const SYMBOL: Record<string, string> = { '£': 'GBP', '€': 'EUR' };
 const PLACEHOLDER = /\[(?:your|name|first|company|business|insert|sender|contact|price|date)[^\]\n]{0,40}\]|\{\{[^}\n]*\}\}|<(?:insert|your)[^>\n]{0,40}>|\bTODO\b|\bXXX+\b/i;
-const OPT_OUT = /won['’]t contact you again|will not contact you again|\bunsubscribe\b/i;
+const OPT_OUT = OUTREACH_WORDING.optOutPattern;
 
 const sameAmount = (a: string, b: string) => Number(a.replace(/,/g, '')) === Number(b);
 
@@ -253,7 +255,12 @@ async function guarded<T>(db: Db, fn: () => Promise<T>): Promise<T> {
     if (e.code === '23514' || e.code === '23503') {
       const m = String(e.message ?? '');
       const reason = /cannot approve: (.*)$/.exec(m)?.[1];
-      throw new DraftRejected(409, reason ? `Cannot approve: ${reason}.`.replace(/\.\.$/, '.') : 'That could not be saved. Nothing was changed.');
+      if (reason) throw new DraftRejected(409, `Cannot approve: ${reason}.`.replace(/\.\.$/, '.'));
+      const sendReason = /cannot mark sent: (.*)$/.exec(m)?.[1];
+      if (sendReason) throw new DraftRejected(409, `Cannot record it as sent: ${sendReason}.`.replace(/\.\.$/, '.'));
+      if (/cannot mark sent without the workspace mailbox/.test(m)) throw new DraftRejected(409, 'Choose the mailbox you sent it from first.');
+      if (/mailbox .* is .*; it cannot send/.test(m)) throw new DraftRejected(409, 'That mailbox is not usable, so the send cannot be recorded from it.');
+      throw new DraftRejected(409, 'That could not be saved. Nothing was changed.');
     }
     throw err;
   }
@@ -417,6 +424,36 @@ export async function approveDraft(db: Db, opportunityId: string, messageId: str
       [m.id, r.lint.status, JSON.stringify(r.lint.errors), rule, approvedBy])).rows[0];
     if (!row) throw new DraftRejected(409, 'This draft changed while you were approving it. Reload and try again.');
     return { approvedAt: new Date(row.approved_at).toISOString() };
+  });
+}
+
+/**
+ * A person says they sent an approved draft from their own inbox, just now. Scopely sends nothing:
+ * this records the fact they state. In one step it stamps the message sent (the database's
+ * message_gate re-checks the contact, suppression and the cited evidence at that moment, and
+ * captures the sender address from the mailbox) and records the `pitched` outcome that names the
+ * message, so the pitch is traceable to the exact text that was approved.
+ */
+export async function recordDraftSent(db: Db, opportunityId: string, messageId: string, input: { recordedBy: string }, now = new Date()): Promise<{ sentAt: string; outcomeId: string }> {
+  const opp = await caseOpportunity(db, opportunityId);
+  const m = await caseDraft(db, opp.id, messageId);
+  const recordedBy = text(input.recordedBy, 120);
+  if (!recordedBy) throw new DraftRejected(400, 'Say who sent it.');
+  if (m.sent_at !== null) throw new DraftRejected(409, 'This message is already recorded as sent.');
+  if (!['approved', 'edited'].includes(m.approval_status)) {
+    throw new DraftRejected(409, m.approval_status === 'rejected' ? 'This draft was rejected, so it cannot be recorded as sent.' : 'Approve the draft first. Only an approved draft can be sent.');
+  }
+  if (m.lint_status !== 'pass') throw new DraftRejected(409, 'This draft failed its lint, so it cannot be recorded as sent.');
+  const sentAt = now.toISOString();
+  return guarded(db, async () => {
+    const row = (await db.query(
+      `UPDATE scopely.messages SET sent_at = $2 WHERE id = $1 AND approval_status IN ('approved','edited') AND sent_at IS NULL AND ${WS} RETURNING sent_at`,
+      [m.id, sentAt])).rows[0];
+    if (!row) throw new DraftRejected(409, 'This draft changed while you were recording it. Reload and try again.');
+    const outcomeId = String((await db.query(
+      `INSERT INTO scopely.outcomes (opportunity_id, kind, occurred_at, channel, message_id, recorded_by)
+       VALUES ($1, 'pitched', $2, 'email', $3, $4) RETURNING id`, [opp.id, sentAt, m.id, recordedBy])).rows[0].id);
+    return { sentAt: new Date(row.sent_at).toISOString(), outcomeId };
   });
 }
 
