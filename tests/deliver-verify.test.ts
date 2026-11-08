@@ -321,13 +321,15 @@ describe('workspace isolation', () => {
 });
 
 describe('the Case File shows Deliver · verify (10)', () => {
-  it('is no longer planned in the app, while the landing page is unchanged', async () => {
+  it('is no longer planned in the app or on the landing page', async () => {
     const ui = await readFile('src/server/ui/case-file.js', 'utf8');
     expect(ui).not.toMatch(/sec\('10'[^\n]*planned: true/);
     expect(ui).toMatch(/sec\('10', 'Deliver · verify'/);
     expect(ui).toContain('/delivery');
     expect(ui).toContain('/verify');
     const landing = await readFile('src/server/ui/landing.html', 'utf8');
-    expect(landing).toMatch(/Deliver · verify · get paid<\/b> <span class="plan">PLANNED<\/span>/);
+    expect(landing).not.toMatch(/(Deliver|Verify)[^<]*(<\/b>|<\/h3>)?\s*<span class="plan">PLANNED/i);
+    expect(landing).toMatch(/<h3>Deliver<\/h3>/);
+    expect(landing).toMatch(/<h3>Verify<\/h3>/);
   });
 });
