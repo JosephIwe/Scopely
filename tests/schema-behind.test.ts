@@ -44,9 +44,11 @@ describe('a database behind the code', () => {
     const { get, logged } = await start((sql) => sql.replace(/scopely\.fix_captures\b/g, 'scopely.fix_captures_not_migrated'));
     const feed = await get('/api/opportunities');
     expect(feed.status).toBe(503);
-    expect(feed.body).toEqual({ error: SCHEMA_BEHIND_MESSAGE, reason: 'schema_behind' });
+    expect(feed.body).toEqual({ error: SCHEMA_BEHIND_MESSAGE, reason: 'schema_behind', requestId: expect.any(String) });
     expect(String(feed.body.error)).toContain('pnpm migrate');
-    expect(logged).toContain('error GET /api/opportunities 42P01');
+    const line = logged.find((l) => l.startsWith('error GET /api/opportunities 42P01 '));
+    expect(line).toMatch(/ rid=[0-9a-f]{12} ws=\d+ status=503 err=\w+/);
+    expect(feed.body.requestId).toBe(line!.match(/rid=(\w+)/)![1]);
     // The header's workspace still loads, as it did on the iPad.
     expect((await get('/api/workspace')).status).toBe(200);
   });
@@ -59,7 +61,7 @@ describe('a database behind the code', () => {
     s = await start((sql) => (sql.includes('v_opportunity_feed') ? 'SELECT 1/0' : sql));
     const r = await s.get('/api/opportunities');
     expect(r.status).toBe(500);
-    expect(r.body).toEqual({ error: 'Something went wrong. Nothing was changed.' });
+    expect(r.body).toEqual({ error: 'Something went wrong. Nothing was changed.', requestId: expect.any(String) });
   });
 
   it('the feed works on a fully migrated database', async () => {
