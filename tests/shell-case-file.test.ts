@@ -49,7 +49,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 /** Stages the product ships. The landing page may never mark one of these PLANNED (the B1 "get paid"
  *  step and the map are still planned and may be). Add a stage here the day it ships. */
-const SHIPPED = ['Discover', 'Prove', 'Build', 'Sell', 'Deliver', 'Verify'] as const;
+const SHIPPED = ['Discover', 'Prove', 'Build', 'Sell', 'Deliver', 'Verify', 'Get paid'] as const;
 
 /** Throws when the line carrying any PLANNED marker (its nearest enclosing <h3>, <p> or <li>) names a
  *  shipped stage. */
@@ -120,7 +120,7 @@ describe('product shell routes (U2)', () => {
       expect(() => expectNoShippedStagePlanned(`<li><h3>${stage} <span class="plan">PLANNED</span></h3></li>`)).toThrow();
       expect(() => expectNoShippedStagePlanned(`<p class="planned"><b>${stage.toLowerCase()} · x</b> <span class="plan">PLANNED</span></p>`)).toThrow();
     }
-    expect(() => expectNoShippedStagePlanned('<p class="planned"><b>Get paid</b> <span class="plan">PLANNED</span></p>')).not.toThrow();
+    expect(() => expectNoShippedStagePlanned('<p class="planned"><b>Map</b> <span class="plan">PLANNED</span></p>')).not.toThrow();
   });
 
   it('keeps the map a placeholder: no provider, tiles or coordinates (U3)', async () => {
