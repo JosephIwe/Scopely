@@ -846,7 +846,8 @@ function draftCard(cf, ctx, d) {
   const card = h('div', { class: 'draft' },
     h('div', { class: 'row' }, h('span', { class: `badge ${DRAFT_CLASS[r.status]}`, text: DRAFT_WORD[r.status] }),
       h('span', { class: `badge ${d.lint.status === 'pass' ? 'b-obs' : d.lint.status === 'fail' ? 'b-sup' : 'b-rev'}`, text: `LINT ${d.lint.status.toUpperCase()}` }),
-      h('span', { class: 'muted', text: `Saved ${when(d.createdAt)}${d.draftedBy ? ` by ${d.draftedBy}` : ''}${d.edited ? ` · edited ${when(d.edited.at)} by ${d.edited.by}` : ''}` })),
+      d.origin?.kind === 'ai' ? h('span', { class: 'badge b-inf', 'data-origin': 'ai', title: `Worded by ${d.origin.model} (${d.origin.provider}, ${d.origin.promptVersion}). Not evidence: the findings it cites are the same as the draft it reworded.`, text: 'AI WORDING' }) : null,
+      h('span', { class: 'muted', text: `Saved ${when(d.createdAt)}${d.draftedBy ? ` by ${d.draftedBy}` : ''}${d.origin?.kind === 'ai' ? ` with AI help (${d.origin.model})` : ''}${d.edited ? ` · edited ${when(d.edited.at)} by ${d.edited.by}` : ''}` })),
     kv([
       ['To', d.contact ? [d.contact.name, d.contact.email].filter(Boolean).join(' · ') || 'A contact with no address' : notKnown('No contact chosen')],
       ['From', d.sender ? mailboxWord(d.sender) : h('span', { class: 'bad', text: 'No sender set' })],
@@ -894,6 +895,17 @@ function draftCard(cf, ctx, d) {
       await api('POST', `/opportunities/${cf.opportunityId}/drafts/${d.messageId}/approve`, { approvedBy: ap.value.trim() });
       return 'Approved. Nothing was sent: copy it or open it in your email app below, send it yourself, then record it as sent.';
     }, ctx, 'The database checks the contact, suppression and the lint again.'));
+  }
+  if (cf.drafts.ai?.enabled && !d.sentAt && d.approval.status !== 'rejected') {
+    const task = select('What to improve', [['clarify', 'Explain the problem more clearly'], ['tone', 'Warmer, plainer tone']], 'clarify');
+    const by = byInput();
+    acts.append(writer('Reword with AI', [
+      h('p', { class: 'hint', text: 'A model rewords this draft as a new draft. It may not add facts, numbers, links or quotes, or drop the opt-out: Scopely checks and refuses a rewrite that does. The new draft cites the same evidence and still needs your approval. The contact’s name and address are not sent to the model.' }),
+      field('What to improve', task), field('Asking as', by)], 'Suggest a rewording', async () => {
+      if (!needBy(by)) return false;
+      const out = await api('POST', `/opportunities/${cf.opportunityId}/drafts/${d.messageId}/assist`, { task: task.value, requestedBy: by.value.trim() });
+      return out.lint?.status === 'pass' ? 'Saved as a new draft. Review it, then approve it if it is right.' : 'Saved as a new draft. Its lint failed: see what to fix.';
+    }, ctx, 'AI wording is never evidence and never approved on its own.'));
   }
   if (acts.childNodes.length) card.append(acts);
   return card;

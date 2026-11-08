@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import type pg from 'pg';
 import { afterEach } from 'vitest';
 import type { Probe } from '../src/analysis/index.js';
+import type { ModelProvider } from '../src/build/agents.js';
 import { DEFAULT_SHOW_LINK_TTL_SECONDS } from '../src/build/site/index.js';
 import { createHandler } from '../src/server/app.js';
 import { MemoryObjectStore } from '../src/storage/index.js';
@@ -24,11 +25,11 @@ function poolOver(client: pg.Client): pg.Pool {
 export function useServer(db: () => pg.Client) {
   let server: http.Server | null = null;
   afterEach(() => { server?.close(); server = null; });
-  return async function start(opts: { workspaceId?: string; probe?: Probe } = {}) {
+  return async function start(opts: { workspaceId?: string; probe?: Probe; assist?: ModelProvider | null } = {}) {
     const ws = opts.workspaceId ?? (await one<{ ws: string }>(db(), 'SELECT scopely.current_workspace_id()::text AS ws')).ws;
     const logged: string[] = [];
     const handler = createHandler({ pool: poolOver(db()), store: new MemoryObjectStore(), workspaceId: ws, signingKey: SIGNING_KEY,
-      fetcher: new StubFetcher(), probe: opts.probe, editLinkTtlSeconds: 900, showLinkTtlSeconds: DEFAULT_SHOW_LINK_TTL_SECONDS,
+      fetcher: new StubFetcher(), probe: opts.probe, assist: opts.assist ?? null, editLinkTtlSeconds: 900, showLinkTtlSeconds: DEFAULT_SHOW_LINK_TTL_SECONDS,
       log: (l: string) => { logged.push(l); } });
     server?.close();
     server = http.createServer((req, res) => { void handler(req, res); });

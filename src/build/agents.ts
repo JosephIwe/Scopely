@@ -53,9 +53,11 @@ export interface ModelUsage {
 }
 
 export interface ModelRequest {
-  purpose: 'build';
+  purpose: 'build' | 'assist';
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[];
   maxTokens?: number;
+  /** Ask for JSON that matches this schema, where the provider supports it. The caller still validates. */
+  jsonSchema?: Record<string, unknown>;
 }
 
 export interface ModelResponse {

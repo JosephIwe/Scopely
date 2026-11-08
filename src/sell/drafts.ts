@@ -458,3 +458,6 @@ export async function recordDraftSent(db: Db, opportunityId: string, messageId: 
 }
 
 export { caseOpportunity as draftOpportunity };
+/** For src/ai/assist.ts only: the same row lookup, write guard and lint rule a person's draft uses. */
+export { caseDraft as draftRow, guarded as guardedDraftWrite, lintRuleId as draftLintRuleId, opportunityEvidence as draftEvidence };
+export type { OppRow as DraftOpportunity };
