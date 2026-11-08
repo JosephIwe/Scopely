@@ -124,5 +124,5 @@ export $(tr '\0' '\n' < /proc/1/environ | grep -E '^(DATABASE_URL|SCOPELY_PUBLIC
 
 **Rollback:**
 1. Code: in Railway, use Deployments, then Rollback on the last good deployment (Hobby keeps images for 72 hours), or redeploy that commit. Migrations are forward-only and additive in this release (017–019 add tables, columns and triggers only), so older code keeps working against the newer schema.
-2. Data: Railway Postgres backups. Never edit an applied migration; fix forward with a new one.
+2. Data: restore the latest manual encrypted dump (`scripts/backup-db.sh`, procedure in `docs/OPERATIONS.md` → Backups). Take one before merging any migration. Never edit an applied migration; fix forward with a new one.
 3. Sign everyone out: `UPDATE scopely.user_sessions SET revoked_at = now() WHERE revoked_at IS NULL`.
