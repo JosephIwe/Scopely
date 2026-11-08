@@ -64,34 +64,96 @@ Choosing and signing up for a tracker is a founder action; none is configured to
   It only starts once this file is on `main`.
 - `scripts/smoke.mjs` (workflow `smoke`) remains the fuller read-only check after a deploy.
 
-## Backups: NOT in place today
+## Backups: manual encrypted dumps (Hobby plan)
 
-What was read on 2026-11-07, through the Railway API (read-only, nothing changed):
+What was read on 2026-11-07 and re-checked on 2026-11-08, through the Railway API (read-only):
 
 - Postgres service `Postgres`, image `ghcr.io/railwayapp-templates/postgres-ssl:18`, one volume
   `postgres-volume` (5,000 MB, region ams) at `/var/lib/postgresql/data`, no public TCP proxy.
-- The volume mount has **no backup schedule** configured.
-- The workspace plan is **Hobby**, whose limits report **max backups = 0**: Railway volume backups
-  are not available on this plan.
-- Whether any manual backup or Point-in-Time Recovery exists could **not** be read through the
-  tools available. PITR needs a Railway storage bucket for WAL archives; the project has none listed.
+- The workspace plan is **Hobby**: max backups = 0, no schedule, no PITR. Railway Pro is not
+  available to the founder for now (2026-11-08), so Railway-native backups are **not** the plan.
 
-So there is **no backup guarantee** for production data today. Before real prospect data goes in,
-the founder must choose one of these (both need their hands, the first costs money):
+The backup during validation is a **manual logical dump**, taken with `scripts/backup-db.sh` from
+the founder's own machine. Nothing is added to Railway: no service, no TCP proxy, no variable,
+and `DATABASE_URL` is neither read nor changed. The dump runs inside the Postgres service with the
+`PG*` variables that already exist there, is streamed back over `railway ssh`, checksum-verified,
+and encrypted on the founder's machine. A Railway deploy, volume or project failure cannot destroy
+it, because no copy is kept in Railway.
 
-1. **Upgrade the workspace to Railway Pro**, then in the dashboard: Postgres → *Backups* → enable
-   a schedule (daily, plus weekly). Afterwards confirm by hand that the *Backups* tab lists a
-   backup with today's date, and note the retention it shows here.
-2. **Manual logical dumps** on Hobby: from a machine with the Railway CLI (see the first-owner
-   runbook in `docs/RELEASE.md` for `railway ssh`), run inside the Postgres service
-   `pg_dump -Fc -U "$PGUSER" "$PGDATABASE" > /tmp/scopely.dump`, copy it off, and store it
-   encrypted. This is only as good as how often someone does it, and the dump contains prospect
-   data, so it must not be kept anywhere shared.
+It is only as good as how often it is run. A dump holds prospect data: keep it only encrypted, and
+never in the repository, a shared project folder, a chat or an issue.
 
-Manual checks to record here once done (date, who, what was seen):
+### When to take one
 
-- [ ] Railway *Backups* tab for `postgres-volume` shows a schedule and at least one backup.
-- [ ] A test restore was done into a scratch service (Railway *Restore*), and `pnpm migrate`
-      reported nothing pending against it.
-- [ ] The app's own volume (`/data`, preview captures) — decide whether it needs backing up; it
-      holds build artefacts that can be regenerated, not the system of record.
+- **Before every deploy that adds a migration** (look for a new `migrations/NNN_*.sql` on `main`).
+  The deploy runs `pnpm migrate` automatically, so take the dump *before* merging.
+- At least **weekly** while real prospect data is being entered, and after any big import.
+
+### Take a backup
+
+Prerequisites, once: the Railway CLI logged in (`railway login`), an SSH key registered with Railway
+(the CLI prompts the first time you run `railway ssh`), `openssl`, and a folder linked to the project
+(`railway link`, choose `scopely-production` → `production`).
+
+```
+scripts/backup-db.sh ~/scopely-backups
+```
+
+It asks for a passphrase. Keep the passphrase in a password manager: without it the backup cannot
+be restored. A good run prints:
+
+```
+Transfer verified: remote-sha256 <64 hex> entries <N> pg_dump 18.x
+Backup written: ~/scopely-backups/scopely-<UTC stamp>.dump.enc
+```
+
+`entries` comes from `pg_restore --list` run on the dump inside Railway, so the archive was readable
+before it left. The local copy is accepted only if its sha256 matches the one computed in Railway.
+Then copy the `.enc` file and its `.sha256` file to a **second** place you control that is not
+Railway (an encrypted USB drive, or a private cloud folder). Record the run in the log below.
+
+The script prints no URL, password or row. If the remote side fails it prints only the error lines,
+with any line mentioning a password or a connection URL removed.
+
+### Restore
+
+Use `pg_restore` **18 or newer** (production is Postgres 18; an older `pg_restore` refuses the
+archive). With Docker, `docker run --rm -it -v ~/scopely-backups:/b postgres:18 bash` gives one.
+
+1. Decrypt, and check the checksum:
+   ```
+   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in scopely-<stamp>.dump.enc -out scopely.dump
+   sha256sum scopely.dump          # must equal the first field of scopely-<stamp>.dump.enc.sha256
+   ```
+2. Restore into an **empty** database (never into the live one while the app is running):
+   ```
+   psql "$TARGET_ADMIN_URL" -c "CREATE ROLE scopely_app NOLOGIN"     # skip if it exists
+   psql "$TARGET_ADMIN_URL" -c "CREATE DATABASE scopely_restore"
+   pg_restore --no-owner --exit-on-error -d "<url of scopely_restore>" scopely.dump
+   ```
+   `--no-owner` lets a different admin user own the restored objects; the `scopely_app` role must
+   exist because the dump grants it privileges. The tables live in schema `scopely` (the app sets
+   `search_path` itself).
+3. Check it: `DATABASE_URL=<url of scopely_restore> pnpm migrate` must print
+   `applied: none; already applied: <N>`, where N is the number of files in `migrations/`. The
+   runner also refuses a migration whose sha256 differs, so this proves the schema is the release's.
+4. To put it into production after a real loss: stop the `scopely` service, restore into the
+   production Postgres (or a new empty database on it), point nothing else at it, redeploy, and
+   check `/healthz` shows `pendingMigrations: 0`. This is a founder decision at the time; do not
+   do it as a test.
+5. Delete the decrypted `scopely.dump` when done.
+
+### Tested
+
+- 2026-11-08: the whole procedure was run against a local stand-in (the dev database at migration
+  022, 57 tables) using the script's test hook in place of `railway ssh`: dump, transfer checksum,
+  encrypt, decrypt, checksum, `pg_restore` into a fresh Postgres instance, `pnpm migrate` reported
+  `applied: none; already applied: 22`, and the row count of every table matched the source. The
+  failure path (database unreachable) exits non-zero and keeps no file. Production was not touched.
+
+### Backup log (date, who, file stamp, entries, where the second copy is)
+
+- [ ] First production backup: not yet taken.
+
+The app's own volume (`/data`, preview captures) is not backed up: it holds build artefacts that
+can be regenerated, not the system of record.

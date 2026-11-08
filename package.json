@@ -19,6 +19,7 @@
     "clay:reference": "tsx scripts/clay-reference.ts",
     "demo:seed": "tsx scripts/demo-seed.ts",
     "auth:invite": "tsx scripts/auth-invite.ts",
+    "db:backup": "bash scripts/backup-db.sh",
     "start": "tsx scripts/serve.ts"
   },
   "dependencies": {
