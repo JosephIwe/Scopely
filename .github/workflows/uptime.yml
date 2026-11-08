@@ -1,0 +1,35 @@
+name: uptime
+
+# Production uptime check (P2). Every 15 minutes GitHub requests /healthz, which answers 200 only
+# when the process is up, Postgres answers and no migration is pending. A failed run is GitHub's
+# alert: it emails whoever last changed this schedule (repository notification settings), and the
+# Actions tab keeps the history. Read-only and signed out; it creates nothing and needs no secret.
+# GitHub pauses scheduled workflows after 60 days without a commit to the repository; re-enable
+# it from the Actions tab if that happens (docs/OPERATIONS.md).
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  healthz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GET /healthz (3 tries, 20 s apart)
+        env:
+          URL: https://scopely-production.up.railway.app/healthz
+        run: |
+          for i in 1 2 3; do
+            body=$(curl -sS --max-time 15 -w '\n%{http_code}' "$URL" || true)
+            code=$(printf '%s' "$body" | tail -n1)
+            json=$(printf '%s' "$body" | head -n -1)
+            echo "try $i: HTTP $code $json"
+            if [ "$code" = "200" ] && printf '%s' "$json" | grep -q '"ok":true'; then exit 0; fi
+            sleep 20
+          done
+          echo "::error::Scopely production /healthz did not answer 200 ok after 3 tries"
+          exit 1
