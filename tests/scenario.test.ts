@@ -141,6 +141,8 @@ describe('User A: Manchester Plumbers, from discovery to verified revenue', () =
         await rec.markMessageSent(db(), msg, T(6));
         await rec.recordOutcome(db(), { opportunityId: o.id, kind: 'pitched', occurredAt: T(6), messageId: msg, recordedBy: 'owner' });
         await rec.recordOutcome(db(), { opportunityId: o.id, kind: 'won', occurredAt: T(30), amount, currency: 'GBP', recordedBy: 'owner' });
+        // P4: revenue is money received, recorded when it arrives.
+        await rec.recordOutcome(db(), { opportunityId: o.id, kind: 'paid', occurredAt: T(35), amount, currency: 'GBP', recordedBy: 'owner' });
         const delivery = await recordBuild(db(), await loadBuildInput(db(), o.id), { title: 'Delivered', summary: 'Live', artifactRef: `live/${o.id}` },
           { purpose: 'DELIVERY', generator: 'operator' });
         await approveBuild(db(), delivery, 'owner', T(40));

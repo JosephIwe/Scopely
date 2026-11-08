@@ -45,8 +45,11 @@ describe('1. at most one terminal outcome per opportunity, corrected only by an 
     await record(opp, 'won', '2026-10-03', { amount: 120 });
     o = await one(db(), 'SELECT status, deal_value FROM opportunities WHERE id = $1', [opp]);
     expect(o).toMatchObject({ status: 'WON', deal_value: '120.00' });
-    const f = await one(db(), `SELECT wins, revenue FROM v_market_funnel WHERE market_id = (SELECT market_id FROM opportunities WHERE id = $1)`, [opp]);
-    expect(f).toMatchObject({ wins: '1', revenue: '120.00' });
+    // P4: a win is agreed value, not revenue. Revenue appears only once money is received.
+    const funnel = () => one(db(), `SELECT wins, revenue, agreed_value, paid FROM v_market_funnel WHERE market_id = (SELECT market_id FROM opportunities WHERE id = $1)`, [opp]);
+    expect(await funnel()).toMatchObject({ wins: '1', revenue: null, agreed_value: '120.00', paid: '0' });
+    await record(opp, 'paid', '2026-10-05', { amount: 120 });
+    expect(await funnel()).toMatchObject({ wins: '1', revenue: '120.00', agreed_value: '120.00', paid: '1' });
   });
   it('rejects a void without a reason, of a non-terminal outcome, of another opportunity, twice, or backdated', async () => {
     const opp = await pitched();
@@ -54,7 +57,7 @@ describe('1. at most one terminal outcome per opportunity, corrected only by an 
     expect(await tryRecord(opp, 'voided', '2026-10-04', { corrects: win, notes: '  ' })).toMatch(/check constraint/);
     expect(await tryRecord(opp, 'voided', '2026-10-04', { corrects: null, notes: 'x' })).toMatch(/check constraint/);
     const pitch = (await one<{ id: string }>(db(), `SELECT id FROM outcomes WHERE opportunity_id = $1 AND kind = 'pitched'`, [opp])).id;
-    expect(await tryRecord(opp, 'voided', '2026-10-04', { corrects: pitch, notes: 'x' })).toMatch(/only a won or lost outcome/);
+    expect(await tryRecord(opp, 'voided', '2026-10-04', { corrects: pitch, notes: 'x' })).toMatch(/only a won, lost or paid outcome/);
     const other = await pitched();
     expect(await tryRecord(other, 'voided', '2026-10-04', { corrects: win, notes: 'x' })).toMatch(/same opportunity/);
     expect(await tryRecord(opp, 'voided', '2026-10-02', { corrects: win, notes: 'x' })).toMatch(/cannot predate/);
