@@ -14,6 +14,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { Db } from '../tenancy/index.js';
 import { burnPasswordCheck, hashPassword, passwordProblem, verifyPassword } from './password.js';
+import { BOOTSTRAP_CREATED_BY, assertBootstrapOpen, ownerEstablished, recordBootstrapCompleted } from '../ops/bootstrap.js';
 
 export const SESSION_TTL_SECONDS = 14 * 24 * 3600;
 export const INVITE_TTL_SECONDS = 7 * 24 * 3600;
@@ -131,15 +132,16 @@ export async function createMemberInvite(db: Db, session: SessionView, roleIn: u
 
 async function openInvite(db: Db, token: unknown, now: Date, lock = false) {
   if (typeof token !== 'string' || !TOKEN_RE.test(token)) return null;
-  return (await db.query(`SELECT i.id, i.workspace_id, i.role, i.email, w.name AS workspace_name FROM scopely.workspace_invites i
+  return (await db.query(`SELECT i.id, i.workspace_id, i.role, i.email, (i.created_by = $3 AND i.workspace_id IS NULL AND i.created_by_user_id IS NULL) AS bootstrap, w.name AS workspace_name FROM scopely.workspace_invites i
     LEFT JOIN scopely.workspaces w ON w.id = i.workspace_id
-    WHERE i.token_sha256 = $1 AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > $2${lock ? ' FOR UPDATE OF i' : ''}`, [tokenHash(token), now])).rows[0] ?? null;
+    WHERE i.token_sha256 = $1 AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > $2${lock ? ' FOR UPDATE OF i' : ''}`, [tokenHash(token), now, BOOTSTRAP_CREATED_BY])).rows[0] ?? null;
 }
 
 /** What an invite link offers, without using it. Unknown, used and expired invites all read the same. */
 export async function describeInvite(db: Db, token: unknown, now = new Date()) {
   const i = await openInvite(db, token, now);
-  if (!i) throw new AuthRejected(404, 'This invite link is not valid. It may have been used or expired; ask for a new one.', 'invite_invalid');
+  // A bootstrap setup link reads as invalid once an owner can sign in (src/ops/bootstrap.ts).
+  if (!i || (i.bootstrap && await ownerEstablished(db))) throw new AuthRejected(404, 'This invite link is not valid. It may have been used or expired; ask for a new one.', 'invite_invalid');
   return { kind: i.workspace_id ? 'join' as const : 'setup' as const, workspaceName: i.workspace_name as string | null, role: i.role as Role, emailRequired: Boolean(i.email) };
 }
 
@@ -160,6 +162,8 @@ export async function acceptInvite(db: Db, input: AcceptInput, opts: { openSignu
   if (input.token && !invite) throw new AuthRejected(404, 'This invite link is not valid. It may have been used or expired; ask for a new one.', 'invite_invalid');
   if (!invite && !opts.openSignup) throw new AuthRejected(403, 'Scopely is invite-only. Ask a workspace owner for an invite link.', 'invite_required');
   if (invite?.email && invite.email !== email) throw new AuthRejected(403, 'This invite is for a different email address.', 'invite_email');
+  const bootstrap = invite?.bootstrap === true;
+  if (bootstrap) await assertBootstrapOpen(db);
 
   const existing = (await db.query(`SELECT u.id, c.password_hash FROM scopely.users u LEFT JOIN scopely.user_credentials c ON c.user_id = u.id
     WHERE lower(u.email) = $1`, [email])).rows[0];
@@ -194,6 +198,7 @@ export async function acceptInvite(db: Db, input: AcceptInput, opts: { openSignu
     await db.query(`INSERT INTO scopely.workspace_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`, [workspaceId, userId]);
   }
   if (invite) await db.query('UPDATE scopely.workspace_invites SET used_at = $2, used_by_user_id = $3 WHERE id = $1', [invite.id, now, userId]);
+  if (bootstrap) await recordBootstrapCompleted(db, String(invite.id), userId, workspaceId, now);
 
   const token = newToken();
   await db.query(`INSERT INTO scopely.user_sessions (user_id, token_sha256, workspace_id, created_at, last_seen_at, expires_at)

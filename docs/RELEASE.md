@@ -65,7 +65,7 @@ Evidence kinds:
 - **Project:** `scopely-production` (`cf11495d-ad25-4f37-986a-e01829c93f80`), environment `production`, in the founder's personal workspace. It shares nothing with Huntly.
 - **Service `scopely`:**
   - Builds from this repository's Dockerfile.
-  - Pre-deploy runs `pnpm migrate`, which also creates and grants `scopely_app`.
+  - Pre-deploy runs `pnpm release` (`railway.json`): backup when configured, then `migrate`, which also creates and grants `scopely_app`.
   - Health check is `/healthz`, restart on failure, limits 1 vCPU and 0.5 GB.
   - Volume `scopely-storage` is mounted at `/data`.
   - URL: `https://scopely-production.up.railway.app`.
@@ -88,30 +88,14 @@ Evidence kinds:
 
 ## Runbook
 
-**First owner** (once). Run the CLI **inside the deployed container**, because production Postgres is only reachable on Railway's private network. A local checkout cannot reach it: `railway run` injects the private `DATABASE_URL`, but the host does not resolve outside Railway, and older branches do not have the script at all. `railway ssh` needs an SSH key registered with Railway. Run this from a machine with the Railway CLI logged in and linked to `scopely-production` / `scopely`:
+**First owner** (once): the owner bootstrap (A50, `docs/OPERATIONS.md`, "Operator path"). Nobody runs a command in a container.
 
-```
-ssh-keygen -t ed25519 -N "" -C scopely-railway -f ~/.ssh/railway_ed25519
-railway ssh keys add --key ~/.ssh/railway_ed25519.pub --name scopely-railway
-railway ssh -i ~/.ssh/railway_ed25519
-```
+1. The operator makes a random token where nobody else sees it (`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`) and its sha256 (`printf %s "$TOKEN" | sha256sum`).
+2. On the `scopely` service, set `SCOPELY_BOOTSTRAP_INVITE_SHA256` (the hash, never the token), `SCOPELY_BOOTSTRAP_EMAIL` (the owner's email) and `SCOPELY_BOOTSTRAP_EXPIRES_AT` (an ISO time no more than 72 hours ahead), then redeploy.
+3. The deploy log shows `release: owner bootstrap invite <id> issued, valid until ...`. The owner opens `https://<host>/app/#/join/<token>`, chooses a password and names the workspace, the same sign-up every invite uses. The link works once, only for that email, until the expiry, and only while no owner exists.
+4. Remove the three variables. A later deploy that still has them prints `not issued (owner_exists)` and does nothing.
 
-Then, in the container's shell:
-
-```
-cd /app
-test -n "$DATABASE_URL" && echo "database variable present"
-pnpm auth:invite --setup --email you@yourcompany.com
-exit
-```
-
-`SCOPELY_PUBLIC_URL` is already set on the service, so the full link is printed. Open it, choose a password and name the workspace. The link works once, lasts 7 days, and only works for that email. Do not paste it anywhere else. Afterwards you can remove the key with `railway ssh keys remove`.
-
-If the shell reports no database variable, read them from the app process in the same shell. This prints nothing:
-
-```
-export $(tr '\0' '\n' < /proc/1/environ | grep -E '^(DATABASE_URL|SCOPELY_PUBLIC_URL)=' | xargs)
-```
+The CLI (`pnpm auth:invite --setup`) still works wherever the database is reachable, for example in local development.
 
 **Turn on AI rewording of drafts (A49, optional):** set `SCOPELY_AI_PROVIDER=anthropic` and `SCOPELY_AI_API_KEY` on the `scopely` service. `SCOPELY_AI_MODEL` defaults to `claude-haiku-5-5`, the low-cost model. Each call is billed by Anthropic to that key and recorded in `cost_events` (tokens; the amount stays unknown). The model sees only a draft's wording with the contact's name and address masked. Remove the two variables to turn it off.
 
@@ -120,7 +104,7 @@ export $(tr '\0' '\n' < /proc/1/environ | grep -E '^(DATABASE_URL|SCOPELY_PUBLIC
 1. Set `SCOPELY_SECRET_WS<id>_CLAY` on the `scopely` service.
 2. Run `echo '{"provider":"clay","scopes":["discovery","prospects"],"credentialRef":"secretref:ws/<id>/clay"}' | SCOPELY_WORKSPACE_ID=<id> pnpm record provider-connection -`
 
-**Deploy.** Merge to `main`. Railway builds, runs `pnpm migrate`, and switches traffic only after `/healthz` answers 200.
+**Deploy.** Merge to `main`. Railway builds the Dockerfile (`railway.json`), runs `pnpm release` (the backup when it is configured, then `migrate`, then the owner bootstrap when it is set), and switches traffic only after `/healthz` answers 200. If the release step fails, the running version keeps serving.
 
 **Rollback:**
 1. Code: in Railway, use Deployments, then Rollback on the last good deployment (Hobby keeps images for 72 hours), or redeploy that commit. Migrations are forward-only and additive in this release (017–019 add tables, columns and triggers only), so older code keeps working against the newer schema.

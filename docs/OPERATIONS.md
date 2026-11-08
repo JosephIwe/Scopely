@@ -64,7 +64,85 @@ Choosing and signing up for a tracker is a founder action; none is configured to
   It only starts once this file is on `main`.
 - `scripts/smoke.mjs` (workflow `smoke`) remains the fuller read-only check after a deploy.
 
-## Backups: manual encrypted dumps (Hobby plan)
+## Operator path: no shell in production (A50)
+
+Two operator actions used to need someone at a terminal running `railway ssh`: creating the first
+owner and taking a backup. Both now run in Railway's **pre-deploy** step, `pnpm release`
+(`scripts/release.ts`, set in `railway.json`). That step runs in its own container with the service's
+variables, before the new version starts. It serves no request, and no route reaches it. If it fails,
+the deploy stops and the running version keeps serving. It prints ids, counts and hashes, and never
+a connection string, key, token, email or row.
+
+Every action is recorded in `operator_events` (migration 023). The table is append-only and
+row-level security hides it from the application role.
+
+What the operator needs: someone who can set the service's variables and redeploy, through the
+Railway dashboard or the Railway API/connector. That is the same trust that already controls
+`DATABASE_URL`. No CLI login, SSH key or Codespace is needed.
+
+### Owner bootstrap
+
+Set `SCOPELY_BOOTSTRAP_INVITE_SHA256`, `SCOPELY_BOOTSTRAP_EMAIL` and `SCOPELY_BOOTSTRAP_EXPIRES_AT`
+and redeploy. Steps are in `docs/RELEASE.md`, "First owner". The release step turns them into an
+ordinary setup invite (`src/ops/bootstrap.ts`), only while no workspace owner with a password exists.
+The owner then signs up through the normal invite flow (`acceptInvite`). Guarantees, all tested in
+`tests/operator-path.test.ts`:
+
+- The server holds only the token's sha256, so reading the variables does not let anyone sign up.
+- Single use, bound to that email, and expiring no more than 72 hours after it was issued.
+- Refused both when issued and when accepted once an owner can sign in. A hash already used,
+  expired or issued is never issued again, so a redeploy cannot revive it.
+- Rows: `bootstrap_invite_issued`, `bootstrap_invite_refused` (reason), `bootstrap_completed`
+  (invite, user and workspace ids) and `bootstrap_accept_refused`.
+
+### Pre-deploy backup
+
+When the backup variables are set, **every deploy and every redeploy** takes a backup before
+`migrate` runs (`src/ops/backup.ts`):
+
+1. `pg_dump` (Postgres 18 client, installed in the Dockerfile from the PostgreSQL apt repository)
+   writes a custom-format dump to a private temporary folder. The connection details reach `pg_dump`
+   only as `PG*` values of the child process, and its messages are discarded.
+2. `pg_restore --list` must read the archive.
+3. The dump is encrypted with a fresh AES-256-GCM key, and that key is wrapped with the operator's
+   **RSA public key** (RSA-OAEP-SHA256). The server holds only the public key. Neither it, nor anyone
+   who reads its variables, nor anyone who reads the bucket, can decrypt a backup.
+4. The file is uploaded to S3-compatible object storage as `scopely-backups/<UTC stamp>-<random>.dump.enc`.
+   Nothing is overwritten, and Scopely has no delete call.
+5. The object is read back and must match the uploaded file's sha256 and the dump's recorded checksum.
+6. The temporary folder is deleted. Then `migrate` runs. A `backup_completed` row records the key,
+   size, both sha256s, the archive entry count and the `pg_dump` version.
+
+Any failed step stops the deploy (`backup_failed` with a reason code). To take a backup on demand,
+redeploy the service. A database with no schema yet (the first deploy ever) is skipped.
+
+Variables (all five or none; a partial set stops the deploy):
+
+| Variable | Value |
+|---|---|
+| `SCOPELY_BACKUP_S3_ENDPOINT` | `https://t3.storageapi.dev` for a Railway bucket (https only) |
+| `SCOPELY_BACKUP_S3_BUCKET` | the bucket name |
+| `SCOPELY_BACKUP_S3_ACCESS_KEY_ID` / `SCOPELY_BACKUP_S3_SECRET_ACCESS_KEY` | the bucket's credentials (Railway variable references) |
+| `SCOPELY_BACKUP_PUBLIC_KEY` | the RSA public key, PEM (3072+ bits; a private key is refused) |
+| `SCOPELY_BACKUP_S3_REGION`, `SCOPELY_BACKUP_S3_URL_STYLE` | optional: `auto`, `virtual` |
+
+The key pair comes from `pnpm backup:keygen <private.pem>`, run where the private key will be kept.
+The private key never goes to Railway. Whoever holds it is the only person who can restore.
+
+**Where the backup lives.** A Railway Storage Bucket in the same project. It is billed by usage,
+needs no plan change, and is separate from the Postgres volume, so a lost volume, a failed deploy or
+a deleted service does not touch it. Deleting the whole project or account would remove it. Bucket
+credentials can delete objects (there is no write-only key), so anyone with project access could
+remove backups, just as they could reach the database itself. For a copy outside Railway, download
+an object now and then (any S3 client with the bucket credentials) and keep it with the private key.
+
+**Restore from a pre-deploy backup.** Download the object, then
+`SCOPELY_BACKUP_PRIVATE_KEY_FILE=<private.pem> pnpm backup:decrypt <file.dump.enc> scopely.dump`.
+This checks the GCM tag and the dump's sha256. Then continue from step 2 of "Restore" below.
+`tests/operator-path.test.ts` covers the whole round trip: a real `pg_dump`, an upload, a read-back,
+decryption, `pg_restore` into an empty database, and `migrate` applying nothing.
+
+## Backups: manual encrypted dumps (fallback)
 
 What was read on 2026-11-07 and re-checked on 2026-11-08, through the Railway API (read-only):
 
@@ -73,8 +151,8 @@ What was read on 2026-11-07 and re-checked on 2026-11-08, through the Railway AP
 - The workspace plan is **Hobby**: max backups = 0, no schedule, no PITR. Railway Pro is not
   available to the founder for now (2026-11-08), so Railway-native backups are **not** the plan.
 
-The backup during validation is a **manual logical dump**, taken with `scripts/backup-db.sh` from
-the founder's own machine. Nothing is added to Railway: no service, no TCP proxy, no variable,
+The pre-deploy backup above is the backup during validation. This manual dump, taken with
+`scripts/backup-db.sh` from a machine with the Railway CLI, is kept only as a fallback. Nothing is added to Railway: no service, no TCP proxy, no variable,
 and `DATABASE_URL` is neither read nor changed. The dump runs inside the Postgres service with the
 `PG*` variables that already exist there, is streamed back over `railway ssh`, checksum-verified,
 and encrypted on the founder's machine. A Railway deploy, volume or project failure cannot destroy

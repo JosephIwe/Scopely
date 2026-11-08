@@ -56,6 +56,7 @@ import {
   AttemptLimiter, AuthRejected, SESSION_TTL_SECONDS, type SessionView, acceptInvite, clearCookie, cookieName, createMemberInvite, describeInvite, listMembers,
   normalEmail, readCookie, resolveSession, sessionCookie, signIn, signOut, switchWorkspace,
 } from '../auth/index.js';
+import { recordBootstrapRefusal } from '../ops/bootstrap.js';
 import { pendingMigrations } from '../db/migrate.js';
 
 export interface ServerConfig {
@@ -937,7 +938,12 @@ export function createHandler(cfg: ServerConfig) {
           { openSignup: Boolean(cfg.auth!.openSignup) }));
         setCookie(t);
         json(res, 200, { signedIn: true });
-      } catch (err) { limiter.hit(clientAddress(req)); throw err; }
+      } catch (err) {
+        limiter.hit(clientAddress(req));
+        // A bootstrap link used after the owner exists is refused; the refusal is kept (023).
+        if (err instanceof AuthRejected && err.reason === 'bootstrap_closed') await authTx((db) => recordBootstrapRefusal(db, 'owner_exists')).catch(() => undefined);
+        throw err;
+      }
       return true;
     }
     if (a === 'workspace' && b === 'invites' && !c && m === 'POST') {
