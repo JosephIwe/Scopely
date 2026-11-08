@@ -834,7 +834,7 @@ function drafts(cf, ctx) {
     await api('POST', `/opportunities/${cf.opportunityId}/drafts`, { draftedBy: by.value.trim(), contactId: to.value || null, mailboxId: from.value || null });
     return 'Draft saved. Nothing was sent.';
   }, ctx, 'A draft is saved, never sent. Approval is a separate step.')));
-  box.append(h('p', { class: 'note', text: 'The opt-out wording is conservative while the first-message notice wording (B4) is still open.' }));
+  box.append(h('p', { class: 'note', text: cf.drafts.wording?.settled ? 'The opt-out wording follows the first-message notice decision.' : `The opt-out wording is conservative while the first-message notice wording (${cf.drafts.wording?.decision ?? 'B4'}) is still open.` }));
   return box;
 }
 
@@ -861,12 +861,17 @@ function draftCard(cf, ctx, d) {
       h('div', { class: 'row' }, h('span', { class: `badge ${e.claimState === 'OBSERVED' ? 'b-obs' : 'b-inf'}`, text: e.claimState }), h('span', { text: e.plainIssue })),
       h('small', { class: e.recheck === 'changed' || e.recheck === 'gone' ? 'bad' : 'muted',
         text: `${e.url} · ${date(e.observedAt)}${e.recheck ? ` · re-checked: ${recheckWord(e.recheck)}` : ''}` })))),
-    h('div', { class: 'k', text: 'Before it can be approved' }),
+    h('div', { class: 'k', text: pending ? 'Before it can be approved' : 'Checks, as of now' }),
     h('ul', { class: 'rchecks' }, r.checks.map((c) => h('li', { class: c.state },
       h('i', { 'aria-hidden': 'true', text: c.state === 'done' ? '✓' : c.state === 'blocked' ? '✕' : '!' }),
       h('span', {}, h('b', { text: c.label }), c.detail ? h('small', { text: c.detail }) : null)))),
     d.lint.status === 'fail' && d.lint.errors.length ? h('div', { class: 'note error' }, h('b', { text: 'Lint at the last save. ' }), d.lint.errors.map((e) => e.message).join(' ')) : null);
-  const acts = h('div', { class: 'acts' }, h('button', { class: 'btn sm', type: 'button', onclick: () => copy(`Subject: ${d.subject}\n\n${d.body}`, 'Draft') }, 'Copy text'));
+  if (d.sentAt) card.append(h('p', { class: 'note', text: `Recorded as sent ${when(d.sentAt)} and the pitch recorded in 09. Scopely did not send it.` }));
+  if (d.handoff) card.append(handoffBox(cf, ctx, d));
+  else if (!pending && !d.sentAt && d.approval.status !== 'rejected') {
+    card.append(h('p', { class: 'note amber', text: 'Approved, but there is no address captured for the contact, so there is nothing to hand off. Start a new draft with a contact that has an email address.' }));
+  }
+  const acts = h('div', { class: 'acts' });
   if (pending) {
     const subj = input('Subject', d.subject, { maxlength: 200 });
     const body = h('textarea', { rows: 12, maxlength: 5000, 'aria-label': 'Message' });
@@ -887,11 +892,45 @@ function draftCard(cf, ctx, d) {
       field('Approving as', ap)], 'Approve draft', async () => {
       if (!needBy(ap)) return false;
       await api('POST', `/opportunities/${cf.opportunityId}/drafts/${d.messageId}/approve`, { approvedBy: ap.value.trim() });
-      return 'Approved. Nothing was sent: send it from your own inbox, then record the pitch in 09.';
+      return 'Approved. Nothing was sent: copy it or open it in your email app below, send it yourself, then record it as sent.';
     }, ctx, 'The database checks the contact, suppression and the lint again.'));
   }
-  card.append(acts);
+  if (acts.childNodes.length) card.append(acts);
   return card;
+}
+
+/**
+ * The handoff for an approved draft (P5): the final text exactly as approved, to copy or to open in
+ * the person's own email app, then one step to record that they sent it. Scopely never sends.
+ */
+function handoffBox(cf, ctx, d) {
+  const x = d.handoff;
+  const by = byInput();
+  const open = x.mailto && x.mailto.startsWith('mailto:')
+    ? h('a', { class: 'btn sm', href: x.mailto, rel: 'noopener', 'data-handoff': 'mailto' }, 'Open in your email app')
+    : null;
+  return h('div', { class: 'handoff', 'data-handoff': 'box' },
+    h('div', { class: 'k', text: 'Send it yourself' }),
+    h('ol', { class: 'hsteps' },
+      h('li', { class: 'done', text: 'Evidence reviewed: the findings it cites are listed above.' }),
+      h('li', { class: 'done', text: 'Message reviewed and approved.' }),
+      h('li', { text: 'Copy the message, or open it in your email app, and send it from your own inbox.' }),
+      h('li', { text: 'Come back and record that you sent it. That records the pitch.' })),
+    kv([['To', h('span', { class: 'mono', text: x.to })], ['From', x.from ? h('span', { class: 'mono', text: x.from }) : notKnown('No sender set')]]),
+    h('div', { class: 'acts' },
+      h('button', { class: 'btn sm', type: 'button', 'data-handoff': 'copy-subject', onclick: () => copy(x.subject, 'Subject') }, 'Copy subject'),
+      h('button', { class: 'btn sm', type: 'button', 'data-handoff': 'copy-body', onclick: () => copy(x.body, 'Message') }, 'Copy message'),
+      h('button', { class: 'btn sm', type: 'button', 'data-handoff': 'copy-all', onclick: () => copy(x.copyText, 'Subject and message') }, 'Copy both'),
+      open,
+      writer('I’ve sent it', [
+        h('p', { class: 'hint', text: `Only record this after you have sent it yourself${x.from ? ` from ${x.from}` : ''}. It records the pitch with this exact message. The database checks the contact, suppression and the evidence again now.` }),
+        field('Sent by', by)], 'Record as sent', async () => {
+        if (!needBy(by)) return false;
+        await api('POST', `/opportunities/${cf.opportunityId}/drafts/${d.messageId}/sent`, { recordedBy: by.value.trim() });
+        return 'Recorded as sent, and the pitch is recorded. Scopely sent nothing.';
+      }, ctx, 'This cannot be undone: a sent message is permanent.')),
+    x.mailtoUnavailable ? h('p', { class: 'note', text: x.mailtoUnavailable }) : null,
+    h('p', { class: 'note', text: 'Scopely does not send email, follow up or track replies. Record any reply in 09.' }));
 }
 
 // ---------------------------------------------------------------- 10 deliver · verify (release 1)

@@ -308,10 +308,15 @@ describe('no sending', () => {
       expect((await call('POST', path, {})).status, path).toBe(404);
     }
     expect((await row(db(), messageId)).sent_at).toBeNull();
-    for (const f of ['src/server/app.ts', 'src/sell/drafts.ts', 'src/api/outreach.ts', 'src/server/ui/case-file.js']) {
+    for (const f of ['src/server/app.ts', 'src/sell/drafts.ts', 'src/sell/handoff.ts', 'src/api/outreach.ts', 'src/server/ui/case-file.js']) {
       const src = await readFile(f, 'utf8');
-      expect(src, f).not.toMatch(/sent_at\s*=|markMessageSent|\/send\b|sendMail|nodemailer|smtp/i);
+      expect(src, f).not.toMatch(/markMessageSent|\/send\b|sendMail|nodemailer|smtp/i);
+      // The only write of sent_at is recordDraftSent: a person's statement that they sent it (A48).
+      const writes = src.match(/sent_at\s*=/g) ?? [];
+      expect(writes.length, f).toBe(f === 'src/sell/drafts.ts' ? 1 : 0);
     }
+    const drafts = await readFile('src/sell/drafts.ts', 'utf8');
+    expect(drafts.slice(drafts.indexOf('export async function recordDraftSent'))).toMatch(/sent_at\s*=/);
   });
 });
 

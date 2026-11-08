@@ -23,7 +23,7 @@ import { getCaseFile, opportunityBuildInfo, stageOf } from '../api/case-file.js'
 import { isDemoBusiness } from '../api/sample.js';
 import { getSearch, listOpportunities, listSearches } from '../api/queries.js';
 import { OutcomeRejected, recordManualOutcome } from '../sell/outcomes.js';
-import { DraftRejected, approveDraft, createDraft, editDraft } from '../sell/drafts.js';
+import { DraftRejected, approveDraft, createDraft, editDraft, recordDraftSent } from '../sell/drafts.js';
 import { DeliveryRejected, recordDelivery } from '../sell/deliver.js';
 import { listDrafts } from '../api/outreach.js';
 import { getDeliverView } from '../api/deliver.js';
@@ -440,7 +440,8 @@ export function createHandler(cfg: ServerConfig) {
       return json(res, 200, { suppressionId });
     }
     // Release 1, outreach drafts (A41–A43). Saved, linted and approved by a named person; never sent.
-    // There is deliberately no send route: nothing in this server writes sent_at.
+    // There is deliberately no send route: Scopely never transmits a message. A person sends the
+    // approved text from their own inbox and records it (POST .../sent, A48).
     // GET /api/opportunities/:id/drafts
     if (m === 'GET' && a === 'opportunities' && c === 'drafts' && !d) {
       const oid = id(b);
@@ -477,6 +478,16 @@ export function createHandler(cfg: ServerConfig) {
       const out = await tx((db) => approveDraft(db, oid, mid, { approvedBy: String(bd.approvedBy ?? '') }));
       log(`draft ${mid} opportunity ${oid} approved`);
       return json(res, 200, { ok: true, approvedAt: out.approvedAt, approvedByIsAuthenticated: false });
+    }
+    // POST /api/opportunities/:id/drafts/:mid/sent: a person records that they sent the approved
+    // draft from their own inbox. Nothing is sent; the pitch is recorded with the message it cites.
+    if (m === 'POST' && a === 'opportunities' && c === 'drafts' && d && e === 'sent' && !parts[5]) {
+      const oid = id(b);
+      const mid = id(d);
+      const bd = await jsonBody(req);
+      const out = await tx((db) => recordDraftSent(db, oid, mid, { recordedBy: String(bd.recordedBy ?? '') }));
+      log(`draft ${mid} opportunity ${oid} recorded sent outcome ${out.outcomeId}`);
+      return json(res, 200, { ok: true, sentAt: out.sentAt, outcomeId: out.outcomeId, sentByScopely: false });
     }
     // Release 1, deliver and verify (A44–A46).
     // GET /api/opportunities/:id/deliver: the state ladder, deliveries and verifications.
