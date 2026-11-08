@@ -173,6 +173,7 @@ pnpm record workspace <file.json>     # provision a workspace
 SCOPELY_WORKSPACE_ID=<id> pnpm record <command> <file.json|->   # see docs/MANUAL_VALIDATION.md
 pnpm demo:seed                        # a sample workspace with one website and one fix opportunity; prints its id
 pnpm auth:invite --setup              # a one-time link for the first person to create their workspace
+pnpm release                          # the pre-deploy step: backup (when configured), migrate, owner bootstrap (A50)
 pnpm serve                            # Scopely on http://127.0.0.1:4310 with sign-in (A40)
 SCOPELY_WORKSPACE_ID=<id> pnpm serve  # development preview: one workspace, no sign-in, localhost only
 ```

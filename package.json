@@ -20,7 +20,10 @@
     "demo:seed": "tsx scripts/demo-seed.ts",
     "auth:invite": "tsx scripts/auth-invite.ts",
     "db:backup": "bash scripts/backup-db.sh",
-    "start": "tsx scripts/serve.ts"
+    "start": "tsx scripts/serve.ts",
+    "release": "tsx scripts/release.ts",
+    "backup:keygen": "tsx scripts/backup-keygen.ts",
+    "backup:decrypt": "tsx scripts/backup-decrypt.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",
