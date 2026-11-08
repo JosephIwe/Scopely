@@ -187,7 +187,7 @@ body.lp {
 .dossier figcaption code { font-size: .95em; }
 
 /* ---------------------------------------------------------------- workflow: a sequence on one rule */
-.lp-steps { list-style: none; margin: 64px 0 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.lp-steps { list-style: none; margin: 64px 0 0; padding: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .lp-steps li { position: relative; padding: 26px 22px 0 0; }
 .lp-steps li + li { padding-left: 22px; border-left: 1px solid var(--line); }
 .lp-steps li::before { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 3px; background: var(--ink); transform-origin: 0 50%; }
@@ -314,7 +314,7 @@ body.lp {
   .dossier { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
   .sheet { padding: 40px 36px 36px; }
   .lp-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 48px; }
-  .lp-steps li:nth-child(4) { padding-left: 0; border-left: 0; }
+  .lp-steps li:nth-child(4), .lp-steps li:nth-child(7) { padding-left: 0; border-left: 0; }
 }
 /* ---------------------------------------------------------------- iPad portrait */
 @media (max-width: 960px) {
@@ -380,7 +380,7 @@ body.lp {
   .reading { font-size: 22px; }
   .exhibit { margin: -8px 10px 0; width: auto; }
   .lp-steps { grid-template-columns: minmax(0, 1fr); row-gap: 0; margin-top: 48px; }
-  .lp-steps li, .lp-steps li + li, .lp-steps li:nth-child(4) { padding: 22px 0 28px 64px; border-left: 0; }
+  .lp-steps li, .lp-steps li + li, .lp-steps li:nth-child(4), .lp-steps li:nth-child(7) { padding: 22px 0 28px 64px; border-left: 0; }
   .lp-steps .num { position: absolute; left: 0; top: 20px; font-size: 34px; }
   .lp-steps h3 { margin-top: 2px; }
   .lp-ev, .lp-kinds { margin-top: 48px; }

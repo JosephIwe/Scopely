@@ -32,6 +32,11 @@
 // clay with the 'prospects' scope and a customer key, exactly like discovery. Over the Public API a live
 // people lookup is refused, unsent, until Clay's exact-company filter is confirmed. Nothing paid is called.
 //
+// Observability (P2): every /api request logs one line (method, route with ids replaced, status, ms,
+// request id); an unexpected error logs `error <method> <route> <code> rid= ws= user= status= err= at=`
+// to stderr, and is also sent to SCOPELY_ERROR_DSN when set. Never a message, body or value.
+// See docs/OPERATIONS.md for where logs live and how long.
+//
 // Analysis (Slice 11): analysing a selected business requests its own website with the SSRF-safe
 // probe (src/analysis/fetch.ts); reserved .example hosts are answered from fixtures/demo-pages.
 import { randomBytes } from 'node:crypto';
@@ -46,6 +51,7 @@ import { DEFAULT_SHOW_LINK_TTL_SECONDS } from '../src/build/site/index.js';
 import { DemoAwarePageFetcher } from '../src/build/fix/index.js';
 import { DemoAwareProbe } from '../src/analysis/index.js';
 import { createHandler } from '../src/server/app.js';
+import { describeError, errorLine, reporterFromEnv, type ErrorReport } from '../src/server/observe.js';
 import { FileObjectStore } from '../src/storage/index.js';
 import {
   ClayBusinessDiscoveryAdapter, ClayPublicApiTransport, ClayProspectAdapter, DiscoveryProviderRegistry, EnvSecretResolver, ProspectProviderRegistry, RecordedClayTransport,
@@ -76,6 +82,16 @@ if (!Number.isFinite(showHours) || showHours <= 0 || showHours > 24 * 30) {
   console.error('SHOW_LINK_TTL_HOURS must be a number of hours between 0 and 720.');
   process.exit(1);
 }
+// P2: unexpected errors are reported only when SCOPELY_ERROR_DSN is set, stripped of values (src/server/observe.ts).
+let reporter: ReturnType<typeof reporterFromEnv> = null;
+try { reporter = reporterFromEnv(); } catch (err) { refuse((err as Error).message); }
+const processFailure = (kind: string) => (err: unknown) => {
+  const r: ErrorReport = { requestId: null, route: kind, method: null, status: null, workspaceId: null, userId: null, error: describeError(err), source: 'process' };
+  console.error(errorLine(r));
+  reporter?.report(r);
+};
+process.on('unhandledRejection', processFailure('unhandledRejection'));
+process.on('uncaughtException', (err) => { processFailure('uncaughtException')(err); setTimeout(() => process.exit(1), 1500).unref(); });
 const pool = new pg.Pool({ connectionString: databaseUrl(), max: 8 });
 // A database behind the code is reported here, by name; the server never migrates it.
 try {
@@ -111,9 +127,11 @@ const handler = createHandler({
   probe: new DemoAwareProbe(),
   discovery,
   prospects,
+  reporter,
+  log: (l: string) => { (l.startsWith('error ') ? process.stderr : process.stdout).write(`${l}\n`); },
 });
 const port = Number(process.env.PORT ?? 4310);
 createServer((req, res) => { void handler(req, res); }).listen(port, host, () => {
   console.log(`Scopely on http://${host}:${port} (${workspaceId ? `development preview, workspace ${workspaceId}, no sign-in` : `sign-in, ${process.env.SCOPELY_SIGNUP === 'open' ? 'open sign-up' : 'invite-only'}`}`
-    + `${production ? ', production' : ''}); Clay: ${live ? 'live' : 'recorded responses'}; AI assistance: ${assist ? `${assist.provider}` : 'off'}`);
+    + `${production ? ', production' : ''}); Clay: ${live ? 'live' : 'recorded responses'}; error reporting: ${reporter ? 'on' : 'off (SCOPELY_ERROR_DSN unset)'}; AI assistance: ${assist ? `${assist.provider}` : 'off'}`);
 });
