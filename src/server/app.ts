@@ -12,6 +12,7 @@
 //
 // Logs carry ids and status codes only: never site content, contact details or credentials.
 import { type ErrorReport, type ErrorReporter, describeError, errorLine, newRequestId, routeOf } from './observe.js';
+import { ListRejected, createList, listInputFromBody } from '../lists/index.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -516,7 +517,7 @@ export function createHandler(cfg: ServerConfig) {
       return json(res, 200, { projectId: await tx((db) => openFixProject(db, oid)) });
     }
     if (a === 'fix') return fixApi(req, res, parts);
-    if (a === 'discovery' || a === 'searches' || a === 'runs') return findApi(req, res, parts);
+    if (a === 'discovery' || a === 'searches' || a === 'runs' || a === 'lists') return findApi(req, res, parts);
     if (a !== 'projects') throw new HttpError(404, 'Not found.');
     const pid = id(b);
     if (m === 'GET' && c === 'setup' && !d) return json(res, 200, await tx((db) => getBuildSetup(db, pid)));
@@ -741,6 +742,14 @@ export function createHandler(cfg: ServerConfig) {
         };
       }));
     }
+    // P3. POST /api/lists: a list of businesses a person typed or imported (name, domain, optional
+    // company number), with no provider. Its run then goes through select → analyse as any run.
+    if (m === 'POST' && a === 'lists' && !b) {
+      const input = listInputFromBody(await jsonBody(req));
+      const out = await tx((db) => createList(db, input));
+      log(`list ${out.listId} run ${out.searchRunId} ${out.source} rows=${out.counts.rows} new=${out.counts.new} existing=${out.counts.existing} repeats=${out.counts.repeats} review=${out.counts.needsReview}`);
+      return json(res, 200, out);
+    }
     // POST /api/searches: save an ICP.
     if (m === 'POST' && a === 'searches' && !b) {
       const input = searchInputFromBody(await jsonBody(req));
@@ -763,7 +772,9 @@ export function createHandler(cfg: ServerConfig) {
       const bd = await jsonBody(req);
       const provider = String(bd.provider ?? '');
       const out = await tx(async (db) => {
-        if (!(await getSearch(db, sid))) throw new HttpError(404, 'Not found.');
+        const search = await getSearch(db, sid);
+        if (!search) throw new HttpError(404, 'Not found.');
+        if (search.kind === 'list') throw new FindRejected('A list is not run against a provider. Its businesses are already in it; select them for analysis.');
         const runId = await startSearchRun(db, sid);
         const result = await runProviderDiscovery(db, { providers, secrets: cfg.discovery?.secrets }, runId, provider);
         return { searchRunId: runId, result };
@@ -986,6 +997,7 @@ export function createHandler(cfg: ServerConfig) {
       if (err instanceof DeliveryRejected) return json(res, err.status, { error: err.message });
       if (err instanceof VerifyRefused) return json(res, err.status, { error: err.message });
       if (err instanceof FindRejected) return json(res, err.status, { error: err.message });
+      if (err instanceof ListRejected) return json(res, err.status, { error: err.message, rows: err.rows });
       if (err instanceof AnalysisRefused) return json(res, err.status, { error: err.message });
       if (err instanceof DiscoveryRefused) return json(res, 422, { error: err.message, reason: err.reason });
       if (err instanceof ProspectLookupRefused) return json(res, err.reason === 'not_found' ? 404 : 422, { error: err.message, reason: err.reason });
