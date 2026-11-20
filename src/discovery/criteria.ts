@@ -61,6 +61,11 @@ export interface SearchCriteria {
 
 export interface SearchInput extends Partial<SearchCriteria> {
   name: string;
+  /** What a person typed as the place to search around (A54); the server resolves it to the centre. */
+  near?: string;
+  /** Where the centre came from (a postcode, district or named place, and the directory). */
+  centerLabel?: string;
+  centerSource?: string;
   description?: string;
   playbookKey?: string;
   createdByUserId?: string;
@@ -89,8 +94,8 @@ const NUMERIC = new Set<keyof SearchCriteria>(['centerLatitude', 'centerLongitud
 
 /** Creates a search in the current workspace. Fields left out take the column defaults (empty / off). */
 export async function createSearch(db: Db, s: SearchInput): Promise<string> {
-  const cols = ['name', 'description', 'playbook_id', 'created_by_user_id'];
-  const vals: unknown[] = [s.name, s.description ?? null, null, s.createdByUserId ?? null];
+  const cols = ['name', 'description', 'playbook_id', 'created_by_user_id', 'center_label', 'center_source'];
+  const vals: unknown[] = [s.name, s.description ?? null, null, s.createdByUserId ?? null, s.centerLabel ?? null, s.centerSource ?? null];
   if (s.playbookKey) {
     const p = await db.query<{ id: string }>('SELECT id FROM scopely.niche_playbooks WHERE key = $1', [s.playbookKey]);
     if (!p.rows[0]) throw new Error(`unknown playbook ${s.playbookKey}`);

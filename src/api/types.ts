@@ -210,7 +210,9 @@ export interface SearchDefinition {
   description: string | null;
   playbookKey: string | null;
   geography: { countryCode: string | null; region: string | null; city: string | null; postalPrefix: string | null;
-               center: { latitude: string; longitude: string } | null; radiusKm: string | null };
+               center: { latitude: string; longitude: string } | null; radiusKm: string | null;
+               /** A54: the place the centre was resolved from, and the directory that gave it. */
+               centerLabel: string | null; centerSource: string | null };
   industry: { verticals: string[]; subverticals: string[]; specialties: string[] };
   employees: { min: number | null; max: number | null };
   revenue: { min: string | null; max: string | null; currency: string | null };
@@ -233,6 +235,9 @@ export interface SearchListItem {
   searchId: string;
   name: string;
   kind: 'search' | 'list';
+  /** What the search looks for, in a line: industries and the place it is centred on. */
+  verticals: string[];
+  near: { label: string; radiusKm: string } | null;
   runs: number;
   lastRunAt: string | null;
   createdAt: string;

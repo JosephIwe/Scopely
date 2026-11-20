@@ -84,7 +84,8 @@ Evidence kinds:
   - `SCOPELY_SIGNUP`, so sign-up stays invite-only.
   - Any `SCOPELY_SECRET_*`: no provider key is configured.
   - `SCOPELY_AI_PROVIDER` / `SCOPELY_AI_API_KEY`, so AI rewording (A49) is off.
-  - `SCOPELY_GEOCODER`, so placing businesses from a UK postcode (A51, postcodes.io, free) stays on. Set it to `off` to stop it.
+  - `SCOPELY_GEOCODER`, so placing businesses from a UK postcode (A51, postcodes.io, free) stays on. Set it to `off` to stop it. It also centres a search on a place (A54).
+  - `SCOPELY_OSM`, so OpenStreetMap discovery (A54, Overpass, free open data, no key) stays on. Set it to `off` to stop it.
 - **Cost:** usage-billed on the existing plan. Two small always-on containers plus a 0.5 GB volume should cost a few dollars a month. That figure is inferred from Railway's published rates ($10/GB-month RAM, $20/vCPU-month, $0.15/GB-month volume), not measured.
 
 ## Runbook

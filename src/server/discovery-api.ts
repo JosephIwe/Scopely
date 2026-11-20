@@ -60,6 +60,14 @@ export function searchInputFromBody(b: Record<string, unknown>): SearchInput {
   if (revenueMin !== undefined) input.revenueMin = revenueMin;
   if (revenueMax !== undefined) input.revenueMax = revenueMax;
   if (revenueCurrency && (revenueMin !== undefined || revenueMax !== undefined)) input.revenueCurrency = revenueCurrency;
+  // A54: "near" is a UK postcode, postcode district or town the server turns into a centre; the
+  // radius is the seller's own, never a default.
+  const near = text(b.near, 'Near', 80);
+  const radius = b.radiusKm === undefined || b.radiusKm === null || b.radiusKm === '' ? undefined : Number(b.radiusKm);
+  if (radius !== undefined && (!Number.isFinite(radius) || radius <= 0 || radius > 25)) throw new FindRejected('Distance must be more than 0 and at most 25 km.');
+  if (near && radius === undefined) throw new FindRejected('Say how far around the place to search, in km.');
+  if (radius !== undefined && !near) throw new FindRejected('Say where to search around: a UK postcode or town.');
+  if (near) { input.near = near; input.radiusKm = Math.round(radius! * 10) / 10; }
   const found = whole(b.maxDiscoveredPerRun, 'Businesses to find per run', 1, 100);
   if (found === undefined) throw new FindRejected('Say how many businesses a run may find (up to 100).');
   input.maxDiscoveredPerRun = found;

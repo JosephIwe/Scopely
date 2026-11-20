@@ -53,7 +53,27 @@ export function addressToAnalyse(b: { website_url: string | null; domain: string
   return d ? `https://${d}/` : null;
 }
 
-export async function analyzeRunBusiness(db: Db, deps: AnalyzeDeps, runId: string, businessId: string, requestedBy: string): Promise<AnalyzeResult> {
+/**
+ * A55: what a person saw on the business's own listing when no website address is known. Only a
+ * listing that shows no website is recorded; a source that lists no website is never this (A36).
+ */
+export interface ListingCheck { url: string }
+
+/** Hosts that are where Scopely found a business, not the business's own listing. */
+const NOT_OWN_LISTING = /(^|\.)(openstreetmap\.org|osm\.org|clay\.com|scopely\.[a-z.]+)$/i;
+
+export function listingProblem(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw.trim()) return 'Paste the link of the listing you checked.';
+  let u: URL;
+  try { u = new URL(raw.trim()); } catch { return 'That is not a link. Paste the full address of the listing, starting https://.'; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return 'Paste the full address of the listing, starting https://.';
+  if (raw.trim().length > 2000) return 'That link is too long.';
+  if (NOT_OWN_LISTING.test(u.hostname)) return 'That is where Scopely found the business, not its own listing. Check its own profile, such as Google Maps or its Facebook page.';
+  return null;
+}
+
+export async function analyzeRunBusiness(db: Db, deps: AnalyzeDeps, runId: string, businessId: string, requestedBy: string,
+  opts: { listing?: ListingCheck } = {}): Promise<AnalyzeResult> {
   const now = deps.now ?? (() => new Date());
   const by = clean(String(requestedBy ?? ''), 80);
   if (!by) throw new AnalysisRefused('Say who is asking for this analysis.');
@@ -89,11 +109,18 @@ export async function analyzeRunBusiness(db: Db, deps: AnalyzeDeps, runId: strin
   if (address === null) outcome = 'NO_ADDRESS';
   else { try { assertCapturableUrl(address); } catch { outcome = 'REFUSED'; } }
 
+  if (opts.listing) {
+    const problem = listingProblem(opts.listing.url);
+    if (problem) throw new AnalysisRefused(problem);
+    if (outcome !== 'NO_ADDRESS') throw new AnalysisRefused('This business has a website address on file, so Scopely checks the site itself; a listing is not needed.');
+  }
+
   const evidence: { id: string; issueCode: string; href: string | null }[] = [];
   const notObservable: string[] = [];
   let analysisId: string;
   if (outcome !== 'CHECKED') {
     analysisId = await insertAnalysis(db, runId, businessId, outcome, address, by, started, now().toISOString());
+    if (outcome === 'NO_ADDRESS' && opts.listing) evidence.push(await recordListingCheck(db, businessId, analysisId, opts.listing.url.trim(), by, now().toISOString()));
   } else {
     const page = await deps.probe.get(address!);
     const finished = now().toISOString();
@@ -147,6 +174,28 @@ export async function analyzeRunBusiness(db: Db, deps: AnalyzeDeps, runId: strin
   await db.query(`UPDATE scopely.search_run_businesses SET state = $3, concluded_at = $4 WHERE search_run_id = $1 AND business_id = $2`,
     [runId, businessId, state, now().toISOString()]);
   return { analysisId, analysedNow: true, state, opportunityIds };
+}
+
+/**
+ * A55: a person checked the business's own listing (no website address being known) and it shows no
+ * website. Recorded as that person's observation of that page: a manual snapshot of the listing, an
+ * OBSERVED gap under check.website_presence, website status WEBSITE_NOT_OBSERVED on that basis, and
+ * the E-NO-WEBSITE evidence the Website path needs. Scopely requests nothing.
+ */
+async function recordListingCheck(db: Db, businessId: string, analysisId: string, url: string, by: string, at: string) {
+  const snapshotId = (await db.query(
+    `INSERT INTO scopely.snapshots (business_id, analysis_id, url, fetched_at, fetch_method) VALUES ($1, $2, $3, $4, 'manual') RETURNING id`,
+    [businessId, analysisId, url, at])).rows[0].id as string;
+  const fact = `${by} checked the business's own listing and it shows no website; no website address is known for it.`;
+  const obs = await insertObservation(db, snapshotId, { ruleKey: 'check.website_presence', ruleVersion: 1, checkCode: 'website_presence.listing',
+    state: 'OBSERVED', result: 'gap', href: url, fact, extracted: { checkedBy: by, origin: 'person' } }, new Map());
+  await recordWebsiteStatus(db, businessId, { status: 'WEBSITE_NOT_OBSERVED', basis: 'OBSERVED', source: `person:${by} · own listing ${url}`.slice(0, 300), checkedAt: at });
+  const ev = (await db.query(
+    `INSERT INTO scopely.evidence (business_id, observation_id, issue_code, rule_version_id, claim_state, plain_issue, url, quote, confidence)
+     SELECT $1, $2, 'E-NO-WEBSITE', rule_version_id, 'OBSERVED', $3, $4, $5, 'MEDIUM' FROM scopely.observations WHERE id = $2 RETURNING id`,
+    [businessId, obs, 'Its own listing shows no website, and no website address is known for it', url,
+     `Checked by ${by}: no website on this listing`])).rows[0].id as string;
+  return { id: ev, issueCode: 'E-NO-WEBSITE', href: url };
 }
 
 async function existingResult(db: Db, runId: string, businessId: string): Promise<AnalyzeResult | null> {

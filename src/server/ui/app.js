@@ -36,7 +36,7 @@ async function route() {
   leaveGuard = null;
   if ((m = hsh.match(/^#\/f\/(\d+)$/))) return fixView(m[1]);
   // Slice 10: Find, the provider-backed searches.
-  if (/^#\/find(\/run\/\d+)?$/.test(hsh)) return findView(hsh);
+  if (/^#\/find(\/run\/\d+|\/new)?$/.test(hsh)) return findView(hsh);
   // Slice 8: the product shell, its stage feeds and the Case File.
   return shellView(hsh, { setEscape: (fn) => { onEscape = fn; } });
 }

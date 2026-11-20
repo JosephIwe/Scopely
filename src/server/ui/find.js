@@ -63,7 +63,7 @@ async function homeView() {
   const main = $app.querySelector('main');
   const providers = d.providers;
   const pchips = providers.length ? providers.map((p) => h('span', { class: `fd-chip ${p.ready ? 'ok' : ''}` },
-    h('b', { text: p.label }), p.transport === 'recorded' ? ' · recorded responses' : p.ready ? ' · connected' : ' · not connected'))
+    h('b', { text: p.label }), p.transport === 'recorded' ? ' · recorded responses' : p.keyless ? ' · free open data' : p.ready ? ' · connected' : ' · not connected'))
     : [h('span', { class: 'fd-chip', text: 'No discovery provider is set up on this server' })];
 
   const list = h('div', { class: 'fd-searches' });
@@ -77,7 +77,13 @@ async function homeView() {
       h('div', { class: 'fd-chips', 'aria-label': 'Providers' }, pchips)),
     h('div', { class: 'fd-grid' }, h('section', { 'aria-label': 'Your searches' }, h('h2', { class: 'fd-h2', text: 'Your searches' }), list),
       h('div', {}, h('section', { class: 'card fd-form', 'aria-label': 'Analyse websites' }, newListForm()),
-        h('section', { class: 'card fd-form', style: 'margin-top:20px', 'aria-label': 'New search' }, newSearchForm()))));
+        h('section', { class: 'card fd-form', style: 'margin-top:20px', 'aria-label': 'New search', id: 'new-search' }, newSearchForm(providers)))));
+  // #/find/new (Discover's first step) opens with the search form in view.
+  if (location.hash === '#/find/new') {
+    const ns = main.querySelector('#new-search');
+    ns?.scrollIntoView({ block: 'start' });
+    ns?.querySelector('input[name="name"]')?.focus();
+  }
 }
 
 function searchRow(s, providers, runs) {
@@ -106,7 +112,8 @@ function searchRow(s, providers, runs) {
   };
   return h('article', { class: 'card fd-search' },
     h('div', { class: 'row' }, h('div', { class: 'grow' }, h('b', { text: s.name }),
-      h('div', { class: 'small muted', text: s.lastRunAt ? `${plural(s.runs, 'run', 'runs')} · last ${date(s.lastRunAt)}` : 'Not run yet' })),
+      h('div', { class: 'small muted', text: [s.verticals?.length ? s.verticals.join(', ') : null, s.near ? `within ${s.near.radiusKm} km of ${s.near.label}` : null,
+        s.lastRunAt ? `${plural(s.runs, 'run', 'runs')} · last ${date(s.lastRunAt)}` : 'Not run yet'].filter(Boolean).join(' · ') })),
       providers.map((p) => h('button', { class: 'btn sm primary', disabled: !p.ready, title: p.ready ? '' : `Connect ${p.label} first`,
         onclick: (e) => run(p, e.currentTarget) }, `Run with ${p.label}`))),
     mine.length ? h('ol', { class: 'fd-runs' }, mine.slice(0, 4).map((r) => h('li', {},
@@ -162,7 +169,9 @@ function newListForm() {
   return form;
 }
 
-function newSearchForm() {
+function newSearchForm(providers = []) {
+  const cats = [...new Set(providers.flatMap((p) => p.categories ?? []))];
+  const open = providers.find((p) => p.keyless);
   const f = {};
   const input = (key, attrs = {}) => (f[key] = h('input', { name: key, ...attrs }));
   const field = (label, el, hint, opt) => h('label', { class: 'field' }, h('span', { class: 'lab' }, label, opt ? h('em', { text: 'optional' }) : null), el,
@@ -177,6 +186,7 @@ function newSearchForm() {
     try {
       const body = {
         name: f.name.value, verticals: f.verticals.value, countryCode: f.countryCode.value, city: f.city.value,
+        near: f.near.value, radiusKm: f.near.value.trim() ? f.radiusKm.value : '',
         employeeMin: f.employeeMin.value, employeeMax: f.employeeMax.value, websitePresence: presence,
         revenueMin: f.revenueMin.value, revenueMax: f.revenueMax.value, revenueCurrency: f.revenueCurrency.value,
         maxDiscoveredPerRun: f.maxDiscoveredPerRun.value, maxBusinessesToAnalyze: f.maxBusinessesToAnalyze.value,
@@ -188,9 +198,13 @@ function newSearchForm() {
   } },
     h('h2', { class: 'fd-h2', text: 'New search' }),
     field('Name', input('name', { required: true, maxlength: 120, placeholder: 'Independent clinics' })),
-    field('Industries', input('verticals', { maxlength: 400 }), 'As the provider names them, separated by commas.'),
-    h('div', { class: 'fd-two' }, field('Country', input('countryCode', { maxlength: 2, placeholder: 'GB', autocapitalize: 'characters' }), null, true),
-      field('City', input('city', { maxlength: 120 }), null, true)),
+    field('Industries', input('verticals', { maxlength: 400, list: cats.length ? 'fd-cats' : undefined, placeholder: cats.length ? 'dentist, physiotherapist' : '' }),
+      cats.length ? `Separated by commas. ${open.label} knows: ${cats.slice(0, 14).join(', ')} and more. Clay uses its own industry names.` : 'As the provider names them, separated by commas.'),
+    cats.length ? h('datalist', { id: 'fd-cats' }, cats.map((c) => h('option', { value: c }))) : null,
+    h('div', { class: 'fd-two' }, field('Near', input('near', { maxlength: 80, placeholder: 'Chelmsford, or CM1 1JE', autocomplete: 'off' }), 'A UK postcode, postcode district or town.', true),
+      field('Within (km)', input('radiusKm', { inputmode: 'decimal', value: '5' }), 'Up to 25 km.')),
+    h('div', { class: 'fd-two' }, field('Country', input('countryCode', { maxlength: 2, placeholder: 'GB', autocapitalize: 'characters' }), 'Leave empty for a search near a place: a business is only known to be GB when it lists a UK postcode.', true),
+      field('City', input('city', { maxlength: 120 }), 'For Clay. A search near a place uses the distance instead.', true)),
     h('div', { class: 'fd-two' }, field('Fewest employees', input('employeeMin', { inputmode: 'numeric' }), null, true),
       field('Most employees', input('employeeMax', { inputmode: 'numeric' }), null, true)),
     h('div', { class: 'fd-three' }, field('Lowest revenue', input('revenueMin', { inputmode: 'numeric', placeholder: '1000000' }), null, true),
@@ -200,7 +214,9 @@ function newSearchForm() {
     h('div', { class: 'field' }, h('span', { class: 'lab' }, 'Website'), seg),
     h('div', { class: 'fd-two' }, field('Find per run', input('maxDiscoveredPerRun', { inputmode: 'numeric', value: '40', required: true }), 'Up to 100.'),
       field('Analyse at most', input('maxBusinessesToAnalyze', { inputmode: 'numeric' }), null, true)),
-    h('p', { class: 'hint', text: 'A provider search needs an industry or a city. Everything else is checked by Scopely on each business found.' }),
+    h('p', { class: 'hint', text: open
+      ? `${open.label} needs an industry and a place. Clay needs an industry or a city. Everything else is checked by Scopely on each business found.`
+      : 'A provider search needs an industry or a city. Everything else is checked by Scopely on each business found.' }),
     h('div', { style: 'margin-top:18px' }, save));
   return form;
 }
@@ -251,7 +267,9 @@ async function runView(id) {
   const stat = (label, n, cls = '') => h('div', { class: `fd-stat ${cls}` }, h('b', { text: String(n) }), h('span', { text: label }));
   const e = v.economics;
   const recorded = v.operations.length > 0 && v.operations.every((o) => o.transport === 'recorded');
-  const cost = e.costBasis === 'REPORTED' ? `${e.providerCredits} provider credits` : e.costBasis === 'NONE' ? 'No provider calls' : 'Cost not reported by the provider';
+  const openData = v.operations.length > 0 && v.operations.every((o) => o.provider === 'openstreetmap');
+  const cost = e.costBasis === 'REPORTED' ? `${e.providerCredits} provider credits` : e.costBasis === 'NONE' ? 'No provider calls'
+    : openData ? 'Free open data: no account, nothing billed' : 'Cost not reported by the provider';
 
   const opsTable = h('table', { class: 'fd-table fd-ops' },
     h('thead', {}, h('tr', {}, ['Call', 'Result', 'Businesses', 'Time', 'Cost'].map((t) => h('th', { text: t })))),
@@ -261,7 +279,8 @@ async function runView(id) {
         o.attempts > 1 ? h('span', { class: 'muted small', text: ` after ${o.attempts} tries` }) : null),
       h('td', { text: o.resultCount === null ? '–' : String(o.resultCount) }),
       h('td', { text: `${(o.latencyMs / 1000).toFixed(2)} s` }),
-      h('td', { class: 'muted', text: o.costBasis === 'REPORTED' ? (o.providerCredits !== null ? `${o.providerCredits} credits` : `${o.providerCost.amount} ${o.providerCost.currency}`) : 'Not reported' })))));
+      h('td', { class: 'muted', text: o.costBasis === 'REPORTED' ? (o.providerCredits !== null ? `${o.providerCredits} credits` : `${o.providerCost.amount} ${o.providerCost.currency}`)
+        : o.provider === 'openstreetmap' ? 'Free (open data)' : 'Not reported' })))));
 
   let filter = 'all';
   const picked = new Set();
@@ -277,6 +296,9 @@ async function runView(id) {
       await findView(`#/find/run/${id}`);
     } catch (err) { selBtn.disabled = false; fail(err); }
   } }, 'Select for analysis');
+  // A55: for a selected business with no website address, the link of its own listing a person
+  // checked and found showing no website. Kept per business until Analyse sends it.
+  const listings = new Map();
   // Slice 11: analyse the businesses selected but not analysed yet, one request each.
   const waiting = () => v.businesses.filter((b) => b.state === 'SELECTED' || (b.state === 'ANALYSIS_QUEUED' && !b.analysis));
   const progress = h('span', { class: 'fd-progress', role: 'status', 'aria-live': 'polite' });
@@ -291,7 +313,8 @@ async function runView(id) {
     try {
       for (const [i, b] of todo.entries()) {
         progress.textContent = `Analysing ${i + 1} of ${todo.length}: ${b.name}…`;
-        const r = await api('POST', `/runs/${id}/businesses/${b.businessId}/analyze`, { requestedBy: who });
+        const listing = !b.domain && !b.websiteUrl && listings.get(b.businessId)?.trim();
+        const r = await api('POST', `/runs/${id}/businesses/${b.businessId}/analyze`, { requestedBy: who, ...(listing ? { listing: { url: listing } } : {}) });
         b.state = r.state;
         b.analysis = { analysisId: r.analysisId, outcome: r.analysis.outcome, findings: r.analysis.findings.length, opportunityIds: r.opportunityIds };
         found += r.opportunityIds.length;
@@ -327,7 +350,7 @@ async function runView(id) {
         h('div', { class: 'fd-main' }, h('div', { class: 'row' }, h('b', { text: b.name }), h('span', { class: `badge ${tone}`, text: word }),
           b.knownBefore ? h('span', { class: 'badge', title: 'This workspace already held this business', text: 'Known' }) : null),
           h('div', { class: 'small muted' }, [b.domain ?? 'No website address', where, b.vertical, size(b.employees)].filter(Boolean).join(' · ')),
-          h('div', { class: 'small fd-why', text: reason(b) }), analysisLine(id, b)),
+          h('div', { class: 'small fd-why', text: reason(b) }), analysisLine(id, b), listingCheck(b, listings)),
         h('div', { class: 'fd-prov small muted' }, prov ? [h('span', { text: PROVENANCE_WORD[prov.provider] ?? (prov.provider ? `From ${prov.provider[0].toUpperCase()}${prov.provider.slice(1)}` : 'Recorded by hand') }),
           h('span', { text: when(prov.observedAt) })] : null));
     }) : [h('div', { class: 'empty muted', text: 'Nothing in this view.' })]));
@@ -351,11 +374,30 @@ async function runView(id) {
       v.operations.some((o) => o.status === 'FAILED') ? h('p', { class: 'small fd-err', text: v.businesses.length
         ? `The provider stopped answering partway through. The ${plural(v.businesses.length, 'business', 'businesses')} found before that are kept below.`
         : 'The provider did not return any businesses for this run. Nothing was kept.' }) : null),
-    h('section', { 'aria-label': 'Businesses' }, h('div', { class: 'row fd-listhead' }, h('h2', { class: 'fd-h2 grow', text: 'Businesses, in priority order' }), seg), listEl),
+    h('section', { 'aria-label': 'Businesses' }, h('div', { class: 'row fd-listhead' }, h('h2', { class: 'fd-h2 grow', text: 'Businesses, in priority order' }), seg), listEl,
+      v.operations.some((o) => o.provider === 'openstreetmap')
+        ? h('p', { class: 'small muted fd-attrib' }, 'Business data © ', h('a', { href: 'https://www.openstreetmap.org/copyright', target: '_blank', rel: 'noopener', text: 'OpenStreetMap contributors' }),
+          ', open data under the ODbL. A website OpenStreetMap lists is checked by Scopely before anything is claimed; no website listed is never taken as "no website".')
+        : null),
     h('div', { class: 'fd-selbar' }, h('div', { class: 'fd-count' }, count, progress), h('span', { class: 'grow' }), by, selBtn, anaBtn));
 }
 
 // ------------------------------------------------------------------ analysis (Slice 11)
+
+/**
+ * A55: a selected business with no website address. Scopely cannot see that a business has no
+ * website; a person can check its own listing (Google Maps, its Facebook page) and say so, with the
+ * link. Only then can analysis open a Website opportunity; without it, nothing is claimed.
+ */
+function listingCheck(b, listings) {
+  if (b.domain || b.websiteUrl || !['SELECTED', 'ANALYSIS_QUEUED'].includes(b.state) || b.analysis) return null;
+  const input = h('input', { type: 'url', class: 'fd-listing-in', placeholder: 'https://maps.google.com/…', value: listings.get(b.businessId) ?? '', maxlength: 2000,
+    'aria-label': `Link to ${b.name}'s own listing`, oninput: (e) => listings.set(b.businessId, e.target.value) });
+  return h('details', { class: 'fd-listing small' },
+    h('summary', { text: 'No website address is known. Checked its own listing?' }),
+    h('p', { class: 'muted', text: 'Search for the business yourself and open its own listing, such as Google Maps or its Facebook page. If it shows no website, paste that link: Analyse records your check as the evidence for a Website opportunity. If it does show a website, leave this empty.' }),
+    input);
+}
 
 function analysisLine(runId, b) {
   const a = b.analysis;
