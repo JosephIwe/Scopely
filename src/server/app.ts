@@ -840,6 +840,18 @@ export function createHandler(cfg: ServerConfig) {
     return send(res, 200, page, { ...APP_HEADERS, 'content-type': 'text/html; charset=utf-8' });
   }
 
+  /** A54: the centre of a UK postcode, district or town a person typed; refused in their words when unknown. */
+  async function resolvePlace(q: string) {
+    if (!cfg.geocoder?.place) throw new FindRejected('This server cannot look up places, so a search cannot be centred on one.');
+    let at;
+    try { at = await cfg.geocoder.place(q); } catch (err) {
+      if (err instanceof GeocoderUnavailable) throw new HttpError(503, 'The place directory could not be reached. Nothing was changed; try again in a minute.');
+      throw err;
+    }
+    if (!at) throw new FindRejected(`"${q}" is not a UK postcode, postcode district or town the directory knows. Try a full postcode such as CM1 1JE.`);
+    return at;
+  }
+
   // Slice 10, Find: searches, provider discovery runs and selection for analysis.
   async function findApi(req: IncomingMessage, res: ServerResponse, parts: string[]) {
     const m = req.method;
@@ -886,13 +898,7 @@ export function createHandler(cfg: ServerConfig) {
     if (m === 'POST' && a === 'searches' && !b) {
       const input = searchInputFromBody(await jsonBody(req));
       if (input.near) {
-        if (!cfg.geocoder?.place) throw new FindRejected('This server cannot look up places, so a search cannot be centred on one.');
-        let at;
-        try { at = await cfg.geocoder.place(input.near); } catch (err) {
-          if (err instanceof GeocoderUnavailable) throw new HttpError(503, 'The place directory could not be reached. Nothing was saved; try again in a minute.');
-          throw err;
-        }
-        if (!at) throw new FindRejected(`"${input.near}" is not a UK postcode, postcode district or town the directory knows. Try a full postcode such as CM1 1JE.`);
+        const at = await resolvePlace(input.near);
         Object.assign(input, { centerLatitude: at.latitude, centerLongitude: at.longitude, centerLabel: at.label, centerSource: at.source });
       }
       delete input.near;
@@ -914,6 +920,23 @@ export function createHandler(cfg: ServerConfig) {
       const sid = id(b);
       const bd = await jsonBody(req);
       const provider = String(bd.provider ?? '');
+      // A search that searches around a place (an open-data provider) but was saved with only a
+      // town or postcode as its city, and no centre: the centre is resolved now from that place, and
+      // the distance comes from the search or, when it has none, from the person running it.
+      // Nothing is assumed: without a distance the run is refused and asks for one.
+      if (providers.get(provider)?.keyless) {
+        const s = await tx((db) => getSearch(db, sid));
+        if (s && s.kind !== 'list' && !s.geography.center && (s.geography.city || s.geography.postalPrefix)) {
+          const radius = s.geography.radiusKm !== null ? Number(s.geography.radiusKm) : bd.radiusKm === undefined || bd.radiusKm === '' || bd.radiusKm === null ? null : Number(bd.radiusKm);
+          if (radius === null) throw new FindRejected(`Say how far around ${s.geography.city ?? s.geography.postalPrefix} to search, in km.`, 'needs_radius');
+          if (!Number.isFinite(radius) || radius <= 0 || radius > 25) throw new FindRejected('Distance must be more than 0 and at most 25 km.', 'needs_radius');
+          const at = await resolvePlace((s.geography.city ?? s.geography.postalPrefix)!);
+          await tx((db) => db.query(`UPDATE scopely.searches SET center_latitude = $2, center_longitude = $3, center_label = $4, center_source = $5,
+              radius_km = $6, city = NULL WHERE id = $1 AND workspace_id = scopely.current_workspace_id()`,
+            [sid, at.latitude, at.longitude, at.label, at.source, Math.round(radius * 10) / 10]));
+          log(`search ${sid} centred from its place for ${provider}`);
+        }
+      }
       const out = await tx(async (db) => {
         const search = await getSearch(db, sid);
         if (!search) throw new HttpError(404, 'Not found.');
@@ -1152,7 +1175,7 @@ export function createHandler(cfg: ServerConfig) {
       if (err instanceof AssistRejected) return json(res, err.status, { error: err.message, reasons: err.reasons });
       if (err instanceof DeliveryRejected) return json(res, err.status, { error: err.message });
       if (err instanceof VerifyRefused) return json(res, err.status, { error: err.message });
-      if (err instanceof FindRejected) return json(res, err.status, { error: err.message });
+      if (err instanceof FindRejected) return json(res, err.status, { error: err.message, ...(err.reason ? { reason: err.reason } : {}) });
       if (err instanceof ListRejected) return json(res, err.status, { error: err.message, rows: err.rows });
       if (err instanceof AnalysisRefused) return json(res, err.status, { error: err.message });
       if (err instanceof DiscoveryRefused) return json(res, 422, { error: err.message, reason: err.reason });

@@ -99,7 +99,14 @@ function searchRow(s, providers, runs) {
     btn.disabled = true;
     btn.textContent = `Searching ${p.label}…`;
     try {
-      const r = await api('POST', `/searches/${s.searchId}/runs`, { provider: p.key });
+      let r;
+      try { r = await api('POST', `/searches/${s.searchId}/runs`, { provider: p.key }); } catch (err) {
+        // A search saved with a town but no distance: ask for the distance once, then run.
+        if (err.reason !== 'needs_radius') throw err;
+        const km = prompt(`${err.message} (up to 25)`, '5');
+        if (km === null) { btn.disabled = false; btn.textContent = `Run with ${p.label}`; return; }
+        r = await api('POST', `/searches/${s.searchId}/runs`, { provider: p.key, radiusKm: km });
+      }
       const res = r.result;
       if (res.error) toast(`${res.error.message} ${plural(res.discovered, 'business was', 'businesses were')} kept.`, { bad: true });
       else toast(`Found ${plural(res.discovered, 'business', 'businesses')}: ${res.qualification.qualified} qualified.`);
@@ -185,7 +192,7 @@ function newSearchForm(providers = []) {
     save.disabled = true;
     try {
       const body = {
-        name: f.name.value, verticals: f.verticals.value, countryCode: f.countryCode.value, city: f.city.value,
+        name: f.name.value, verticals: f.verticals.value, countryCode: f.countryCode.value,
         near: f.near.value, radiusKm: f.near.value.trim() ? f.radiusKm.value : '',
         employeeMin: f.employeeMin.value, employeeMax: f.employeeMax.value, websitePresence: presence,
         revenueMin: f.revenueMin.value, revenueMax: f.revenueMax.value, revenueCurrency: f.revenueCurrency.value,
@@ -201,10 +208,9 @@ function newSearchForm(providers = []) {
     field('Industries', input('verticals', { maxlength: 400, list: cats.length ? 'fd-cats' : undefined, placeholder: cats.length ? 'dentist, physiotherapist' : '' }),
       cats.length ? `Separated by commas. ${open.label} knows: ${cats.slice(0, 14).join(', ')} and more. Clay uses its own industry names.` : 'As the provider names them, separated by commas.'),
     cats.length ? h('datalist', { id: 'fd-cats' }, cats.map((c) => h('option', { value: c }))) : null,
-    h('div', { class: 'fd-two' }, field('Near', input('near', { maxlength: 80, placeholder: 'Chelmsford, or CM1 1JE', autocomplete: 'off' }), 'A UK postcode, postcode district or town.', true),
-      field('Within (km)', input('radiusKm', { inputmode: 'decimal', value: '5' }), 'Up to 25 km.')),
-    h('div', { class: 'fd-two' }, field('Country', input('countryCode', { maxlength: 2, placeholder: 'GB', autocapitalize: 'characters' }), 'Leave empty for a search near a place: a business is only known to be GB when it lists a UK postcode.', true),
-      field('City', input('city', { maxlength: 120 }), 'For Clay. A search near a place uses the distance instead.', true)),
+    h('div', { class: 'fd-two' }, field('Town or postcode', input('near', { maxlength: 80, placeholder: 'Chelmsford, or CM1 1JE', autocomplete: 'off' }), 'The place to search around: a UK town, postcode district or postcode.', true),
+      field('Within (km)', input('radiusKm', { inputmode: 'decimal', value: '5' }), 'How far around it, up to 25 km.')),
+    field('Country', input('countryCode', { maxlength: 2, placeholder: 'GB', autocapitalize: 'characters' }), 'Leave empty when searching around a place: a business is only known to be GB when it lists a UK postcode.', true),
     h('div', { class: 'fd-two' }, field('Fewest employees', input('employeeMin', { inputmode: 'numeric' }), null, true),
       field('Most employees', input('employeeMax', { inputmode: 'numeric' }), null, true)),
     h('div', { class: 'fd-three' }, field('Lowest revenue', input('revenueMin', { inputmode: 'numeric', placeholder: '1000000' }), null, true),
