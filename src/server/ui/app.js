@@ -28,7 +28,8 @@ async function route() {
   onEscape = null;
   // A40: who is signed in decides what can open. Signed out, only sign-in and join show.
   try { await loadSession(); } catch (err) { $app.replaceChildren(h('main', { class: 'auth' }, h('p', { class: 'auth-err', text: err.message }))); return; }
-  if ((m = hsh.match(/^#\/join(?:\/([A-Za-z0-9_-]{43}))?$/))) return joinView(m[1] ?? null, () => { location.hash = '#/'; route(); });
+  // Every #/join link opens the join screen, even an incomplete or damaged one, so it can say what is wrong.
+  if ((m = hsh.match(/^#\/join(?:\/(.*))?$/s))) return joinView(m[1] ?? null, () => { location.hash = '#/'; route(); });
   if (needsSignIn()) return signInView(() => route());
   if ((m = hsh.match(/^#\/p\/(\d+)\/setup$/))) return setupView(m[1]);
   if ((m = hsh.match(/^#\/p\/(\d+)$/))) return workspaceView(m[1]);

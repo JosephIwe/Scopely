@@ -13,6 +13,8 @@
 // Logs carry ids and status codes only: never site content, contact details or credentials.
 import { type ErrorReport, type ErrorReporter, describeError, errorLine, newRequestId, routeOf } from './observe.js';
 import { ListRejected, createList, listInputFromBody } from '../lists/index.js';
+import { GeocoderUnavailable, type PostcodeGeocoder, locateBusinesses } from '../geo/postcodes.js';
+import { createRequire } from 'node:module';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -93,6 +95,8 @@ export interface ServerConfig {
   probe?: Probe;
   /** Slice 12: prospect intelligence providers, and the same server-side secret resolver for live ones. */
   prospects?: { providers: ProspectProviderRegistry; secrets?: SecretResolver };
+  /** Launch map: places businesses from a UK postcode they already carry (src/geo/postcodes.ts). Off when absent. */
+  geocoder?: PostcodeGeocoder | null;
 }
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
@@ -113,7 +117,22 @@ const STATIC: Record<string, [string, string]> = {
   '/find.js': ['find.js', 'text/javascript; charset=utf-8'],
   '/find.css': ['find.css', 'text/css; charset=utf-8'],
   '/auth.js': ['auth.js', 'text/javascript; charset=utf-8'],
+  '/discover.css': ['discover.css', 'text/css; charset=utf-8'],
 };
+
+/** The map library, served from this server (never a CDN): the page loads it only when a map shows. */
+const MAPLIBRE_DIR = path.dirname(createRequire(import.meta.url).resolve('maplibre-gl/package.json'));
+const VENDOR: Record<string, [string, string]> = {
+  '/vendor/maplibre-gl.mjs': ['dist/maplibre-gl.mjs', 'text/javascript; charset=utf-8'],
+  '/vendor/maplibre-gl-worker.mjs': ['dist/maplibre-gl-worker.mjs', 'text/javascript; charset=utf-8'],
+  '/vendor/maplibre-gl.css': ['dist/maplibre-gl.css', 'text/css; charset=utf-8'],
+};
+/**
+ * The one host the product page may fetch map tiles, glyphs and sprites from: OpenFreeMap (free,
+ * no key, no account, OpenStreetMap data). Nothing about the workspace is sent; the browser asks
+ * for the tiles of the area on screen. Only /app gets this policy.
+ */
+export const MAP_TILE_ORIGIN = 'https://tiles.openfreemap.org';
 
 /** The workspace's own typefaces (the same files the site template embeds). */
 const FONTS: Record<string, string> = {
@@ -137,6 +156,15 @@ const APP_HEADERS: Record<string, string> = {
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
   'cache-control': 'no-store',
+};
+
+/** The product page's policy: the shared one, plus the map's worker, its blob images and the tile host. */
+const APP_PAGE_HEADERS: Record<string, string> = {
+  ...APP_HEADERS,
+  'content-security-policy': APP_HEADERS['content-security-policy']!
+    .replace("img-src 'self' data:", "img-src 'self' data: blob:")
+    .replace("connect-src 'self'", `connect-src 'self' ${MAP_TILE_ORIGIN}`)
+    .replace("object-src 'none'", "worker-src 'self' blob:; object-src 'none'"),
 };
 
 class HttpError extends Error {
@@ -167,6 +195,48 @@ const scope = new AsyncLocalStorage<RequestScope>();
 
 /** Body fields that name the person acting. When someone is signed in, the server fills them with that person, whatever the browser sent. */
 const ACTOR_FIELDS = ['recordedBy', 'draftedBy', 'editedBy', 'approvedBy', 'capturedBy', 'confirmedBy', 'proposedBy', 'requestedBy', 'revokedBy', 'selectedBy', 'verifiedBy', 'createdBy'];
+
+/**
+ * Discover's summary: the workspace's own counts at each step, and the one run where work is
+ * waiting. A business counts once per step however many runs it is in.
+ */
+async function discoverSummary(db: pg.PoolClient) {
+  const c = (await db.query(`
+    WITH ws AS (SELECT scopely.current_workspace_id() AS id),
+    rb AS (SELECT rb.business_id, rb.state, rb.search_run_id FROM scopely.search_run_businesses rb, ws WHERE rb.workspace_id = ws.id)
+    SELECT
+      (SELECT count(*) FROM scopely.businesses b, ws WHERE b.workspace_id = ws.id) AS businesses,
+      (SELECT count(*) FROM scopely.businesses b, ws WHERE b.workspace_id = ws.id AND b.latitude IS NOT NULL) AS located,
+      (SELECT count(*) FROM scopely.businesses b, ws WHERE b.workspace_id = ws.id AND b.latitude IS NULL AND b.postal_code IS NOT NULL) AS postcode_unplaced,
+      (SELECT count(*) FROM scopely.searches s, ws WHERE s.workspace_id = ws.id AND s.kind <> 'list' AND s.archived_at IS NULL) AS searches,
+      (SELECT count(*) FROM scopely.searches s, ws WHERE s.workspace_id = ws.id AND s.kind = 'list') AS lists,
+      (SELECT count(*) FROM scopely.search_runs r, ws WHERE r.workspace_id = ws.id) AS runs,
+      (SELECT count(DISTINCT business_id) FROM rb) AS found,
+      (SELECT count(DISTINCT business_id) FROM rb WHERE state IN ('QUALIFIED','SELECTED','ANALYSIS_QUEUED','ANALYZED','OPPORTUNITY_FOUND','NO_OPPORTUNITY')) AS qualified,
+      (SELECT count(DISTINCT business_id) FROM rb WHERE state = 'NEEDS_REVIEW') AS needs_review,
+      (SELECT count(DISTINCT business_id) FROM rb WHERE state IN ('SELECTED','ANALYSIS_QUEUED')) AS waiting,
+      (SELECT count(DISTINCT business_id) FROM rb WHERE state IN ('ANALYZED','OPPORTUNITY_FOUND','NO_OPPORTUNITY')) AS analysed,
+      (SELECT count(*) FROM scopely.opportunities o, ws WHERE o.workspace_id = ws.id AND o.status <> 'DISMISSED') AS opportunities`)).rows[0];
+  // The newest run with selected businesses still to analyse, else the newest run with qualified ones to choose from.
+  const next = (await db.query(`SELECT r.id, s.name, s.kind, r.started_at,
+        count(*) FILTER (WHERE rb.state IN ('SELECTED','ANALYSIS_QUEUED')) AS waiting,
+        count(*) FILTER (WHERE rb.state IN ('QUALIFIED','NEEDS_REVIEW')) AS to_choose
+      FROM scopely.search_runs r JOIN scopely.searches s ON s.id = r.search_id
+      JOIN scopely.search_run_businesses rb ON rb.search_run_id = r.id
+     WHERE r.workspace_id = scopely.current_workspace_id()
+     GROUP BY r.id, s.name, s.kind, r.started_at
+    HAVING count(*) FILTER (WHERE rb.state IN ('SELECTED','ANALYSIS_QUEUED','QUALIFIED','NEEDS_REVIEW')) > 0
+     ORDER BY count(*) FILTER (WHERE rb.state IN ('SELECTED','ANALYSIS_QUEUED')) > 0 DESC, r.started_at DESC, r.id DESC LIMIT 1`)).rows[0];
+  const n = (v: unknown) => Number(v ?? 0);
+  return {
+    businesses: n(c.businesses), located: n(c.located), postcodeUnplaced: n(c.postcode_unplaced),
+    searches: n(c.searches), lists: n(c.lists), runs: n(c.runs),
+    funnel: { found: n(c.found), qualified: n(c.qualified), needsReview: n(c.needs_review), waiting: n(c.waiting), analysed: n(c.analysed),
+              opportunities: n(c.opportunities) },
+    nextRun: next ? { searchRunId: String(next.id), name: next.name as string, kind: next.kind as string, startedAt: new Date(next.started_at).toISOString(),
+                      waiting: n(next.waiting), toChoose: n(next.to_choose) } : null,
+  };
+}
 
 async function jsonBody(req: IncomingMessage): Promise<Record<string, any>> {
   if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) throw new HttpError(415, 'Send JSON.');
@@ -294,6 +364,23 @@ export function createHandler(cfg: ServerConfig) {
           : { name: w.name, authenticated: false, preview: true };
       }));
     }
+    // GET /api/discover: where the workspace stands on FIND → FILTER → PRIORITISE → ANALYSE →
+    // OPPORTUNITY, counted from its own rows. Nothing is estimated: a count is a count of records.
+    if (m === 'GET' && a === 'discover' && !b) {
+      return json(res, 200, await tx((db) => discoverSummary(db)));
+    }
+    // POST /api/map/locate: place the workspace's unplaced businesses that carry a UK postcode.
+    if (m === 'POST' && a === 'map' && b === 'locate' && !c) {
+      if (!cfg.geocoder) throw new HttpError(409, 'Placing businesses from their postcode is off on this server.');
+      try {
+        const out = await tx((db) => locateBusinesses(db, cfg.geocoder!));
+        log(`map locate checked=${out.checked} located=${out.located} unknown=${out.unknownPostcode}`);
+        return json(res, 200, out);
+      } catch (err) {
+        if (err instanceof GeocoderUnavailable) throw new HttpError(503, `The postcode directory could not be reached (${err.message}). Nothing was changed; try again later.`);
+        throw err;
+      }
+    }
     // GET /api/opportunities
     if (m === 'GET' && a === 'opportunities' && !b) {
       return json(res, 200, await tx(async (db) => {
@@ -305,7 +392,8 @@ export function createHandler(cfg: ServerConfig) {
                       JOIN scopely.evidence e ON e.id = oe.evidence_id JOIN scopely.observations o ON o.id = e.observation_id
                      WHERE oe.opportunity_id = ANY ($1) AND e.workspace_id = scopely.current_workspace_id()
                      ORDER BY oe.opportunity_id, CASE e.confidence WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END, e.id`, [ids]);
-        const reviews = await db.query(`SELECT id, rating, review_count FROM scopely.businesses WHERE id = ANY ($1) AND workspace_id = scopely.current_workspace_id()`,
+        const reviews = await db.query(`SELECT id, rating, review_count, latitude, longitude, geo_source, postal_code, region, country_code
+                       FROM scopely.businesses WHERE id = ANY ($1) AND workspace_id = scopely.current_workspace_id()`,
           [feed.map((f) => f.business.businessId)]);
         const info = await opportunityBuildInfo(db, ids);
         const captures = await db.query(`SELECT DISTINCT p.opportunity_id FROM scopely.fix_captures c JOIN scopely.build_projects p ON p.id = c.project_id
@@ -327,6 +415,10 @@ export function createHandler(cfg: ServerConfig) {
             // Slice 8: what the feed and its filters show. All stored values.
             stage: stageOf(f), captured: captured.has(f.opportunityId), sellState: f.sellState, deliveryState: f.deliveryState,
             vertical: f.business.vertical, city: f.business.city, websiteStatus: f.business.websiteStatus,
+            // Launch map: a position only when a named source gave one (geoSource says which); else null.
+            businessId: f.business.businessId, region: r?.region ?? null, countryCode: r?.country_code ?? null, postcode: r?.postal_code ?? null,
+            location: r && r.latitude !== null && r.geo_source
+              ? { latitude: Number(r.latitude), longitude: Number(r.longitude), source: r.geo_source as string } : null,
             rating: r?.rating === null || r?.rating === undefined ? null : String(r.rating), reviewCount: r?.review_count ?? null,
             observed: i ? { text: i.visible_text ?? null, quote: i.quote, url: i.url, claimState: i.claim_state, observedAt: new Date(i.observed_at).toISOString() } : null,
           };
@@ -779,7 +871,15 @@ export function createHandler(cfg: ServerConfig) {
       const input = listInputFromBody(await jsonBody(req));
       const out = await tx((db) => createList(db, input));
       log(`list ${out.listId} run ${out.searchRunId} ${out.source} rows=${out.counts.rows} new=${out.counts.new} existing=${out.counts.existing} repeats=${out.counts.repeats} review=${out.counts.needsReview}`);
-      return json(res, 200, out);
+      // Best effort, after the list is saved: place the rows that carry a UK postcode. A directory
+      // that cannot be reached leaves them unplaced (Discover offers to try again); the list stands.
+      let located: number | null = null;
+      if (cfg.geocoder && input.entries.some((e) => e.postcode)) {
+        try {
+          located = (await tx((db) => locateBusinesses(db, cfg.geocoder!, { businessIds: [...new Set(out.rows.map((r) => r.businessId))] }))).located;
+        } catch (err) { if (!(err instanceof GeocoderUnavailable)) throw err; }
+      }
+      return json(res, 200, { ...out, located });
     }
     // POST /api/searches: save an ICP.
     if (m === 'POST' && a === 'searches' && !b) {
@@ -986,7 +1086,12 @@ export function createHandler(cfg: ServerConfig) {
       if (secure) res.setHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
       if (req.method === 'GET' && STATIC[url.pathname]) {
         const [file, type] = STATIC[url.pathname]!;
-        return send(res, 200, await readFile(path.join(UI_DIR, file)), { ...APP_HEADERS, 'content-type': type });
+        const page = url.pathname === '/app' || url.pathname === '/app/';
+        return send(res, 200, await readFile(path.join(UI_DIR, file)), { ...(page ? APP_PAGE_HEADERS : APP_HEADERS), 'content-type': type });
+      }
+      if (req.method === 'GET' && VENDOR[url.pathname]) {
+        const [file, type] = VENDOR[url.pathname]!;
+        return send(res, 200, await readFile(path.join(MAPLIBRE_DIR, file)), { ...APP_HEADERS, 'content-type': type, 'cache-control': 'public, max-age=86400' });
       }
       if (req.method === 'GET' && FONTS[url.pathname]) {
         return send(res, 200, await readFile(path.join(FONT_DIR, FONTS[url.pathname]!)),

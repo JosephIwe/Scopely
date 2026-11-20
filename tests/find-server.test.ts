@@ -108,7 +108,7 @@ describe('saving a search', () => {
     const usd = await srv.call('POST', '/api/searches', { ...ICP, revenueMin: '1000000', revenueMax: '5000000', revenueCurrency: 'usd' });
     expect(usd.status).toBe(200);
     const gbp = await srv.call('POST', '/api/searches', { ...ICP, name: 'In pounds', revenueMin: '800000', revenueCurrency: 'GBP' });
-    const rows = (await db().query('SELECT id::text, revenue_min, revenue_max, revenue_currency FROM searches WHERE id = ANY ($1) ORDER BY id',
+    const rows = (await db().query('SELECT id::text, revenue_min, revenue_max, revenue_currency FROM searches WHERE id = ANY ($1) ORDER BY searches.id',
       [[usd.json().searchId, gbp.json().searchId]])).rows;
     expect(rows).toEqual([
       { id: usd.json().searchId, revenue_min: '1000000.00', revenue_max: '5000000.00', revenue_currency: 'USD' },

@@ -115,9 +115,88 @@ export function renderCaseFile(cf, ctx) {
     h('div', { class: 'scroll' },
       h('header', { class: 'sec intro' },
         h('span', { class: 'eyebrow', text: [cf.business.vertical, cf.business.location.city].filter(Boolean).join(' · ') || 'Business' }),
-        h('h2', { class: 'bizName', text: cf.business.name }), readiness(cf)),
+        h('h2', { class: 'bizName', text: cf.business.name }), journey(cf), readiness(cf)),
       situation(cf, top), evidence(cf, ctx), business(cf, ctx), service(cf), build(cf), beforeAfter(cf), buyer(cf, ctx), outreach(cf, ctx), sell(cf, ctx), deliver(cf, ctx)));
   return root;
+}
+
+// ---------------------------------------------------------------- the journey (launch pass)
+
+const SELL_STEP = { NOT_STARTED: 'Not started', DRAFTED: 'Draft written', APPROVED: 'Draft approved', SENT: 'Sent by you', PITCHED: 'Pitched',
+  REPLIED: 'Replied', WON: 'Won', LOST: 'Lost' };
+const BUILD_STEP = { DEMO_DRAFT: 'Draft built', DEMO_APPROVED: 'Approved', DEMO_SHOWN: 'Shown to owner', DELIVERY_DRAFT: 'Delivery draft',
+  DELIVERY_APPROVED: 'Delivery approved', DELIVERY_SHOWN: 'Delivery shown' };
+const VERIFY_STEP = { VERIFIED_PASSED: 'Fixed, re-checked', VERIFIED_FAILED: 'Re-check failed', VERIFIED_NOT_OBSERVABLE: 'Not observable',
+  VERIFIED_CLIENT_REQUIRED_UNCONFIRMED: 'Client to confirm' };
+
+/**
+ * Where this opportunity stands on FIND → PROVE → BUILD → SELL → DELIVER → VERIFY → PAID, and the one
+ * next step. Every state is the server's; this only arranges them. Each step jumps to its section.
+ */
+export function journeyOf(cf) {
+  const observed = cf.evidence.filter((e) => e.claimState === 'OBSERVED').length;
+  const inferred = cf.evidence.filter((e) => e.claimState === 'INFERRED').length;
+  const src = cf.business.sources[0];
+  const s = cf.sell;
+  const won = s.sellState === 'WON';
+  const delivered = s.deliveryState === 'DELIVERED' || s.deliveryState.startsWith('VERIFIED_');
+  const steps = [
+    { key: 'find', label: 'Find', state: 'done', note: src ? `${src.sourceType === 'manual' || src.sourceType === 'csv_import' ? 'Added by you' : `From ${src.provider ?? src.sourceType}`}` : 'Recorded', sec: '03' },
+    { key: 'prove', label: 'Prove', state: observed ? 'done' : 'cur', sec: '02',
+      note: observed ? `${observed} observed${inferred ? `, ${inferred} inferred` : ''}` : inferred ? `${inferred} inferred only` : 'No evidence' },
+    { key: 'build', label: 'Build', sec: '05', state: cf.build.buildState !== 'NONE' ? 'done' : '',
+      note: cf.build.buildState !== 'NONE' ? BUILD_STEP[cf.build.buildState] ?? 'Built' : cf.build.canStart ? 'Ready to build' : 'Not built' },
+    { key: 'sell', label: 'Sell', sec: '09', state: won ? 'done' : s.sellState === 'LOST' ? 'blocked' : '',
+      note: s.sellState === 'NOT_STARTED' ? (cf.readiness.status === 'READY' ? 'Ready to contact' : cf.readiness.status === 'SUPPRESSED' ? 'Do not contact' : 'Not ready') : SELL_STEP[s.sellState] },
+    { key: 'deliver', label: 'Deliver', sec: '10', state: delivered ? 'done' : '', note: delivered ? 'Delivered' : won ? 'To deliver' : 'After a win' },
+    { key: 'verify', label: 'Verify', sec: '10', state: s.deliveryState === 'VERIFIED_PASSED' ? 'done' : s.deliveryState.startsWith('VERIFIED_') ? 'blocked' : '',
+      note: VERIFY_STEP[s.deliveryState] ?? (delivered ? 'To re-check' : 'After delivery') },
+    { key: 'paid', label: 'Paid', sec: '09', state: s.paymentStatus === 'paid_in_full' || s.paymentStatus === 'paid_more_than_agreed' ? 'done' : '',
+      note: PAYMENT_WORD[s.paymentStatus] ?? 'Not won' },
+  ];
+  // The next step: the first thing that is not done, in the order the work happens.
+  let next;
+  if (cf.business.demo) next = { text: 'This is demo data: a fictional business for trying Scopely. Never contact it.', sec: null };
+  else if (!observed) next = { text: 'Scopely has no observed evidence here yet. Re-check the page before relying on it.', sec: '02' };
+  else if (cf.outreach.recheckNeeded.length) next = { text: 'Re-check the strongest finding on a fresh copy of the page before it reaches the business.', sec: '02' };
+  else if (cf.build.buildState === 'NONE' && cf.build.canStart) next = { text: `Build the ${cf.path === 'WEBSITE' ? 'website' : 'fix'} as a private draft you can show.`, sec: '05' };
+  else if (s.sellState === 'LOST') next = { text: 'Closed as lost. The record stays for learning which opportunities pay.', sec: '09' };
+  else if (s.sellState === 'NOT_STARTED' && cf.readiness.status !== 'READY') {
+    const miss = cf.readiness.checks.find((c) => c.state !== 'done');
+    next = { text: miss ? `Before contacting them: ${miss.label.toLowerCase()}.` : 'Complete prospect readiness.', sec: miss ? CHECK_SECTION[miss.key] : '07' };
+  } else if (s.sellState === 'NOT_STARTED' || s.sellState === 'DRAFTED') next = { text: s.sellState === 'DRAFTED' ? 'Review and approve the outreach draft.' : 'Write the outreach draft from the evidence.', sec: '08' };
+  else if (s.sellState === 'APPROVED') next = { text: 'Send the approved message yourself, then record that you sent it.', sec: '08' };
+  else if (s.sellState === 'SENT' || s.sellState === 'PITCHED') next = { text: 'When they answer, record the reply.', sec: '09' };
+  else if (s.sellState === 'REPLIED') next = { text: 'Record the outcome: won (with the agreed amount) or lost.', sec: '09' };
+  else if (won && !delivered) next = { text: 'Deliver the work, then record the delivery.', sec: '10' };
+  else if (won && delivered && !s.deliveryState.startsWith('VERIFIED_')) next = { text: 'Re-check the original evidence on the live page to verify the fix.', sec: '10' };
+  else if (won && s.paymentStatus !== 'paid_in_full' && s.paymentStatus !== 'paid_more_than_agreed') next = { text: 'Record the money when it is received. Only money received counts as revenue.', sec: '09' };
+  else next = { text: 'Complete: delivered, verified and paid.', sec: null };
+  return { steps, next };
+}
+
+function journey(cf) {
+  const { steps, next } = journeyOf(cf);
+  const cur = steps.findIndex((x) => x.state !== 'done' && x.state !== 'blocked');
+  const jump = (sec) => () => document.getElementById(`cf-${sec}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const s = cf.sell;
+  const cur3 = s.currency ?? cf.service.currency;
+  return h('div', { class: 'cf-journey' },
+    h('ol', { class: 'cf-steps', 'aria-label': 'Where this opportunity stands' }, steps.map((x, i) => h('li', { class: x.state || (i === cur ? 'cur' : '') },
+      h('button', { type: 'button', class: 'lnk', onclick: jump(x.sec) }, h('span', { class: 'k', text: x.label })), h('small', { text: x.note })))),
+    h('p', { class: 'cf-nextstep' }, h('span', { class: 'eyebrow', text: 'Next step' }), h('span', { text: next.text }),
+      next.sec ? h('button', { type: 'button', class: 'lnk', onclick: jump(next.sec) }, `Go to ${next.sec}`) : null),
+    // How this turns into revenue: the catalog's proposal, what the business agreed, what was received. Never one for another.
+    h('div', { class: 'cf-money', 'aria-label': 'Revenue' },
+      h('div', {}, h('span', { text: 'Proposed' }), h('b', { text: s.quotedAmount !== null ? money(cur3, s.quotedAmount) : '—' })),
+      h('div', {}, h('span', { text: 'Agreed' }), h('b', { text: s.agreedAmount !== null ? money(cur3, s.agreedAmount) : '—' })),
+      h('div', {}, h('span', { text: 'Received' }), h('b', { text: s.paidAmount !== null ? money(cur3, s.paidAmount) : '—' }))),
+    h('p', { class: 'cf-key', 'aria-label': 'What the labels mean' },
+      h('span', {}, h('span', { class: 'badge b-obs', text: 'OBSERVED' }), 'seen on their page'),
+      h('span', {}, h('span', { class: 'badge b-inf', text: 'INFERRED' }), 'reasoned from what was seen'),
+      h('span', {}, h('span', { class: 'badge b-rev', text: 'NOT OBSERVABLE' }), 'could not be seen'),
+      h('span', {}, h('span', { class: 'badge b-rev', text: 'PROPOSED' }), 'Scopely’s suggestion, not agreed'),
+      h('span', {}, h('span', { class: 'badge b-ver', text: 'VERIFIED' }), 're-checked after delivery')));
 }
 
 // ---------------------------------------------------------------- prospect readiness (Slice 9)

@@ -50,7 +50,7 @@ describe('CSV', () => {
 
   it('reads columns by header in any order, ignores others and says so', () => {
     const r = csvEntries('Domain,Notes,Business Name,Company_Number\nA.co.uk,call back,Alpha,123\n');
-    expect(r.rows).toEqual([{ row: 2, name: 'Alpha', domain: 'A.co.uk', companyNumber: '123' }]);
+    expect(r.rows).toEqual([{ row: 2, name: 'Alpha', domain: 'A.co.uk', companyNumber: '123', town: '', postcode: '' }]);
     expect(r.ignoredColumns).toEqual(['Notes']);
     expect(() => csvEntries('business,website\nx,y')).not.toThrow();
     expect(() => csvEntries('name,phone\nx,1')).toThrow(/domain column/);

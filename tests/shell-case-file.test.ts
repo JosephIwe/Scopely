@@ -123,14 +123,15 @@ describe('product shell routes (U2)', () => {
     expect(() => expectNoShippedStagePlanned('<p class="planned"><b>Map</b> <span class="plan">PLANNED</span></p>')).not.toThrow();
   });
 
-  it('keeps the map a placeholder: no provider, tiles or coordinates (U3)', async () => {
+  it('the map is real (A51): MapLibre from this server, OpenFreeMap tiles, no geocoding in the browser, nothing PLANNED', async () => {
     const { call } = await start();
     const slot = (await call('GET', '/map-slot.js')).text;
     const shell = (await call('GET', '/shell.js')).text;
-    for (const src of [slot, shell]) {
-      expect(src).not.toMatch(/leaflet|mapbox|maplibre|googleapis|openstreetmap|tile\.|latitude|longitude/i);
-    }
-    expect(slot).toContain('PLANNED');
+    expect(slot).toContain("import('/vendor/maplibre-gl.mjs')");
+    expect(slot).not.toMatch(/leaflet|mapbox|googleapis|nominatim|geocod|unpkg|jsdelivr|cdnjs/i);
+    expect(slot).not.toContain('PLANNED');
+    // The feed never computes a position: it passes the server's location through.
+    expect(shell).not.toMatch(/latitude|longitude/);
   });
 
   it('says whose workspace the app acts for, and that no one is signed in', async () => {

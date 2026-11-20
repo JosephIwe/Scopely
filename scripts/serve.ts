@@ -39,6 +39,7 @@
 //
 // Analysis (Slice 11): analysing a selected business requests its own website with the SSRF-safe
 // probe (src/analysis/fetch.ts); reserved .example hosts are answered from fixtures/demo-pages.
+import { postcodesIoGeocoder } from '../src/geo/postcodes.js';
 import { randomBytes } from 'node:crypto';
 import { assistProviderFromEnv } from '../src/ai/anthropic.js';
 import type { ModelProvider } from '../src/build/agents.js';
@@ -127,6 +128,8 @@ const handler = createHandler({
   probe: new DemoAwareProbe(),
   discovery,
   prospects,
+  // Launch map: place businesses from a UK postcode on file (postcodes.io, free, no key). SCOPELY_GEOCODER=off turns it off.
+  geocoder: process.env.SCOPELY_GEOCODER === 'off' ? null : postcodesIoGeocoder(),
   reporter,
   log: (l: string) => { (l.startsWith('error ') ? process.stderr : process.stdout).write(`${l}\n`); },
 });

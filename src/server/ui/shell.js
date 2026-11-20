@@ -1,14 +1,16 @@
-// The Scopely product shell (Slice 8): the top bar with the stage navigation, the filter bar, the
-// map's place (deferred, U3), the opportunity feed and the Case File. Built to the approved
-// dashboard design; every value on screen comes from the server, and stages and build/sell
-// states are the server's, never worked out here.
+// The Scopely product shell (Slice 8, launch pass): the top bar with the stage navigation, the
+// filter bar, the opportunity map (A51), the feed and the Case File. Discover is the operating
+// surface: it says where the workspace stands on FIND → QUALIFY → PRIORITISE → ANALYSE →
+// OPPORTUNITY from its own counts (GET /api/discover), names the one next step, and shows every
+// opportunity on the list and, where a source gave a position, on the map. Every value on screen
+// comes from the server; stages and build/sell states are the server's, never worked out here.
 //
 // Routes (hash, under /app):
 //   #/                 Discover: every opportunity
 //   #/stage/<key>      one stage: opportunities, build, sell, deliver, verify
 //   #/o/<id>           the Case File of one opportunity
 // The builders keep their own routes (#/p/…, #/f/…) and open unchanged; Find is #/find (find.js).
-import { $app, api, fail, go, h, money } from './lib.js';
+import { $app, api, fail, go, h, money, plural, toast } from './lib.js';
 import { mountMapSlot } from './map-slot.js';
 import { renderCaseFile } from './case-file.js';
 import { accountBar } from './auth.js';
@@ -29,14 +31,23 @@ const SELL_WORD = { DRAFTED: 'Pitch drafted', APPROVED: 'Pitch approved', SENT: 
 const BUILD_WORD = { DEMO_DRAFT: 'Draft built', DEMO_APPROVED: 'Approved', DEMO_SHOWN: 'Shown to owner', DELIVERY_DRAFT: 'Delivery draft', DELIVERY_APPROVED: 'Delivery approved', DELIVERY_SHOWN: 'Delivery shown' };
 
 // The shell's own state survives route changes, so opening a Case File keeps the stage and filters.
-const S = { stage: 'discover', f: { path: 'all', vertical: 'all', city: 'all' }, items: null, workspace: null, open: null, hov: null };
+const S = { stage: 'discover', f: { path: 'all', vertical: 'all', city: 'all', q: '', sort: 'new' }, items: null, summary: null, workspace: null, open: null, hov: null };
 let mounted = null;
 
 const pathOf = (o) => (o.path === 'WEBSITE' ? 'web' : o.path === 'FIX' ? 'fix' : 'other');
 const stageDef = () => STAGES.find((s) => s.key === S.stage) ?? STAGES[0];
 const inStage = (o, def = stageDef()) => !def.stage || o.stage === def.stage;
+const text = (o) => [o.business, o.issue, o.city, o.vertical, o.domain, o.service].filter(Boolean).join(' ').toLowerCase();
 const matches = (o) => (S.f.path === 'all' || pathOf(o) === S.f.path)
-  && (S.f.vertical === 'all' || o.vertical === S.f.vertical) && (S.f.city === 'all' || o.city === S.f.city);
+  && (S.f.vertical === 'all' || o.vertical === S.f.vertical) && (S.f.city === 'all' || o.city === S.f.city)
+  && (!S.f.q || text(o).includes(S.f.q.toLowerCase()));
+const CONF = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+/** Prioritise: newest first (the feed's own order), strongest evidence first, or highest quoted price first. */
+const SORTS = {
+  new: null,
+  evidence: (a, b) => (CONF[a.topConfidence] ?? 3) - (CONF[b.topConfidence] ?? 3) || b.evidenceCount - a.evidenceCount,
+  price: (a, b) => (b.price === null ? -1 : Number(b.price)) - (a.price === null ? -1 : Number(a.price)),
+};
 
 export function stageHash(key) { return key === 'discover' ? '#/' : `#/stage/${key}`; }
 
@@ -71,25 +82,30 @@ function mount() {
   const feedSub = h('p');
   const split = h('div', { class: 'split' });
   const planned = h('div');
+  const rail = h('nav', { class: 'ds-rail', 'aria-label': 'Where you are' });
+  const next = h('div', { class: 'ds-next' });
   const feed = h('div', { class: 'feed', role: 'list' });
-  const feedView = h('div', { class: 'sh-feedview' }, h('div', { class: 'pHead' }, h('div', {}, feedTitle, feedSub), split),
-    h('div', { class: 'scroll' }, planned, feed));
+  const feedView = h('div', { class: 'sh-feedview' }, h('div', { class: 'pHead' }, h('div', {}, feedTitle, feedSub), rail, split),
+    h('div', { class: 'scroll' }, next, planned, feed));
   const caseView = h('div', { class: 'sh-caseview', hidden: true });
   const panel = h('aside', { class: 'sh-panel', 'aria-label': 'Opportunities' }, feedView, caseView);
   const root = h('div', { class: 'shell' }, top, h('div', { class: 'sh-body' }, stage, panel));
   $app.replaceChildren(root);
   const map = mountMapSlot(mapEl);
   map.onSelect = (id) => go(`#/o/${id}`);
-  return { root, stages, stageSel, ws, filters, map, feedTitle, feedSub, split, planned, feed, feedView, caseView, panel };
+  return { root, stages, stageSel, ws, filters, map, feedTitle, feedSub, split, planned, rail, next, feed, feedView, caseView, panel };
 }
 
 async function loadFeed() {
-  const [items, workspace] = await Promise.all([
+  if (!Array.isArray(S.items)) mounted.feed.replaceChildren(...[0, 1, 2, 3].map(() => h('div', { class: 'skeleton card-sk' })));
+  const [items, workspace, summary] = await Promise.all([
     api('GET', '/opportunities').catch((err) => ({ error: err.message })),
     S.workspace ? Promise.resolve(S.workspace) : api('GET', '/workspace').catch(() => null),
+    api('GET', '/discover').catch(() => null),
   ]);
   S.workspace = workspace;
   S.items = items;
+  S.summary = summary;
   const u = mounted;
   u.ws.replaceChildren(...accountBar());
   drawStages();
@@ -116,33 +132,137 @@ function drawFilters() {
   const seg = h('div', { class: 'seg sh-seg', role: 'group', 'aria-label': 'Opportunity type' },
     [['all', 'All', null], ['web', 'Needs a website', 'web'], ['fix', 'Needs a fix', 'fix']].map(([v, label, dot]) =>
       h('button', { 'aria-pressed': String(S.f.path === v), onclick: () => { S.f.path = v; drawFilters(); drawFeed(); } }, dot ? h('i', { class: `dot ${dot}` }) : null, label)));
-  mounted.filters.replaceChildren(select('Location', 'city', 'All locations', opts('city')), select('Industry', 'vertical', 'All industries', opts('vertical')), seg);
+  const search = h('label', { class: 'fl fq' }, h('span', { text: 'Search' }),
+    h('input', { type: 'search', value: S.f.q, placeholder: 'Business, issue, town', 'aria-label': 'Search opportunities',
+      oninput: (e) => { S.f.q = e.target.value.trim(); drawFeed(); } }));
+  const sort = h('label', { class: 'fl' }, h('span', { text: 'Prioritise' }),
+    h('select', { onchange: (e) => { S.f.sort = e.target.value; drawFeed(); } },
+      [['new', 'Newest first'], ['evidence', 'Strongest evidence'], ['price', 'Highest quote']].map(([v, l]) => h('option', { value: v, selected: S.f.sort === v }, l))));
+  mounted.filters.replaceChildren(search, select('Location', 'city', 'All locations', opts('city')), select('Industry', 'vertical', 'All industries', opts('vertical')), seg, sort);
 }
 
 function drawFeed() {
   const u = mounted;
   const def = stageDef();
+  u.rail.replaceChildren(...(def.key === 'discover' ? rail(S.summary) : []));
+  u.rail.hidden = def.key !== 'discover' || !S.summary;
   if (!Array.isArray(S.items)) {
     u.feedTitle.textContent = def.label;
     u.feedSub.textContent = '';
     u.split.replaceChildren();
+    u.next.replaceChildren();
     u.feed.replaceChildren(h('div', { class: 'empty' }, h('b', { text: 'Opportunities could not be loaded' }), S.items?.error ?? '',
       h('p', {}, h('button', { class: 'btn', style: 'margin-top:12px', onclick: () => shellView(location.hash || '#/', { setEscape: () => undefined }) }, 'Try again'))));
+    u.map.update([], { anyBusinesses: false });
     return;
   }
   const list = S.items.filter((o) => matches(o) && inStage(o));
-  u.feedTitle.textContent = def.key === 'discover' ? 'Opportunities found' : def.label;
-  u.feedSub.textContent = def.sub;
+  if (SORTS[S.f.sort]) list.sort(SORTS[S.f.sort]);
+  u.feedTitle.textContent = def.key === 'discover' ? 'Opportunities' : def.label;
+  const filtered = S.items.filter((o) => inStage(o)).length;
+  u.feedSub.textContent = def.key === 'discover'
+    ? (S.items.length ? `${list.length === S.items.length ? 'All' : `${list.length} of`} ${plural(S.items.length, 'opportunity', 'opportunities')} Scopely found` : 'Businesses with an observed problem you can sell a fix for')
+    : `${def.sub}${filtered !== list.length ? ` · ${list.length} of ${filtered} shown` : ''}`;
   const web = list.filter((o) => o.path === 'WEBSITE').length;
   const fix = list.filter((o) => o.path === 'FIX').length;
   u.split.replaceChildren(h('div', {}, h('span', {}, h('i', { class: 'dot web' }), 'Need a website'), h('b', { text: String(web) })),
     h('div', {}, h('span', {}, h('i', { class: 'dot fix' }), 'Need a fix'), h('b', { text: String(fix) })));
-  u.planned.replaceChildren(def.planned ? h('div', { class: 'planned' }, h('b', { text: `${def.label} is planned` }),
-    def.key === 'deliver' ? 'Won work is listed here. Scopely does not track delivery yet.' : 'Scopely will re-check the original evidence after delivery. Nothing is verified yet.') : '');
-  u.feed.replaceChildren(...(list.length ? list.map(card) : [h('div', { class: 'empty' }, h('b', { text: 'Nothing here yet' }),
-    S.items.length === 0 ? 'When a search finds a business with an observed problem you can sell a fix for, it appears here.'
-      : def.key === 'discover' ? 'No opportunities match these filters.' : `Opportunities appear here as you move them to ${def.label.toLowerCase()}.`)]));
-  u.map.update(list);
+  u.split.hidden = S.items.length === 0;
+  u.next.replaceChildren(...(def.key === 'discover' ? nextStep(S.summary, S.items) : []));
+  u.planned.replaceChildren('');
+  u.feed.replaceChildren(...(list.length ? list.map(card) : [emptyState(def)]));
+  const placeable = S.summary?.postcodeUnplaced ?? 0;
+  u.map.update(list, { anyBusinesses: (S.summary?.businesses ?? 0) > 0, placeable, onLocate: locate });
+}
+
+/** FIND → QUALIFY → PRIORITISE → ANALYSE → OPPORTUNITY, each a count of the workspace's own records. */
+function rail(sm) {
+  if (!sm) return [];
+  const f = sm.funnel;
+  const run = sm.nextRun ? `#/find/run/${sm.nextRun.searchRunId}` : '#/find';
+  const steps = [
+    ['Find', sm.businesses, 'businesses found', '#/find'],
+    ['Qualify', f.qualified, 'match your criteria', run],
+    ['Prioritise', f.waiting, 'chosen to analyse', run],
+    ['Analyse', f.analysed, 'analysed', run],
+    ['Opportunity', f.opportunities, 'with a problem to sell', '#/'],
+  ];
+  const cur = sm.businesses === 0 ? 0 : f.waiting > 0 ? 3 : f.opportunities > 0 ? 4 : f.analysed === 0 ? 2 : 3;
+  return [h('ol', {}, steps.map(([label, n, sub, href], i) => h('li', { class: i < cur ? 'done' : i === cur ? 'cur' : '' },
+    h('a', { href, title: `${n} ${sub}` }, h('span', { class: 'k', text: label }), h('b', { text: String(n) }), h('small', { text: sub })))))];
+}
+
+/** The one thing to do next, from the counts. Never a guess about the future. */
+function nextStep(sm, items) {
+  if (!sm) return [];
+  const f = sm.funnel;
+  const card = (eyebrow, title, body, ...actions) => h('section', { class: 'ds-card', 'aria-label': 'Next step' },
+    h('span', { class: 'eyebrow', text: eyebrow }), h('h3', { text: title }), body ? h('p', { text: body }) : null, h('div', { class: 'row' }, ...actions));
+  if (sm.businesses === 0) return [intro()];
+  if (f.waiting > 0 && sm.nextRun) {
+    return [card('Next step · analyse', `${plural(sm.nextRun.waiting, 'business is', 'businesses are')} waiting to be analysed`,
+      `In “${sm.nextRun.name}”. Scopely reads each website and records only what it observes.`,
+      h('a', { class: 'btn primary', href: `#/find/run/${sm.nextRun.searchRunId}` }, 'Open and analyse'))];
+  }
+  if (items.length === 0 && sm.nextRun && sm.nextRun.toChoose > 0) {
+    return [card('Next step · prioritise', `Choose which businesses to analyse`,
+      `${plural(sm.nextRun.toChoose, 'business', 'businesses')} in “${sm.nextRun.name}” passed or need a look at your criteria.`,
+      h('a', { class: 'btn primary', href: `#/find/run/${sm.nextRun.searchRunId}` }, 'Choose businesses'))];
+  }
+  if (items.length === 0) {
+    return [card('Next step · find more', f.analysed ? 'No observed problems yet' : 'Nothing analysed yet',
+      f.analysed ? `Scopely analysed ${plural(f.analysed, 'business', 'businesses')} and found no problem it can prove and sell a fix for. That is a result, not an error: add more businesses.`
+        : 'Add businesses, then analyse them.',
+      h('a', { class: 'btn primary', href: '#/find' }, 'Find businesses'))];
+  }
+  const fresh = items.filter((o) => o.stage === 'OPPORTUNITIES');
+  if (fresh.length) {
+    const top = [...fresh].sort(SORTS.evidence)[0];
+    return [card('Next step · prove and build', `Review ${top.business}`,
+      `${top.issue ?? 'An observed problem'}. Open the Case File to see the evidence, then build the ${top.path === 'WEBSITE' ? 'website' : 'fix'}.`,
+      h('a', { class: 'btn primary', href: `#/o/${top.opportunityId}` }, 'Open Case File'))];
+  }
+  return [];
+}
+
+/** First run: what Scopely is and how to start. */
+function intro() {
+  const providerNote = 'A search uses your own Clay connection. No connection yet? Add businesses by website instead: it needs no provider.';
+  return h('section', { class: 'ds-intro', 'aria-label': 'Get started' },
+    h('span', { class: 'eyebrow', text: 'Welcome to Scopely' }),
+    h('h3', { text: 'Find businesses with real problems. Prove them. Build the fix. Sell it.' }),
+    h('ol', { class: 'ds-how' },
+      h('li', {}, h('b', { text: 'Find' }), 'Add businesses you know by website, or search a provider.'),
+      h('li', {}, h('b', { text: 'Analyse' }), 'Scopely reads each website and records what it observes: a broken contact link, no booking path, no website.'),
+      h('li', {}, h('b', { text: 'Prove and build' }), 'Each problem becomes a Case File with its evidence. Build the website or the fix as a private draft.'),
+      h('li', {}, h('b', { text: 'Sell, deliver, get paid' }), 'Draft the outreach, send it yourself, then record the reply, the delivery, the re-check and the money received.')),
+    h('div', { class: 'row' }, h('a', { class: 'btn primary', href: '#/find' }, 'Add your first businesses')),
+    h('p', { class: 'hint', text: providerNote }));
+}
+
+function emptyState(def) {
+  if (S.items.length === 0) {
+    return h('div', { class: 'empty' }, h('b', { text: 'No opportunities yet' }),
+      'An opportunity appears when Scopely analyses a business and observes a problem you can sell a fix for. Nothing here is made up, so this list starts empty.');
+  }
+  if (def.key === 'discover') {
+    return h('div', { class: 'empty' }, h('b', { text: 'No opportunities match these filters' }),
+      h('p', {}, h('button', { class: 'btn sm', style: 'margin-top:10px', onclick: () => { S.f = { ...S.f, path: 'all', vertical: 'all', city: 'all', q: '' }; drawFilters(); drawFeed(); } }, 'Clear filters')));
+  }
+  const word = { opportunities: 'Opportunities you have not built yet', build: 'Opportunities with a built draft', sell: 'Opportunities you have pitched',
+    deliver: 'Won work waiting to be delivered', verify: 'Delivered work that has been re-checked' }[def.key];
+  return h('div', { class: 'empty' }, h('b', { text: 'Nothing here yet' }), `${word ?? 'Opportunities'} show here.`);
+}
+
+async function locate(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await api('POST', '/map/locate');
+    toast(r.located ? `Placed ${plural(r.located, 'business', 'businesses')} on the map from ${r.located === 1 ? 'its postcode' : 'their postcodes'}.`
+      : 'No business could be placed: the postcode directory does not know those postcodes.');
+    await loadFeed();
+    drawFeed();
+  } catch (err) { if (btn) btn.disabled = false; fail(err); }
 }
 
 /** The steps of each path, so a website and a fix never read as the same thing. */

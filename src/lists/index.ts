@@ -8,9 +8,12 @@
 //
 // What this never does: call a provider (the database refuses one on a list run), look up or
 // enrich contacts, or record a fact the person did not type. Everything a list entry does not say
-// (industry, location, size, revenue, structure) stays unknown. A domain is checked for shape and
+// (industry, size, revenue, structure) stays unknown. A town and a UK postcode are optional: when a
+// person types them they are recorded as typed (the postcode in its canonical form), and the
+// postcode is what lets the map place the business (src/geo/postcodes.ts). A domain is checked for shape and
 // for SSRF safety here, and again by the analysis probe (DNS pinning, private ranges, redirects).
 import { assertCapturableUrl } from '../build/fix/fetch.js';
+import { normalisePostcode } from '../geo/postcodes.js';
 import type { Db } from '../tenancy/index.js';
 import { criteriaFromRow, loadQualificationFacts, prequalify, recordDiscoveredBusiness } from '../discovery/index.js';
 
@@ -19,14 +22,20 @@ export class ListRejected extends Error {
   constructor(message: string, readonly rows: RowProblem[] = []) { super(message); }
 }
 
-export interface RowProblem { row: number; field: 'name' | 'domain' | 'companyNumber' | 'row'; problem: string }
+export interface RowProblem { row: number; field: 'name' | 'domain' | 'companyNumber' | 'town' | 'postcode' | 'row'; problem: string }
 
 export const MAX_LIST_ENTRIES = 200;
 /** Company registers a list can name. A company number is only recorded with the register it belongs to. */
 export const COMPANY_REGISTERS = ['uk_companies_house'] as const;
 export type CompanyRegister = typeof COMPANY_REGISTERS[number];
 
-export interface ListEntry { name: string; domain: string | null; websiteUrl: string | null; companyNumber: string | null }
+export interface ListEntry {
+  name: string; domain: string | null; websiteUrl: string | null; companyNumber: string | null;
+  /** Typed by the person; null when they left it empty. */
+  town: string | null;
+  /** A full UK postcode in canonical form; null when none was typed. */
+  postcode: string | null;
+}
 export interface ParsedEntry extends ListEntry { row: number }
 
 export interface ListInput {
@@ -114,21 +123,26 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
 
-const HEADER: Record<string, 'name' | 'domain' | 'companyNumber'> = {
+type Column = 'name' | 'domain' | 'companyNumber' | 'town' | 'postcode';
+interface RawRow { row: number; name: string; domain: string; companyNumber: string; town: string; postcode: string }
+
+const HEADER: Record<string, Column> = {
   name: 'name', 'business name': 'name', business: 'name', 'company name': 'name',
   domain: 'domain', website: 'domain', url: 'domain', 'website url': 'domain',
   'company number': 'companyNumber', 'company no': 'companyNumber', 'company_number': 'companyNumber', companynumber: 'companyNumber',
   'companies house number': 'companyNumber',
+  town: 'town', city: 'town', location: 'town',
+  postcode: 'postcode', 'post code': 'postcode', postal_code: 'postcode', 'postal code': 'postcode', zip: 'postcode',
 };
 
 const headerKey = (h: string) => h.trim().toLowerCase().replace(/[_\s]+/g, ' ').replace(/\.$/, '');
 
 /** Reads a CSV's rows into raw entries; the header row names the columns, in any order. */
-export function csvEntries(text: string): { rows: { row: number; name: string; domain: string; companyNumber: string }[]; ignoredColumns: string[] } {
+export function csvEntries(text: string): { rows: RawRow[]; ignoredColumns: string[] } {
   const table = parseCsv(text);
   if (table.length === 0) throw new ListRejected('The CSV is empty.');
   const header = table[0]!.map(headerKey);
-  const col: Partial<Record<'name' | 'domain' | 'companyNumber', number>> = {};
+  const col: Partial<Record<Column, number>> = {};
   const ignored: string[] = [];
   header.forEach((h, i) => {
     const k = HEADER[h] ?? HEADER[h.replace(/ /g, '_')];
@@ -136,14 +150,15 @@ export function csvEntries(text: string): { rows: { row: number; name: string; d
     else if (h) ignored.push(table[0]![i]!.trim().slice(0, 60));
   });
   if (col.name === undefined || col.domain === undefined) {
-    throw new ListRejected('The CSV needs a header row with a name column and a domain column (company number is optional).');
+    throw new ListRejected('The CSV needs a header row with a name column and a domain column (company number, town and postcode are optional).');
   }
   const body = table.slice(1);
   if (body.length === 0) throw new ListRejected('The CSV has a header but no businesses.');
   if (body.length > MAX_LIST_ENTRIES) throw new ListRejected(`A list holds up to ${MAX_LIST_ENTRIES} businesses; this CSV has ${body.length}.`);
   const cell = (r: string[], i: number | undefined) => (i === undefined ? '' : (r[i] ?? '').trim());
   return {
-    rows: body.map((r, i) => ({ row: i + 2, name: cell(r, col.name), domain: cell(r, col.domain), companyNumber: cell(r, col.companyNumber) })),
+    rows: body.map((r, i) => ({ row: i + 2, name: cell(r, col.name), domain: cell(r, col.domain), companyNumber: cell(r, col.companyNumber),
+      town: cell(r, col.town), postcode: cell(r, col.postcode) })),
     ignoredColumns: ignored,
   };
 }
@@ -162,7 +177,7 @@ export function listInputFromBody(b: Record<string, unknown>): ListInput {
   const hasEntries = Array.isArray(b.entries);
   if (hasCsv === hasEntries) throw new ListRejected('Send either entries or a CSV.');
 
-  let raw: { row: number; name: string; domain: string; companyNumber: string }[];
+  let raw: RawRow[];
   let ignoredColumns: string[] = [];
   if (hasCsv) {
     ({ rows: raw, ignoredColumns } = csvEntries(b.csv as string));
@@ -173,7 +188,7 @@ export function listInputFromBody(b: Record<string, unknown>): ListInput {
     raw = list.map((e, i) => {
       const o = (e && typeof e === 'object' ? e : {}) as Record<string, unknown>;
       const str = (v: unknown) => (typeof v === 'string' ? v.trim() : v === undefined || v === null ? '' : String(v).trim());
-      return { row: i + 1, name: str(o.name), domain: str(o.domain), companyNumber: str(o.companyNumber) };
+      return { row: i + 1, name: str(o.name), domain: str(o.domain), companyNumber: str(o.companyNumber), town: str(o.town), postcode: str(o.postcode) };
     });
   }
 
@@ -201,8 +216,18 @@ export function listInputFromBody(b: Record<string, unknown>): ListInput {
         }
       }
     }
+    let town: string | null = null;
+    if (r.town) {
+      if (r.town.length > 80 || CONTROL.test(r.town)) { problems.push({ row: r.row, field: 'town', problem: 'Town must be one short line.' }); ok = false; }
+      else town = r.town;
+    }
+    let postcode: string | null = null;
+    if (r.postcode) {
+      postcode = normalisePostcode(r.postcode);
+      if (!postcode) { problems.push({ row: r.row, field: 'postcode', problem: 'Postcode must be a full UK postcode, like SW1A 1AA.' }); ok = false; }
+    }
     // A row with no domain is kept: it goes to review (qualify.list_entry), since it cannot be analysed.
-    if (ok) entries.push({ row: r.row, name: r.name, domain, websiteUrl, companyNumber });
+    if (ok) entries.push({ row: r.row, name: r.name, domain, websiteUrl, companyNumber, town, postcode });
   }
   if (problems.length) throw new ListRejected(`${problems.length === 1 ? 'One row needs' : `${problems.length} rows need`} fixing before anything is imported.`, problems);
   return { name, source: hasCsv ? 'csv_import' : 'manual', companyRegister: register as CompanyRegister | null, entries, ignoredColumns };
@@ -243,6 +268,9 @@ export async function createList(db: Db, input: ListInput, at = new Date()): Pro
       ...(e.domain ? { domain: e.domain } : {}),
       ...(e.websiteUrl ? { websiteUrl: e.websiteUrl } : {}),
       ...(e.companyNumber && input.companyRegister ? { companyRegister: input.companyRegister, companyNumber: e.companyNumber } : {}),
+      ...(e.town ? { city: e.town } : {}),
+      // A full UK postcode is a UK address: the country is what the postcode says, nothing more.
+      ...(e.postcode ? { postalCode: e.postcode, countryCode: 'GB' } : {}),
     });
     const held = (await db.query<{ name: string }>('SELECT name FROM scopely.businesses WHERE id = $1', [rec.businessId])).rows[0]!.name;
     const outcome = !rec.newInRun ? 'repeat' : rec.matchedBy === 'new' ? 'new' : 'existing';
