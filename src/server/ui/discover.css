@@ -1,0 +1,127 @@
+/* Launch pass: Scopely's editorial identity in the product (IBM Plex Sans and Mono for text and
+   evidence, Instrument Serif for the voice), the opportunity map (A51), Discover's rail and next
+   step, and the Case File's journey. Loaded after app.css, shell.css and find.css. */
+@font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: 100 700; font-display: swap; src: url(/fonts/plex-sans.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/plex-mono-400.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url(/fonts/plex-mono-500.woff2) format("woff2"); }
+@font-face { font-family: "Instrument Serif"; font-style: italic; font-weight: 400; font-display: swap; src: url(/fonts/instrument-serif-italic.woff2) format("woff2"); }
+
+:root {
+  --font: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --serif: "Instrument Serif", "Newsreader", Georgia, serif;
+  --paper: #F3EFE6; --panel: #FAF7F0;
+  --cobalt: #2C5BB4;
+}
+.btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: #33312D; }
+
+/* serif voice for the big moments */
+.shell .pHead h2, .shell .bizName, .auth-card h1, .ds-intro h3, .ds-card h3, .mp-card h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -.005em; }
+.shell .pHead h2 { font-size: 26px; line-height: 1.05; }
+.shell .bizName { font-size: 34px; line-height: 1.02; }
+.auth-card h1 { font-size: 30px; line-height: 1.05; }
+.auth-hint { font-weight: 400; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.auth-card .linklike { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
+.auth-card .btn { text-decoration: none; }
+
+/* ---------------------------------------------------------------- the map */
+.sh-map { overflow: hidden; }
+.mp { position: absolute; inset: 0; }
+.mp-canvas, .mp .mp-canvas.maplibregl-map { position: absolute; inset: 0; background: #ECE7DE; }
+.mp-canvas.mp-off { background: repeating-linear-gradient(135deg, rgba(255,255,255,.25) 0 12px, transparent 12px 24px), #ECE7DE; }
+.mp-nogl { position: absolute; left: 16px; bottom: 16px; font-size: 13px; color: var(--ink-2); }
+.mp-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 80px calc(var(--pw) + 48px) 40px 32px; pointer-events: none; }
+.mp-empty .mp-card { pointer-events: auto; max-width: 420px; padding: 22px 24px; text-align: left; align-items: flex-start; gap: 8px; display: flex; flex-direction: column;
+  background: rgba(250,247,240,.94); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 24px 48px -30px rgba(42,39,35,.45); color: var(--ink-2); }
+.mp-empty .mp-card h2 { font-size: 24px; line-height: 1.1; color: var(--ink); }
+.shell .mp-empty .mp-card p { display: block; font-size: 13.5px; line-height: 1.5; }
+.mp-legend { position: absolute; z-index: 5; left: 16px; bottom: 16px; display: flex; gap: 12px; padding: 7px 11px; border-radius: 999px; background: rgba(250,247,240,.94);
+  border: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
+.mp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.mp-note { position: absolute; z-index: 5; left: 16px; bottom: 54px; max-width: min(440px, calc(100% - var(--pw) - 80px)); display: flex; flex-wrap: wrap; gap: 4px 10px;
+  padding: 8px 12px; border-radius: 10px; background: rgba(250,247,240,.96); border: 1px solid var(--line); font-size: 12.5px; color: var(--ink-2); }
+.mp-note .lnk { color: var(--cobalt); font-weight: 600; }
+.mp .maplibregl-ctrl-bottom-right { right: calc(var(--pw) + 28px); transition: right .3s; }
+.mp .maplibregl-ctrl-group { border-radius: 10px; box-shadow: 0 6px 18px -10px rgba(42,39,35,.4); }
+.mp-pop .maplibregl-popup-content { display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-radius: 10px; font: 13px/1.35 var(--font); color: var(--ink);
+  box-shadow: 0 14px 30px -14px rgba(42,39,35,.5); max-width: 260px; }
+.mp-pop small { color: var(--muted); font-size: 11.5px; }
+.mp-pop .mp-demo { font: 600 9.5px/1 var(--mono); letter-spacing: .08em; color: var(--ink-2); }
+
+/* ---------------------------------------------------------------- Discover: filters, rail, next step */
+.sh-filters .fq { padding-right: 12px; cursor: text; }
+.sh-filters .fq::after { display: none; }
+.sh-filters .fq input { border: 0; background: none; padding: 0; height: auto; font-size: 13.5px; font-weight: 500; width: 170px; box-shadow: none; outline: none; }
+.ds-rail[hidden] { display: none; }
+.ds-rail ol { display: grid; grid-template-columns: repeat(5, 1fr); margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
+.ds-rail li + li { border-left: 1px solid var(--line-soft); }
+.ds-rail a { display: flex; flex-direction: column; gap: 1px; padding: 8px 9px 9px; text-decoration: none; color: var(--ink); min-width: 0; height: 100%; }
+.ds-rail a:hover { background: var(--paper); }
+.ds-rail .k { font: 500 9.5px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.ds-rail b { font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.ds-rail small { font-size: 10.5px; color: var(--muted); line-height: 1.25; }
+.ds-rail li.done .k { color: var(--ink-2); }
+.ds-rail li.cur { background: var(--ink); }
+.ds-rail li.cur a:hover { background: #33312D; }
+.ds-rail li.cur .k, .ds-rail li.cur b, .ds-rail li.cur small { color: #fff; }
+.ds-card, .ds-intro { margin: 12px 12px 0; padding: 16px 16px 14px; border: 1px solid var(--ink); border-radius: 14px; background: #fff; display: flex; flex-direction: column; gap: 6px; }
+.ds-card h3 { font-size: 22px; line-height: 1.12; }
+.ds-card p { font-size: 13px; color: var(--ink-2); }
+.ds-card .row, .ds-intro .row { margin-top: 6px; }
+.ds-intro h3 { font-size: 25px; line-height: 1.1; }
+.ds-how { margin: 6px 0 2px; padding: 0; list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 8px; }
+.ds-how li { counter-increment: s; display: grid; grid-template-columns: 22px 1fr; column-gap: 8px; font-size: 13px; color: var(--ink-2); line-height: 1.45; }
+.ds-how li::before { content: counter(s, decimal-leading-zero); grid-row: span 2; font: 500 10.5px/1.6 var(--mono); color: var(--faint); }
+.ds-how b { color: var(--ink); font-weight: 600; }
+.ds-intro .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.shell .card-sk { height: 150px; border-radius: 14px; margin: 0 0 10px; break-inside: avoid; }
+
+/* ---------------------------------------------------------------- Case File: the journey and the truth key */
+.cf-journey { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.cf-steps { display: grid; grid-template-columns: repeat(7, 1fr); margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
+.cf-steps li { display: flex; flex-direction: column; gap: 2px; padding: 8px 8px 9px; min-width: 0; border-left: 1px solid var(--line-soft); }
+.cf-steps li:first-child { border-left: 0; }
+.cf-steps .k { font: 500 9.5px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.cf-steps small { font-size: 11px; line-height: 1.25; color: var(--muted); overflow-wrap: anywhere; }
+.cf-steps li.done .k { color: var(--sage-text); }
+.cf-steps li.done .k::before { content: "✓ "; }
+.cf-steps li.cur { background: var(--ink); }
+.cf-steps li.cur .k, .cf-steps li.cur small { color: #fff; }
+.cf-steps li.blocked .k { color: var(--error); }
+.cf-nextstep { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; border-radius: 10px; background: var(--paper); font-size: 13px; }
+.cf-nextstep .eyebrow { color: var(--ink-2); }
+.cf-nextstep .lnk { color: var(--cobalt); }
+.cf-money { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.cf-money div { display: flex; flex-direction: column; gap: 1px; padding: 8px 12px; }
+.cf-money div + div { border-left: 1px solid var(--line-soft); }
+.cf-money span { font: 500 9.5px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.cf-money b { font-size: 15px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.cf-key { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11.5px; color: var(--muted); }
+.cf-key span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ---------------------------------------------------------------- responsive */
+@media (max-width: 1180px) {
+  .ds-rail small { display: none; }
+  .cf-steps { grid-template-columns: repeat(4, 1fr); }
+  .cf-steps li:nth-child(5) { border-left: 0; }
+  .cf-steps li:nth-child(n+5) { border-top: 1px solid var(--line-soft); }
+}
+@media (max-width: 860px) {
+  .sh-map { position: relative; height: 260px; margin: 0 12px; padding: 0; border-radius: 14px; border: 1px solid var(--line); }
+  .shell.casing .sh-map { display: none; }
+  .mp-empty { padding: 16px; }
+  .mp-empty .mp-card { padding: 14px 16px; }
+  .mp-empty .mp-card h2 { font-size: 19px; }
+  .mp-note { max-width: calc(100% - 32px); bottom: 50px; }
+  .mp .maplibregl-ctrl-bottom-right { right: 0; }
+  .sh-filters .fq input { width: 130px; }
+}
+@media (max-width: 600px) {
+  .sh-map { height: 210px; }
+  .shell .mp-empty .mp-card p { display: none; }
+  .ds-rail ol { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .ds-rail b { font-size: 16px; }
+  .ds-rail .k { font-size: 8.5px; letter-spacing: .02em; }
+  .cf-money b { font-size: 13.5px; }
+}

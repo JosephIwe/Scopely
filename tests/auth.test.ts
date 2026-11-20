@@ -137,7 +137,7 @@ describe('sign-in over HTTP', () => {
     const { browser } = await start();
     const b = browser();
     const token = await invite(null);
-    expect((await b.call('POST', '/api/invites/check', { token })).json()).toEqual({ kind: 'setup', workspaceName: null, role: 'owner', emailRequired: false });
+    expect((await b.call('POST', '/api/invites/check', { token })).json()).toEqual({ kind: 'setup', workspaceName: null, role: 'owner', emailRequired: false, emailHint: null });
     expect((await b.call('POST', '/api/signup', { invite: token, email: 'Owner@Seller.test', password: 'short', workspaceName: 'Seller Co' })).status).toBe(400);
     const r = await b.call('POST', '/api/signup', { invite: token, email: 'Owner@Seller.test', password: PW, name: 'Olu', workspaceName: 'Seller Co' });
     expect(r.status).toBe(200);
@@ -345,5 +345,56 @@ describe('the server refuses an unsafe production start', () => {
     const down = serve({ SCOPELY_ENV: 'production', DATABASE_URL: 'postgres://nobody@127.0.0.1:1/x', SCOPELY_DB_APP_ROLE: 'scopely_app', PREVIEW_SIGNING_KEY: 'k'.repeat(40) });
     expect(down.code).toBe(1);
     expect(down.err).toMatch(/Could not reach the database/);
+  });
+});
+
+describe('launch: invite links say what is wrong, and never give away the invited address', () => {
+  it('fresh, correct email: works; wrong email (autofill): refused with a masked hint, invite unspent', async () => {
+    const { browser } = await start();
+    const b = browser();
+    const token = await invite(null, 'owner', 'founder@clinic-sales.test');
+    const check = (await b.call('POST', '/api/invites/check', { token })).json();
+    expect(check).toEqual({ kind: 'setup', workspaceName: null, role: 'owner', emailRequired: true, emailHint: 'f•••••@c•••.test' });
+    expect(JSON.stringify(check)).not.toContain('founder@');
+    const wrong = await b.call('POST', '/api/signup', { invite: token, email: 'someone.else@icloud.test', password: PW, workspaceName: 'Clinic sales' });
+    expect(wrong.status).toBe(403);
+    expect(wrong.json().error).toMatch(/This invite is for f•••••@c•••\.test, not the address entered/);
+    expect(wrong.json().error).not.toContain('founder@clinic-sales.test');
+    expect((await db().query('SELECT used_at FROM workspace_invites WHERE token_sha256 = $1', [tokenHash(token)])).rows[0].used_at).toBeNull();
+    expect((await b.call('POST', '/api/signup', { invite: token, email: 'Founder@Clinic-Sales.test', password: PW, workspaceName: 'Clinic sales' })).status).toBe(200);
+  });
+
+  it('used, expired, withdrawn and unknown links each say so (all 404, nothing is created)', async () => {
+    const { browser } = await start();
+    const used = await invite(null);
+    expect((await browser().call('POST', '/api/signup', { invite: used, email: 'a@seller.test', password: PW, workspaceName: 'A' })).status).toBe(200);
+    const expired = (await createInvite(db(), { workspaceId: null, role: 'owner', email: null, createdBy: 'test' }, new Date(Date.now() - 30 * 86400_000))).token;
+    const withdrawn = await invite(null);
+    await db().query('UPDATE workspace_invites SET revoked_at = now() WHERE token_sha256 = $1', [tokenHash(withdrawn)]);
+    const b = browser();
+    const cases: [string, RegExp, string][] = [
+      [used, /already been used/, 'invite_used'], [expired, /expired on \d{4}-\d\d-\d\d \d\d:\d\d UTC/, 'invite_expired'],
+      [withdrawn, /withdrawn/, 'invite_revoked'], ['Q'.repeat(43), /not valid\. Check that the whole link was copied/, 'invite_invalid'],
+      ['', /not valid/, 'invite_invalid'],
+    ];
+    for (const [token, msg] of cases) {
+      const r = await b.call('POST', '/api/invites/check', { token });
+      expect(r.status, token).toBe(404);
+      expect(r.json().error, token).toMatch(msg);
+      if (token) {
+        const s = await b.call('POST', '/api/signup', { invite: token, email: 'late@seller.test', password: PW, workspaceName: 'Late' });
+        expect(s.status, token).toBe(404);
+        expect(s.json().error, token).toMatch(msg);
+      }
+    }
+    expect((await db().query(`SELECT count(*)::int AS n FROM users WHERE email = 'late@seller.test'`)).rows[0].n).toBe(0);
+  });
+
+  it('signed out, every product route is refused; invite-only stays invite-only', async () => {
+    const { browser } = await start();
+    const b = browser();
+    for (const p of ['/api/opportunities', '/api/discover', '/api/workspace']) expect((await b.call('GET', p)).status, p).toBe(401);
+    expect((await b.call('POST', '/api/map/locate')).status).toBe(401);
+    expect((await b.call('POST', '/api/signup', { email: 'new@seller.test', password: PW, workspaceName: 'Open?' })).status).toBe(403);
   });
 });

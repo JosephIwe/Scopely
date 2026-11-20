@@ -134,11 +134,11 @@ function newListForm() {
         if (file.files[0].size > 200 * 1024) throw new Error('That CSV is too large. A list holds up to 200 businesses.');
         body.csv = await file.files[0].text();
       } else {
-        body.entries = [{ name: f.bizName.value, domain: f.domain.value, companyNumber: f.companyNumber.value }];
+        body.entries = [{ name: f.bizName.value, domain: f.domain.value, companyNumber: f.companyNumber.value, town: f.town.value, postcode: f.postcode.value }];
       }
       const r = await api('POST', '/lists', body);
       const c = r.counts;
-      toast(`Added ${plural(c.businesses, 'business', 'businesses')}${c.existing ? `, ${c.existing} already known` : ''}${c.repeats ? `, ${c.repeats} repeated` : ''}. ${c.needsReview ? `${c.needsReview} need review.` : ''}`);
+      toast(`Added ${plural(c.businesses, 'business', 'businesses')}${c.existing ? `, ${c.existing} already known` : ''}${c.repeats ? `, ${c.repeats} repeated` : ''}. ${c.needsReview ? `${c.needsReview} need review. ` : ''}${r.located ? `${r.located} placed on the map from ${r.located === 1 ? 'its postcode' : 'their postcodes'}.` : ''}`);
       go(`#/find/run/${r.searchRunId}`);
     } catch (err) {
       save.disabled = false;
@@ -147,13 +147,15 @@ function newListForm() {
     }
   } },
     h('h2', { class: 'fd-h2', text: 'Analyse websites' }),
-    h('p', { class: 'hint', text: 'Add businesses you already know, without a data provider. Scopely records only what you type: industry, location and size stay unknown.' }),
+    h('p', { class: 'hint', text: 'Add businesses you already know, without a data provider. Scopely records only what you type: industry and size stay unknown. A UK postcode places the business on the map.' }),
     field('List name', input('listName', { required: true, maxlength: 120, placeholder: 'Validation run, clinics' })),
     field('Business name', input('bizName', { maxlength: 200 })),
     field('Domain', input('domain', { maxlength: 300, placeholder: 'example-clinic.co.uk', autocapitalize: 'none', inputmode: 'url' }), 'Without a domain the business waits for review.'),
+    h('div', { class: 'fd-two' }, field('Town', input('town', { maxlength: 80, autocomplete: 'off' }), null, true),
+      field('Postcode', input('postcode', { maxlength: 10, autocapitalize: 'characters', autocomplete: 'off', placeholder: 'SW1A 1AA' }), null, true)),
     field('Company number', input('companyNumber', { maxlength: 12 }), null, true),
     h('div', { class: 'field' }, h('span', { class: 'lab' }, 'Or import a CSV'), file,
-      h('div', { class: 'hint', text: 'Columns: name, domain, company number (optional). Up to 200 rows. A CSV replaces the single business above.' })),
+      h('div', { class: 'hint', text: 'Columns: name, domain; optional: company number, town, postcode. Up to 200 rows. A CSV replaces the single business above.' })),
     h('label', { class: 'field row' }, ch, h('span', { text: ' Company numbers are UK Companies House numbers' })),
     problems,
     h('div', { style: 'margin-top:18px' }, save));

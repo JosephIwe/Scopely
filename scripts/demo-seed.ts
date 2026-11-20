@@ -97,6 +97,12 @@ try {
       VALUES ($1, 'broken_contact_path', 'MAPPED', $2) RETURNING id`, [quay.id, sprint.id]);
     await q('INSERT INTO scopely.opportunity_evidence (opportunity_id, evidence_id) VALUES ($1, $2) RETURNING opportunity_id', [quayOpp.id, quayEv.id]);
 
+    // Launch map: the demo's fictional businesses get fictional positions, and geo_source says so,
+    // so the map can be tried. Only reserved .example businesses; the map labels them DEMO DATA.
+    await db.query(`UPDATE scopely.businesses SET latitude = v.lat, longitude = v.lon, geo_source = 'demo: fictional position for a fictional business'
+      FROM (VALUES ('alderfinch.example', 51.5154, -0.1410), ('harbourlane.example', 51.5079, -0.0877), ('quayside.example', 51.5033, -0.0195)) AS v(domain, lat, lon)
+     WHERE businesses.domain = v.domain AND businesses.workspace_id = scopely.current_workspace_id()`);
+
     // Slice 10: a saved search whose provider query matches the recorded Clay responses in
     // fixtures/providers/clay, so Find can be tried without a live provider call.
     await createSearch(db, { name: 'Sample: small clinics (recorded Clay responses)', verticals: ['Medical Practices'], countryCode: 'GB',

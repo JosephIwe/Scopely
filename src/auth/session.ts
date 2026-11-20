@@ -137,12 +137,46 @@ async function openInvite(db: Db, token: unknown, now: Date, lock = false) {
     WHERE i.token_sha256 = $1 AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > $2${lock ? ' FOR UPDATE OF i' : ''}`, [tokenHash(token), now, BOOTSTRAP_CREATED_BY])).rows[0] ?? null;
 }
 
-/** What an invite link offers, without using it. Unknown, used and expired invites all read the same. */
+/**
+ * An email address with most of it hidden ("o•••••@g•••.com"): enough for the person holding the
+ * link to notice that a browser filled in a different address, not enough to take the invite
+ * with the link alone. The full address is never sent before the invite is used.
+ */
+export function maskEmail(email: string): string {
+  const [local = '', domain = ''] = email.split('@');
+  const dot = domain.lastIndexOf('.');
+  const host = dot > 0 ? domain.slice(0, dot) : domain;
+  const tld = dot > 0 ? domain.slice(dot) : '';
+  return `${local.slice(0, 1)}•••••@${host.slice(0, 1)}•••${tld}`;
+}
+
+/** Why a link that names an invite cannot be used: each reads differently, so the person knows what to do. */
+async function inviteRefusal(db: Db, token: unknown, now: Date): Promise<AuthRejected> {
+  const generic = new AuthRejected(404, 'This invite link is not valid. Check that the whole link was copied, or ask for a new one.', 'invite_invalid');
+  if (typeof token !== 'string' || !TOKEN_RE.test(token)) return generic;
+  // Holding the full token is what proves the link was given to you; with it, Scopely says what happened.
+  const i = (await db.query(`SELECT i.used_at, i.revoked_at, i.expires_at, (i.created_by = $2 AND i.workspace_id IS NULL AND i.created_by_user_id IS NULL) AS bootstrap
+    FROM scopely.workspace_invites i WHERE i.token_sha256 = $1`, [tokenHash(token), BOOTSTRAP_CREATED_BY])).rows[0];
+  if (!i) return generic;
+  if (i.used_at) return new AuthRejected(404, 'This invite has already been used. If you used it, sign in with the email and password you chose.', 'invite_used');
+  if (i.revoked_at) return new AuthRejected(404, 'This invite was withdrawn. Ask the workspace owner for a new one.', 'invite_revoked');
+  if (new Date(i.expires_at) <= now) {
+    return new AuthRejected(404, `This invite expired on ${new Date(i.expires_at).toISOString().slice(0, 16).replace('T', ' ')} UTC. Ask for a new one.`, 'invite_expired');
+  }
+  if (i.bootstrap) return new AuthRejected(409, 'This setup link is closed because the workspace owner account already exists. Sign in instead.', 'bootstrap_closed');
+  return generic;
+}
+
+/** What an invite link offers, without using it. A link that cannot be used says why. */
 export async function describeInvite(db: Db, token: unknown, now = new Date()) {
   const i = await openInvite(db, token, now);
-  // A bootstrap setup link reads as invalid once an owner can sign in (src/ops/bootstrap.ts).
-  if (!i || (i.bootstrap && await ownerEstablished(db))) throw new AuthRejected(404, 'This invite link is not valid. It may have been used or expired; ask for a new one.', 'invite_invalid');
-  return { kind: i.workspace_id ? 'join' as const : 'setup' as const, workspaceName: i.workspace_name as string | null, role: i.role as Role, emailRequired: Boolean(i.email) };
+  // A bootstrap setup link is closed once an owner can sign in (src/ops/bootstrap.ts).
+  if (i && i.bootstrap && await ownerEstablished(db)) {
+    throw new AuthRejected(404, 'This setup link is closed because the workspace owner account already exists. Sign in instead.', 'bootstrap_closed');
+  }
+  if (!i) throw await inviteRefusal(db, token, now);
+  return { kind: i.workspace_id ? 'join' as const : 'setup' as const, workspaceName: i.workspace_name as string | null, role: i.role as Role,
+           emailRequired: Boolean(i.email), emailHint: i.email ? maskEmail(i.email as string) : null };
 }
 
 const slugFor = (name: string) => `${name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'workspace'}-${randomBytes(3).toString('hex')}`;
@@ -159,9 +193,11 @@ export async function acceptInvite(db: Db, input: AcceptInput, opts: { openSignu
   if (!email) throw new AuthRejected(400, 'Enter a valid email address.');
   const pw = typeof input.password === 'string' ? input.password : '';
   const invite = input.token ? await openInvite(db, input.token, now, true) : null;
-  if (input.token && !invite) throw new AuthRejected(404, 'This invite link is not valid. It may have been used or expired; ask for a new one.', 'invite_invalid');
+  if (input.token && !invite) throw await inviteRefusal(db, input.token, now);
   if (!invite && !opts.openSignup) throw new AuthRejected(403, 'Scopely is invite-only. Ask a workspace owner for an invite link.', 'invite_required');
-  if (invite?.email && invite.email !== email) throw new AuthRejected(403, 'This invite is for a different email address.', 'invite_email');
+  if (invite?.email && invite.email !== email) {
+    throw new AuthRejected(403, `This invite is for ${maskEmail(invite.email)}, not the address entered. Your browser may have filled in a different email: type the invited address.`, 'invite_email');
+  }
   const bootstrap = invite?.bootstrap === true;
   if (bootstrap) await assertBootstrapOpen(db);
 

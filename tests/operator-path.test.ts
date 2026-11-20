@@ -156,7 +156,7 @@ describe('owner bootstrap: using the link through the normal sign-up', () => {
     await issueBootstrapInvite(db(), cfgFor(token));
     const browser = await start();
     const call = browser();
-    expect((await call('POST', '/api/invites/check', { token })).json()).toEqual({ kind: 'setup', workspaceName: null, role: 'owner', emailRequired: true });
+    expect((await call('POST', '/api/invites/check', { token })).json()).toEqual({ kind: 'setup', workspaceName: null, role: 'owner', emailRequired: true, emailHint: 'f•••••@s•••.test' });
     const r = await call('POST', '/api/signup', { invite: token, email: 'Founder@Seller.test', password: PW, name: 'F', workspaceName: 'Seller Co' });
     expect(r.status).toBe(200);
     const s = (await call('GET', '/api/session')).json();

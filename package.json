@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",
+    "maplibre-gl": "6.16.0",
     "pg": "8.23.0",
     "tsx": "4.23.15"
   },
