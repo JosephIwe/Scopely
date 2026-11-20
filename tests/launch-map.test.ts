@@ -64,7 +64,7 @@ describe('UK postcodes', () => {
   it('postcodes.io: batches by 100, keeps only answers with a UK position, and fails closed', async () => {
     const calls: string[][] = [];
     const ok = postcodesIoGeocoder(async (_url, init) => {
-      const pcs = (JSON.parse(init.body) as { postcodes: string[] }).postcodes;
+      const pcs = (JSON.parse(init.body!) as { postcodes: string[] }).postcodes;
       calls.push(pcs);
       return { ok: true, status: 200, json: async () => ({ result: pcs.map((q, i) => ({ query: q,
         result: q === 'ZZ9 9ZZ' ? null : q === 'AB1 0AA' ? { latitude: null, longitude: null } : q === 'GY1 1AA' ? { latitude: 10, longitude: 10 }

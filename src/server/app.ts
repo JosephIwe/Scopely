@@ -857,8 +857,9 @@ export function createHandler(cfg: ServerConfig) {
             FROM scopely.search_runs r LEFT JOIN scopely.search_run_businesses rb ON rb.search_run_id = r.id
            WHERE r.workspace_id = scopely.current_workspace_id() GROUP BY r.id ORDER BY r.started_at DESC, r.id DESC LIMIT 200`);
         return {
-          providers: providers.list().map((p) => ({ key: p.provider, label: p.label, transport: p.transport,
-            ready: p.transport === 'recorded' || (connected.has(p.provider) && Boolean(cfg.discovery?.secrets)) })),
+          providers: providers.list().map((p) => ({ key: p.provider, label: p.label, transport: p.transport, keyless: Boolean(p.keyless),
+            ...(p.categories ? { categories: p.categories() } : {}),
+            ready: p.transport === 'recorded' || Boolean(p.keyless) || (connected.has(p.provider) && Boolean(cfg.discovery?.secrets)) })),
           searches: await listSearches(db),
           runs: runs.rows.map((r) => ({ searchRunId: String(r.id), searchId: String(r.search_id), startedAt: new Date(r.started_at).toISOString(),
             discovered: Number(r.discovered), qualified: Number(r.qualified) })),
@@ -884,6 +885,17 @@ export function createHandler(cfg: ServerConfig) {
     // POST /api/searches: save an ICP.
     if (m === 'POST' && a === 'searches' && !b) {
       const input = searchInputFromBody(await jsonBody(req));
+      if (input.near) {
+        if (!cfg.geocoder?.place) throw new FindRejected('This server cannot look up places, so a search cannot be centred on one.');
+        let at;
+        try { at = await cfg.geocoder.place(input.near); } catch (err) {
+          if (err instanceof GeocoderUnavailable) throw new HttpError(503, 'The place directory could not be reached. Nothing was saved; try again in a minute.');
+          throw err;
+        }
+        if (!at) throw new FindRejected(`"${input.near}" is not a UK postcode, postcode district or town the directory knows. Try a full postcode such as CM1 1JE.`);
+        Object.assign(input, { centerLatitude: at.latitude, centerLongitude: at.longitude, centerLabel: at.label, centerSource: at.source });
+      }
+      delete input.near;
       const searchId = await tx((db) => createSearch(db, input));
       log(`search ${searchId} created`);
       return json(res, 200, { searchId });
@@ -949,7 +961,9 @@ export function createHandler(cfg: ServerConfig) {
       const bd = await jsonBody(req);
       const out = await tx(async (db) => {
         if (!(await getRunDiscovery(db, rid))) throw new HttpError(404, 'Not found.');
-        const r = await analyzeRunBusiness(db, { probe }, rid, bid, String(bd.requestedBy ?? ''));
+        // A55: for a business with no website address, a person may say its own listing shows none.
+        const listing = bd.listing && typeof bd.listing === 'object' ? { url: String((bd.listing as Record<string, unknown>).url ?? '') } : undefined;
+        const r = await analyzeRunBusiness(db, { probe }, rid, bid, String(bd.requestedBy ?? ''), { listing });
         return { ...r, analysis: await getRunBusinessAnalysis(db, rid, bid) };
       });
       log(`run ${rid} business ${bid} analysis ${out.analysisId} ${out.analysedNow ? 'new' : 'existing'} ${out.state} opportunities=${out.opportunityIds.length}`);

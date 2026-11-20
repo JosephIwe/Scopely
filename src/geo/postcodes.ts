@@ -30,13 +30,25 @@ export function normalisePostcode(raw: unknown): string | null {
 
 export interface PostcodePoint { latitude: number; longitude: number }
 
+/** Where a search is centred: a point, what it is, and the directory record it came from. */
+export interface PlacePoint extends PostcodePoint { label: string; source: string }
+
 /** Looks up postcodes; returns the ones the directory knows. Unknown postcodes are simply absent. */
 export interface PostcodeGeocoder {
   readonly name: string;
   lookup(postcodes: string[]): Promise<Map<string, PostcodePoint>>;
+  /**
+   * The centre of a UK postcode, postcode district ("CM1") or named place ("Chelmsford") a person
+   * typed for a search, or null when the directory does not know it. Never a business's address.
+   */
+  place?(query: string): Promise<PlacePoint | null>;
 }
 
-type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) =>
+const OUTCODE = /^[A-Z]{1,2}\d[A-Z\d]?$/;
+const PLACE_TYPES = new Set(['City', 'Town', 'Village', 'Hamlet', 'Suburban Area', 'Other Settlement']);
+const inUk = (lat: number, lon: number) => Number.isFinite(lat) && Number.isFinite(lon) && lat >= 49 && lat <= 61.5 && lon >= -9 && lon <= 2.5;
+
+type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal: AbortSignal }) =>
   Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 const BATCH = 100; // postcodes.io's bulk limit
@@ -75,6 +87,41 @@ export function postcodesIoGeocoder(fetchImpl: FetchLike = fetch as unknown as F
         }
       }
       return out;
+    },
+    async place(query) {
+      const raw = String(query ?? '').trim();
+      if (!raw || raw.length > 80) return null;
+      const get = async (path: string): Promise<any> => {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 8000);
+        try {
+          const r = await fetchImpl(`${base}${path}`, { method: 'GET', headers: { accept: 'application/json' }, signal: ctl.signal });
+          if (r.status === 404) return null;
+          if (!r.ok) throw new GeocoderUnavailable(`postcode directory answered ${r.status}`);
+          return ((await r.json()) as { result?: unknown }).result ?? null;
+        } catch (err) {
+          if (err instanceof GeocoderUnavailable) throw err;
+          throw new GeocoderUnavailable((err as Error).name === 'AbortError' ? 'postcode directory timed out' : 'postcode directory unreachable');
+        } finally { clearTimeout(timer); }
+      };
+      const pc = normalisePostcode(raw);
+      if (pc) {
+        const r = await get(`/postcodes/${encodeURIComponent(pc.replace(' ', ''))}`);
+        return r && inUk(r.latitude, r.longitude) ? { latitude: r.latitude, longitude: r.longitude, label: pc, source: `postcode ${pc} · ONS Postcode Directory via postcodes.io` } : null;
+      }
+      const oc = raw.toUpperCase().replace(/\s+/g, '');
+      if (OUTCODE.test(oc)) {
+        const r = await get(`/outcodes/${encodeURIComponent(oc)}`);
+        return r && inUk(r.latitude, r.longitude) ? { latitude: r.latitude, longitude: r.longitude, label: oc, source: `postcode district ${oc} centre · ONS via postcodes.io` } : null;
+      }
+      const rows = await get(`/places?q=${encodeURIComponent(raw)}&limit=10`);
+      const want = raw.toLowerCase();
+      const hit = (Array.isArray(rows) ? rows : []).find((p: any) => PLACE_TYPES.has(p.local_type) && String(p.name_1 ?? '').toLowerCase() === want
+        && inUk(p.latitude, p.longitude));
+      if (!hit) return null;
+      const where = [hit.name_1, hit.county_unitary ?? hit.district_borough].filter(Boolean).join(', ');
+      return { latitude: Math.round(hit.latitude * 1e6) / 1e6, longitude: Math.round(hit.longitude * 1e6) / 1e6, label: where,
+        source: `${String(hit.local_type).toLowerCase()} ${where} · OS Open Names via postcodes.io` };
     },
   };
 }

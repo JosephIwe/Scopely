@@ -8,3 +8,4 @@ export { ClayProspectAdapter, CLAY_PEOPLE_QUERY, normalizeClayPerson } from './c
 export { ClayPublicApiTransport, RecordedClayTransport, CLAY_PUBLIC_API_BASE, clayHttpError, type ClayRecording, type ClayTransport } from './clay/transport.js';
 export { CLAY_REVENUE_CURRENCY, clayCompanyQuery, clayCountryName, revenueBuckets } from './clay/query.js';
 export { normalizeClayCompany, parseLocality, countryCode } from './clay/normalize.js';
+export { OSM_ATTRIBUTION, OSM_CATEGORIES, OSM_MAX_RADIUS_KM, OsmBusinessDiscoveryAdapter, OverpassTransport, listedWebsite, normalizeOsmElement, osmCategoryWords, osmTagsFor, overpassQuery, type OverpassElement } from './osm/adapter.js';

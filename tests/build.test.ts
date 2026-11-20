@@ -36,6 +36,7 @@ describe('build kinds are data and catalog items declare what they build', () =>
       { key: 'booking_lead_automation_sprint', build_kind: 'booking_flow' },
       { key: 'landing_page_build', build_kind: 'landing_page' },
       { key: 'lead_recovery_system', build_kind: 'lead_recovery' },
+      { key: 'website_build', build_kind: 'website' },
       { key: 'website_fix_sprint', build_kind: 'website_fix' },
     ]);
   });

@@ -61,8 +61,9 @@ describe('upgrading a database with existing data', () => {
 
     const [ws] = await q(`SELECT id, slug FROM workspaces`);
     expect(ws.slug).toBe('migrated');
+    // Later migrations may add shared starter services (024: Website build); none is lost.
     expect(await q(`SELECT (SELECT count(*) FROM businesses) b, (SELECT count(*) FROM evidence) e, (SELECT count(*) FROM outcomes) o,
-      (SELECT count(*) FROM suppression) s, (SELECT count(*) FROM catalog_items) c, (SELECT count(*) FROM markets) m`)).toEqual(before);
+      (SELECT count(*) FROM suppression) s, (SELECT count(*) FROM catalog_items WHERE key <> 'website_build') c, (SELECT count(*) FROM markets) m`)).toEqual(before);
     for (const t of ['businesses', 'snapshots', 'observations', 'evidence', 'opportunities', 'opportunity_evidence', 'outcomes', 'suppression']) {
       const [row] = await q(`SELECT count(*) FILTER (WHERE workspace_id = $1) AS mine, count(*) AS total FROM ${t}`, [ws.id]);
       expect(row.mine, t).toBe(row.total);

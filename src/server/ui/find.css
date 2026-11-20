@@ -81,3 +81,10 @@
   .fd-selbar .btn { flex: 1; }
   .fd-count { flex-basis: 100%; }
 }
+
+/* A55: a person's check of a business's own listing, when no website address is known. */
+.fd-listing { margin-top: 8px; border-left: 2px solid var(--amber, #c98a1b); padding-left: 10px; }
+.fd-listing summary { cursor: pointer; color: var(--ink, #1c1b19); }
+.fd-listing p { margin: 6px 0; max-width: 62ch; }
+.fd-listing-in { width: 100%; max-width: 460px; font: inherit; padding: 6px 8px; border: 1px solid var(--line, #d9d4c7); border-radius: 6px; background: var(--card, #fff); }
+.fd-attrib { margin-top: 12px; }

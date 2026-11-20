@@ -134,7 +134,7 @@ describe('running a search from the Find screen (recorded Clay responses)', () =
     expect(r.view.businesses).toHaveLength(40);
     expect(r.view.businesses[0]).toMatchObject({ state: 'QUALIFIED', provenance: { provider: 'clay', basis: 'PROVIDER_REPORTED' } });
     const list = (await r.call('GET', '/api/discovery')).json();
-    expect(list.providers).toEqual([{ key: 'clay', label: expect.any(String), transport: 'recorded', ready: true }]);
+    expect(list.providers).toEqual([{ key: 'clay', label: expect.any(String), transport: 'recorded', keyless: false, ready: true }]);
     expect(list.runs[0]).toMatchObject({ searchRunId: r.runId, discovered: 40 });
     // The log names ids and counts, never a business.
     expect(r.logged.join('\n')).toMatch(new RegExp(`run ${r.runId} search ${r.searchId} clay recorded ops=2 found=40`));
@@ -196,7 +196,7 @@ describe('a live provider behind the Find screen (fake Clay endpoint)', () => {
       secrets: new EnvSecretResolver({ [secretEnvName(ref)]: SECRET }),
     };
     const srv = await start(discovery);
-    expect((await srv.call('GET', '/api/discovery')).json().providers).toEqual([{ key: 'clay', label: expect.any(String), transport: 'live', ready: false }]);
+    expect((await srv.call('GET', '/api/discovery')).json().providers).toEqual([{ key: 'clay', label: expect.any(String), transport: 'live', keyless: false, ready: false }]);
     const { searchId } = (await srv.call('POST', '/api/searches', ICP)).json();
     const refusedRun = await srv.call('POST', `/api/searches/${searchId}/runs`, { provider: 'clay' });
     expect(refusedRun.json()).toMatchObject({ reason: 'not_connected' });

@@ -55,7 +55,7 @@ import { createHandler } from '../src/server/app.js';
 import { describeError, errorLine, reporterFromEnv, type ErrorReport } from '../src/server/observe.js';
 import { FileObjectStore } from '../src/storage/index.js';
 import {
-  ClayBusinessDiscoveryAdapter, ClayPublicApiTransport, ClayProspectAdapter, DiscoveryProviderRegistry, EnvSecretResolver, ProspectProviderRegistry, RecordedClayTransport,
+  ClayBusinessDiscoveryAdapter, OsmBusinessDiscoveryAdapter, ClayPublicApiTransport, ClayProspectAdapter, DiscoveryProviderRegistry, EnvSecretResolver, ProspectProviderRegistry, RecordedClayTransport,
   type ClayRecording,
 } from '../src/providers/index.js';
 
@@ -111,7 +111,10 @@ const clay = live ? new ClayPublicApiTransport()
   : new RecordedClayTransport(['2026-10-05-company-search.json', '2026-10-05-company-search-country.json', 'demo-people-search.json'].flatMap((f) =>
     (JSON.parse(readFileSync(new URL(`../fixtures/providers/clay/${f}`, import.meta.url), 'utf8')) as { searches: ClayRecording[] }).searches));
 const secrets = live ? new EnvSecretResolver() : undefined;
-const discovery = { providers: new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(clay)), secrets };
+// A54: OpenStreetMap (free open data, no key) is offered beside Clay. SCOPELY_OSM=off turns it off.
+const discoveryProviders = new DiscoveryProviderRegistry().register(new ClayBusinessDiscoveryAdapter(clay));
+if (process.env.SCOPELY_OSM !== 'off') discoveryProviders.register(new OsmBusinessDiscoveryAdapter());
+const discovery = { providers: discoveryProviders, secrets };
 const prospects = { providers: new ProspectProviderRegistry().register(new ClayProspectAdapter(clay)), secrets };
 // Bounded AI assistance (A49) is off unless SCOPELY_AI_PROVIDER and SCOPELY_AI_API_KEY are set.
 let assist: ModelProvider | null = null;

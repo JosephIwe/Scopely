@@ -213,7 +213,7 @@ function nextStep(sm, items) {
     return [card('Next step · find more', f.analysed ? 'No observed problems yet' : 'Nothing analysed yet',
       f.analysed ? `Scopely analysed ${plural(f.analysed, 'business', 'businesses')} and found no problem it can prove and sell a fix for. That is a result, not an error: add more businesses.`
         : 'Add businesses, then analyse them.',
-      h('a', { class: 'btn primary', href: '#/find' }, 'Find businesses'))];
+      h('a', { class: 'btn primary', href: '#/find/new' }, 'Create a search'), h('a', { class: 'btn', href: '#/find' }, 'Your searches'))];
   }
   const fresh = items.filter((o) => o.stage === 'OPPORTUNITIES');
   if (fresh.length) {
@@ -227,16 +227,16 @@ function nextStep(sm, items) {
 
 /** First run: what Scopely is and how to start. */
 function intro() {
-  const providerNote = 'A search uses your own Clay connection. No connection yet? Add businesses by website instead: it needs no provider.';
+  const providerNote = 'Searches run on OpenStreetMap’s free open data (no account, no cost), or on your own Clay connection if you add one. Already have a list? Add businesses by website instead.';
   return h('section', { class: 'ds-intro', 'aria-label': 'Get started' },
     h('span', { class: 'eyebrow', text: 'Welcome to Scopely' }),
-    h('h3', { text: 'Find businesses with real problems. Prove them. Build the fix. Sell it.' }),
+    h('h3', { text: 'Which businesses can you act on today? Search an area, and Scopely finds them and proves the problem.' }),
     h('ol', { class: 'ds-how' },
-      h('li', {}, h('b', { text: 'Find' }), 'Add businesses you know by website, or search a provider.'),
+      h('li', {}, h('b', { text: 'Find' }), 'Say who you sell to and where: “dentists within 5 km of Chelmsford”. Scopely finds the real businesses there, with their position on the map.'),
       h('li', {}, h('b', { text: 'Analyse' }), 'Scopely reads each website and records what it observes: a broken contact link, no booking path, no website.'),
       h('li', {}, h('b', { text: 'Prove and build' }), 'Each problem becomes a Case File with its evidence. Build the website or the fix as a private draft.'),
       h('li', {}, h('b', { text: 'Sell, deliver, get paid' }), 'Draft the outreach, send it yourself, then record the reply, the delivery, the re-check and the money received.')),
-    h('div', { class: 'row' }, h('a', { class: 'btn primary', href: '#/find' }, 'Add your first businesses')),
+    h('div', { class: 'row' }, h('a', { class: 'btn primary', href: '#/find/new' }, 'Create a search'), h('a', { class: 'btn', href: '#/find' }, 'Add businesses you know')),
     h('p', { class: 'hint', text: providerNote }));
 }
 

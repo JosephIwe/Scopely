@@ -32,6 +32,13 @@ export interface BusinessDiscoveryProvider {
   /** What a person sees as this provider's name. */
   readonly label: string;
   /**
+   * A free, open-data source that needs no account or key (A54): its live calls are recorded with no
+   * connection and billed to nobody. Every other live provider runs only on the workspace's own key (A32).
+   */
+  readonly keyless?: boolean;
+  /** The industry words this provider can search, when it has a fixed list (for the search form). */
+  categories?(): string[];
+  /**
    * The provider request for a search, or why this search cannot be sent to this provider (for
    * example it sets nothing the provider can filter on, which would pull an unbounded list).
    */
@@ -109,7 +116,7 @@ export async function runProviderDiscovery(db: Db, deps: DiscoveryDeps, runId: s
   if ('refused' in planned) throw new DiscoveryRefused('not_searchable', planned.refused);
 
   let credential: CallCredential | null = null;
-  if (provider.transport === 'live') {
+  if (provider.transport === 'live' && !provider.keyless) {
     credential = await connectionCredential(db, provider.provider, 'discovery', deps.secrets);
     if (!credential) throw new DiscoveryRefused('not_connected', `Connect this workspace’s ${provider.label} account before searching it.`);
   }
