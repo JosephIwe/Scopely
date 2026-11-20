@@ -6,6 +6,8 @@ import type { SearchInput } from '../discovery/index.js';
 
 export class FindRejected extends Error {
   readonly status = 422;
+  /** A machine-readable reason when the screen can act on it (for example `needs_radius`). */
+  constructor(message: string, readonly reason?: string) { super(message); }
 }
 
 const text = (v: unknown, field: string, max = 120): string | undefined => {
@@ -65,9 +67,16 @@ export function searchInputFromBody(b: Record<string, unknown>): SearchInput {
   const near = text(b.near, 'Near', 80);
   const radius = b.radiusKm === undefined || b.radiusKm === null || b.radiusKm === '' ? undefined : Number(b.radiusKm);
   if (radius !== undefined && (!Number.isFinite(radius) || radius <= 0 || radius > 25)) throw new FindRejected('Distance must be more than 0 and at most 25 km.');
-  if (near && radius === undefined) throw new FindRejected('Say how far around the place to search, in km.');
-  if (radius !== undefined && !near) throw new FindRejected('Say where to search around: a UK postcode or town.');
-  if (near) { input.near = near; input.radiusKm = Math.round(radius! * 10) / 10; }
+  // A town or postcode typed as the city, with a distance, is the place to search around: the
+  // distance then says how far, and the city is not also required of every business found.
+  const place = near ?? (radius !== undefined ? input.city : undefined);
+  if (place && radius === undefined && near) throw new FindRejected('Say how far around the place to search, in km.');
+  if (radius !== undefined && !place) throw new FindRejected('Say where to search around: a UK postcode or town.');
+  if (place && radius !== undefined) {
+    input.near = place;
+    input.radiusKm = Math.round(radius * 10) / 10;
+    if (!near) delete input.city;
+  }
   const found = whole(b.maxDiscoveredPerRun, 'Businesses to find per run', 1, 100);
   if (found === undefined) throw new FindRejected('Say how many businesses a run may find (up to 100).');
   input.maxDiscoveredPerRun = found;

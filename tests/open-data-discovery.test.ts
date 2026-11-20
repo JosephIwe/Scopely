@@ -37,7 +37,9 @@ const CENTRE = { latitude: 51.737047, longitude: 0.473606 };
 const geocoder: PostcodeGeocoder = {
   name: 'test',
   lookup: async () => new Map(),
-  place: async (q) => (q.toLowerCase() === 'chelmsford' ? { ...CENTRE, label: 'Chelmsford, Essex', source: 'city Chelmsford, Essex · OS Open Names via postcodes.io' } : null),
+  place: async (q) => (q.toLowerCase() === 'chelmsford' ? { ...CENTRE, label: 'Chelmsford, Essex', source: 'city Chelmsford, Essex · OS Open Names via postcodes.io' }
+    : q.replace(/\s/g, '').toUpperCase() === 'CM11JE' ? { latitude: 51.736812, longitude: 0.465435, label: 'CM1 1JE', source: 'postcode CM1 1JE · ONS Postcode Directory via postcodes.io' }
+      : null),
 };
 
 /** Elements as Overpass returns them: a node with a website, a way with none, one listing only social media, one unnamed. */
@@ -276,5 +278,63 @@ describe('A54: centring a search on a place', () => {
     expect(await g.place!('ZZ99 9ZZ')).toBeNull();
     const down = postcodesIoGeocoder(async () => { throw new Error('reset'); });
     await expect(down.place!('Chelmsford')).rejects.toThrow(/unreachable/);
+  });
+});
+
+describe('the saved search reaches OpenStreetMap with its place and distance (production bug, 2026-11-20)', () => {
+  // The search form had a City field beside Near. "Chelmsford" typed as the city, with 5 km, was
+  // saved as a city criterion with no centre (the form dropped the distance), so the OpenStreetMap
+  // run refused it: "searches around a place".
+  const around = (q: string) => /\(around:(\d+),([\d.-]+),([\d.-]+)\)/.exec(q)!.slice(1).map(Number);
+
+  it('town as the city, with a distance: saved as the centre and the distance, and the run reaches the adapter with them', async () => {
+    const srv = await start();
+    const s = await srv.call('POST', '/api/searches', { name: 'Chelmsford dentists', verticals: 'dentist', city: 'Chelmsford', radiusKm: '5', maxDiscoveredPerRun: '40' });
+    expect(s.status).toBe(200);
+    const def = (await srv.call('GET', `/api/searches/${s.json().searchId}`)).json();
+    expect(def.geography).toMatchObject({ city: null, center: { latitude: '51.737047', longitude: '0.473606' }, radiusKm: '5.00', centerLabel: 'Chelmsford, Essex' });
+    const r = await srv.call('POST', `/api/searches/${s.json().searchId}/runs`, { provider: 'openstreetmap' });
+    expect(r.status).toBe(200);
+    expect(around(srv.overpass.queries[0]!)).toEqual([5000, 51.737047, 0.473606]);
+    expect(r.json().result).toMatchObject({ discovered: 3, error: null });
+  });
+
+  it('a postcode with a distance reaches the adapter centred on that postcode', async () => {
+    const srv = await start();
+    const s = await srv.call('POST', '/api/searches', { name: 'Near CM1', verticals: 'dentist', near: 'cm1 1je', radiusKm: '2.5', maxDiscoveredPerRun: '40' });
+    expect(s.status).toBe(200);
+    const r = await srv.call('POST', `/api/searches/${s.json().searchId}/runs`, { provider: 'openstreetmap' });
+    expect(r.status).toBe(200);
+    expect(around(srv.overpass.queries[0]!)).toEqual([2500, 51.736812, 0.465435]);
+  });
+
+  it('a search already saved with only a town is centred when run, after asking for the distance; nothing is assumed', async () => {
+    const srv = await start();
+    // Exactly what the old form saved: industry, the town as the city, no centre, no distance.
+    const { createSearch } = await import('../src/discovery/index.js');
+    const sid = await createSearch(db(), { name: 'Chelmsford dentists', verticals: ['dentist'], city: 'Chelmsford', maxDiscoveredPerRun: 40 });
+    const ask = await srv.call('POST', `/api/searches/${sid}/runs`, { provider: 'openstreetmap' });
+    expect(ask.status).toBe(422);
+    expect(ask.json()).toMatchObject({ reason: 'needs_radius', error: 'Say how far around Chelmsford to search, in km.' });
+    expect(srv.overpass.queries).toHaveLength(0);
+    expect((await srv.call('POST', `/api/searches/${sid}/runs`, { provider: 'openstreetmap', radiusKm: '40' })).json().reason).toBe('needs_radius');
+    const r = await srv.call('POST', `/api/searches/${sid}/runs`, { provider: 'openstreetmap', radiusKm: '5' });
+    expect(r.status).toBe(200);
+    expect(around(srv.overpass.queries[0]!)).toEqual([5000, 51.737047, 0.473606]);
+    expect(r.json().result).toMatchObject({ discovered: 3 });
+    // The run froze the centre, and the businesses are judged by distance, not by a city name OpenStreetMap may not list.
+    const run = await one<{ criteria: Record<string, unknown> }>(db(), 'SELECT criteria FROM search_runs WHERE id = $1', [r.json().searchRunId]);
+    expect(run.criteria).toMatchObject({ city: null, radius_km: 5, center_label: 'Chelmsford, Essex' });
+    expect((await srv.call('GET', `/api/runs/${r.json().searchRunId}`)).json().businesses.map((b: any) => b.state)).toEqual(['QUALIFIED', 'QUALIFIED', 'QUALIFIED']);
+  });
+
+  it('a town the directory does not know is refused, and nothing is run', async () => {
+    const srv = await start();
+    expect((await srv.call('POST', '/api/searches', { name: 'x', verticals: 'dentist', city: 'Atlantis', radiusKm: '5', maxDiscoveredPerRun: '5' })).json().error)
+      .toMatch(/"Atlantis" is not a UK postcode/);
+    const { createSearch } = await import('../src/discovery/index.js');
+    const sid = await createSearch(db(), { name: 'y', verticals: ['dentist'], city: 'Atlantis', maxDiscoveredPerRun: 5 });
+    expect((await srv.call('POST', `/api/searches/${sid}/runs`, { provider: 'openstreetmap', radiusKm: '5' })).json().error).toMatch(/"Atlantis" is not/);
+    expect(srv.overpass.queries).toHaveLength(0);
   });
 });
