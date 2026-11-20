@@ -1,5 +1,6 @@
 export * from './password.js';
 export * from './session.js';
+export * from './verify.js';
 
 /** The session cookie. With secure cookies (production), the __Host- prefix pins it to this origin over HTTPS. */
 export const cookieName = (secure: boolean) => secure ? '__Host-scopely_session' : 'scopely_session';

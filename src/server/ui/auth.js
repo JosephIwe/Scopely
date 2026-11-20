@@ -118,6 +118,7 @@ export async function joinView(rawToken, after) {
       h('button', { class: 'auth-link linklike', type: 'button', onclick: () => signOutTo(`/app/#/join/${token}`) }, 'Sign out and use this invite'));
     return;
   }
+  if (!token) return openSignupView(after);
   const setup = !invite || invite.kind === 'setup';
   const name = field('Your name', { type: 'text', autocomplete: 'name', maxlength: 120 });
   name.input.required = false;
@@ -140,6 +141,42 @@ export async function joinView(rawToken, after) {
     }, [name, email, password, ws].filter(Boolean), setup ? 'Create workspace' : 'Join workspace'),
     h('a', { class: 'auth-link', href: '#/' }, 'I already have an account'));
   (hint ? email.input : name.input).focus();
+}
+
+/**
+ * Open sign-up (A53): step one sends a 6-digit code to the address typed; step two takes the code
+ * with the new account's details. Nothing is created until the code comes back.
+ */
+function openSignupView(after, sentTo = null) {
+  if (SESSION.info?.signedIn) {
+    frame('You are already signed in', `You are signed in as ${SESSION.info.user?.email ?? 'an account'}.`, h('a', { class: 'btn', href: '#/' }, 'Open Scopely'));
+    return;
+  }
+  const back = h('a', { class: 'auth-link', href: '#/' }, 'I already have an account');
+  if (!sentTo) {
+    const email = field('Email', { type: 'email', autocomplete: 'email', maxlength: 254, autocapitalize: 'none', spellcheck: 'false' });
+    frame('Create your workspace', 'First, prove the email address is yours: Scopely sends it a 6-digit code. Nothing is created until you enter it.',
+      form(async () => {
+        await api('POST', '/signup/start', { email: email.input.value });
+        openSignupView(after, email.input.value.trim());
+      }, [email], 'Email me a code'), back);
+    email.input.focus();
+    return;
+  }
+  const code = field('6-digit code', { type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', pattern: '[0-9]{6}', maxlength: 6 });
+  const name = field('Your name', { type: 'text', autocomplete: 'name', maxlength: 120 });
+  name.input.required = false;
+  const password = field('Password (12 characters or more)', { type: 'password', autocomplete: 'new-password', minlength: 12, maxlength: 256 });
+  const ws = field('Workspace name', { type: 'text', maxlength: 80, placeholder: 'Your business name' });
+  frame('Check your email', `We sent a code to ${sentTo}. It works once, for 15 minutes. (If that address already has an account, it gets a note to sign in instead.) You will own the new workspace, and only people you invite can see it.`,
+    form(async () => {
+      await api('POST', '/signup', { email: sentTo, code: code.input.value.trim(), password: password.input.value, name: name.input.value, workspaceName: ws.input.value });
+      await loadSession(true);
+      history.replaceState(null, '', '/app/#/');
+      after();
+    }, [code, name, password, ws], 'Create workspace'),
+    h('button', { class: 'auth-link linklike', type: 'button', onclick: () => openSignupView(after) }, 'Use a different email, or send a new code'), back);
+  code.input.focus();
 }
 
 async function signOutTo(target) {

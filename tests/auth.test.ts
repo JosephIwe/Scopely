@@ -8,7 +8,8 @@ import path from 'node:path';
 import type pg from 'pg';
 import { afterEach, describe, expect, inject, it } from 'vitest';
 import {
-  AttemptLimiter, createInvite, hashPassword, passwordProblem, readCookie, resolveSession, tokenHash, verifyPassword,
+  AttemptLimiter, MailUnavailable, type MailMessage, type Mailer, checkSignupCode, createInvite, hashPassword, mailerFromEnv, passwordProblem, readCookie,
+  resendMailer, resolveSession, startSignupVerification, tokenHash, verifyPassword,
 } from '../src/auth/index.js';
 import { createHandler, type ServerConfig } from '../src/server/app.js';
 import { MemoryObjectStore } from '../src/storage/index.js';
@@ -53,6 +54,16 @@ async function start(over: Partial<ServerConfig> = {}) {
 }
 
 const PW = 'correct horse battery staple';
+
+/** Keeps every message instead of sending it. */
+function fakeMailer(fail = false) {
+  const sent: MailMessage[] = [];
+  return {
+    name: 'test', sent,
+    async send(msg: MailMessage) { if (fail) throw new MailUnavailable('down'); sent.push(msg); },
+    codeFor(email: string) { return [...sent].reverse().find((m) => m.to === email)?.text.match(/\b(\d{6})\b/)?.[1] ?? 'none'; },
+  } satisfies Mailer & Record<string, unknown>;
+}
 
 async function invite(workspaceId: string | null, role: 'owner' | 'admin' | 'member' = 'member', email: string | null = null) {
   return (await createInvite(db(), { workspaceId, role: workspaceId ? role : 'owner', email, createdBy: 'test' })).token;
@@ -272,15 +283,21 @@ describe('sign-in over HTTP', () => {
     const closed = await start();
     expect((await closed.browser().call('POST', '/api/signup', { email: 'n@x.test', password: PW, workspaceName: 'New' })).status).toBe(403);
     server?.close();
-    const open = await start({ auth: { secureCookies: false, openSignup: true } });
+    const mail = fakeMailer();
+    const open = await start({ auth: { secureCookies: false, openSignup: true, mailer: mail } });
     const b = open.browser();
-    expect((await b.call('POST', '/api/signup', { email: 'first@alpha.test', password: PW, workspaceName: 'Grab' })).status).toBe(409);
+    // Even with a proven address, a provisioned person's account is not claimed by open sign-up.
+    await b.call('POST', '/api/signup/start', { email: 'first@alpha.test' });
+    expect((await b.call('POST', '/api/signup', { email: 'first@alpha.test', code: mail.codeFor('first@alpha.test'), password: PW, workspaceName: 'Grab' })).status).toBe(409);
     expect((await b.call('POST', '/api/signup', { invite: await invite(null), email: 'first@alpha.test', password: PW, workspaceName: 'Grab' })).status).toBe(409);
     // Addressed to that email, it may set the first password.
     const c = open.browser();
     expect((await c.call('POST', '/api/signup', { invite: await invite(ws, 'member', 'first@alpha.test'), email: 'first@alpha.test', password: PW })).status).toBe(200);
     expect((await c.call('GET', '/api/session')).json().workspace).toMatchObject({ workspaceId: ws, role: 'owner' });
-    expect((await open.browser().call('POST', '/api/signup', { email: 'new@x.test', password: PW, workspaceName: 'Fresh' })).status).toBe(200);
+    const d = open.browser();
+    expect((await d.call('POST', '/api/signup', { email: 'new@x.test', password: PW, workspaceName: 'Fresh' })).status).toBe(400);
+    await d.call('POST', '/api/signup/start', { email: 'new@x.test' });
+    expect((await d.call('POST', '/api/signup', { email: 'new@x.test', code: mail.codeFor('new@x.test'), password: PW, workspaceName: 'Fresh' })).status).toBe(200);
   });
 
   it('runs every workspace request as the application role, under row-level security', async () => {
@@ -339,6 +356,11 @@ describe('the server refuses an unsafe production start', () => {
     expect(open.code).toBe(1);
     expect(open.err).toMatch(/loopback/);
   });
+  it('no open sign-up without email verification', () => {
+    const r = serve({ SCOPELY_SIGNUP: 'open', DATABASE_URL: 'postgres://nobody@127.0.0.1:1/x' });
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/never runs without email verification/);
+  });
   it('no production start without the application role or a signing key', () => {
     expect(serve({ SCOPELY_ENV: 'production', DATABASE_URL: 'postgres://nobody@127.0.0.1:1/x', PREVIEW_SIGNING_KEY: 'k'.repeat(40) }).err).toMatch(/SCOPELY_DB_APP_ROLE/);
     expect(serve({ SCOPELY_ENV: 'production', DATABASE_URL: 'postgres://nobody@127.0.0.1:1/x', SCOPELY_DB_APP_ROLE: 'scopely_app' }).err).toMatch(/PREVIEW_SIGNING_KEY/);
@@ -396,5 +418,159 @@ describe('launch: invite links say what is wrong, and never give away the invite
     for (const p of ['/api/opportunities', '/api/discover', '/api/workspace']) expect((await b.call('GET', p)).status, p).toBe(401);
     expect((await b.call('POST', '/api/map/locate')).status).toBe(401);
     expect((await b.call('POST', '/api/signup', { email: 'new@seller.test', password: PW, workspaceName: 'Open?' })).status).toBe(403);
+  });
+});
+
+describe('A53: open sign-up proves the email address first', () => {
+  const openServer = async (mail = fakeMailer(), log: string[] = []) => ({ mail, log, ...(await start({ auth: { secureCookies: false, openSignup: true, mailer: mail }, log: (l) => log.push(l) })) });
+
+  it('open sign-up never runs without a mailer; with one, the session says it is open', async () => {
+    expect(() => createHandler({ pool: poolOver(db()), store: new MemoryObjectStore(), signingKey: SIGNING_KEY, editLinkTtlSeconds: 1, showLinkTtlSeconds: 1,
+      auth: { secureCookies: false, openSignup: true } })).toThrow(/needs a mailer/);
+    const { browser } = await openServer();
+    expect((await browser().call('GET', '/api/session')).json().openSignup).toBe(true);
+  });
+
+  it('invite-only servers send no code, even with a mailer configured', async () => {
+    const mail = fakeMailer();
+    const { browser } = await start({ auth: { secureCookies: false, mailer: mail } });
+    const b = browser();
+    expect((await b.call('POST', '/api/signup/start', { email: 'n@x.test' })).status).toBe(403);
+    expect((await b.call('POST', '/api/signup', { email: 'n@x.test', code: '123456', password: PW, workspaceName: 'X' })).status).toBe(403);
+    expect(mail.sent).toHaveLength(0);
+    expect((await b.call('GET', '/api/session')).json().openSignup).toBe(false);
+  });
+
+  it('a code goes to the address typed, is stored only as sha256, works once and never logs', async () => {
+    const { mail, log, browser } = await openServer();
+    const b = browser();
+    const r = await b.call('POST', '/api/signup/start', { email: ' New@Seller.TEST ' });
+    expect(r.status).toBe(200);
+    expect(r.json()).toEqual({ sent: true, expiresInSeconds: 900 });
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.sent[0]!.to).toBe('new@seller.test');
+    const code = mail.codeFor('new@seller.test');
+    expect(code).toMatch(/^\d{6}$/);
+    const row = await one<Record<string, unknown>>(db(), `SELECT * FROM signup_verifications WHERE email = 'new@seller.test'`);
+    expect(JSON.stringify(row)).not.toContain(code);
+    expect(row.code_sha256).toMatch(/^[0-9a-f]{64}$/);
+    // Nothing is created until the code comes back.
+    expect((await db().query(`SELECT 1 FROM users WHERE email = 'new@seller.test'`)).rowCount).toBe(0);
+    const ok = await b.call('POST', '/api/signup', { email: 'new@seller.test', code, password: PW, name: 'N', workspaceName: 'Seller' });
+    expect(ok.status).toBe(200);
+    expect((await b.call('GET', '/api/session')).json()).toMatchObject({ signedIn: true, workspace: { name: 'Seller', role: 'owner' } });
+    const again = await browser().call('POST', '/api/signup', { email: 'new@seller.test', code, password: PW, workspaceName: 'Twice' });
+    expect(again.status).toBe(400);
+    expect(again.json().reason).toBe('code_expired');
+    expect(log.join('\n')).not.toMatch(/seller\.test|\b\d{6}\b/i);
+  });
+
+  it('a failed account step leaves the code usable; wrong guesses are counted and stop at 5', async () => {
+    const { mail, browser } = await openServer();
+    const b = browser();
+    await b.call('POST', '/api/signup/start', { email: 'g@x.test' });
+    const code = mail.codeFor('g@x.test');
+    expect((await b.call('POST', '/api/signup', { email: 'g@x.test', code, password: 'short', workspaceName: 'G' })).json().reason).toBe('weak_password');
+    const wrong = code === '000000' ? '000001' : '000000';
+    const first = await b.call('POST', '/api/signup', { email: 'g@x.test', code: wrong, password: PW, workspaceName: 'G' });
+    expect(first.status).toBe(400);
+    expect(first.json().error).toMatch(/4 tries left/);
+    // The guess was counted although the request was refused.
+    expect((await one<{ attempts: number }>(db(), `SELECT attempts FROM signup_verifications WHERE email = 'g@x.test'`)).attempts).toBe(1);
+    for (let i = 0; i < 4; i += 1) await checkSignupCode(db(), 'g@x.test', wrong);
+    const late = await b.call('POST', '/api/signup', { email: 'g@x.test', code, password: PW, workspaceName: 'G' });
+    expect(late.status).toBe(400);
+    expect(late.json().reason).toBe('code_expired');
+  });
+
+  it('a code expires after 15 minutes, and only the newest code works', async () => {
+    const past = new Date(Date.now() - 16 * 60_000);
+    const old = await startSignupVerification(db(), 'e@x.test', past);
+    expect((await checkSignupCode(db(), 'e@x.test', old.code))?.reason).toBe('code_expired');
+    const a = await startSignupVerification(db(), 'f@x.test');
+    const b = await startSignupVerification(db(), 'f@x.test');
+    if (a.code !== b.code) expect((await checkSignupCode(db(), 'f@x.test', a.code))?.reason).toBe('code_invalid');
+    expect(await checkSignupCode(db(), 'f@x.test', b.code)).toBeNull();
+    expect((await checkSignupCode(db(), 'f@x.test', '12345'))?.reason).toBe('code_invalid');
+  });
+
+  it('answers the same for an address that has an account, and sends it no code', async () => {
+    const { mail, browser } = await openServer();
+    const owner = browser();
+    expect((await owner.call('POST', '/api/signup', { invite: await invite(null), email: 'have@x.test', password: PW, workspaceName: 'Mine' })).status).toBe(200);
+    const fresh = await browser().call('POST', '/api/signup/start', { email: 'nobody@x.test' });
+    const known = await browser().call('POST', '/api/signup/start', { email: 'have@x.test' });
+    expect(known.status).toBe(fresh.status);
+    expect(known.json()).toEqual(fresh.json());
+    const note = mail.sent.find((m) => m.to === 'have@x.test')!;
+    expect(note.subject).toMatch(/already have/);
+    expect(`${note.subject}${note.text}`).not.toMatch(/\d{6}/);
+    // Its row counts towards the caps, and its code was never sent, so it can never be used.
+    expect((await db().query(`SELECT 1 FROM signup_verifications WHERE email = 'have@x.test'`)).rowCount).toBe(1);
+  });
+
+  it('caps codes per address, per client and per day; a mail failure says so', async () => {
+    const { browser } = await openServer();
+    const b = browser();
+    for (let i = 0; i < 3; i += 1) expect((await b.call('POST', '/api/signup/start', { email: 'cap@x.test' })).status).toBe(200);
+    const capped = await b.call('POST', '/api/signup/start', { email: 'cap@x.test' });
+    expect(capped.status).toBe(429);
+    for (let i = 0; i < 6; i += 1) await b.call('POST', '/api/signup/start', { email: `ip${i}@x.test` });
+    expect((await b.call('POST', '/api/signup/start', { email: 'ip-last@x.test' })).status).toBe(429);
+    server?.close();
+    const down = await openServer(fakeMailer(true));
+    expect((await down.browser().call('POST', '/api/signup/start', { email: 'down@x.test' })).status).toBe(503);
+    await db().query(`INSERT INTO signup_verifications (email, code_sha256, expires_at)
+      SELECT 'bulk' || g || '@x.test', repeat('a', 64), now() + interval '15 minutes' FROM generate_series(1, 300) g`);
+    await expect(startSignupVerification(db(), 'day@x.test')).rejects.toMatchObject({ status: 429 });
+  });
+
+  it('an invite still works without a code while open sign-up is on', async () => {
+    const ws = await enterNewWorkspace(db(), 'alpha');
+    const { mail, browser } = await openServer();
+    expect((await browser().call('POST', '/api/signup', { invite: await invite(ws), email: 'm@alpha.test', password: PW })).status).toBe(200);
+    expect(mail.sent).toHaveLength(0);
+  });
+
+  it('the database keeps a used code used, only counts attempts up, and hides codes from the application role', async () => {
+    const { code } = await startSignupVerification(db(), 'db@x.test');
+    const id = (await one<{ id: string }>(db(), `SELECT id FROM signup_verifications WHERE email = 'db@x.test'`)).id;
+    expect(code).toMatch(/^\d{6}$/);
+    expect(await failure(db(), `UPDATE signup_verifications SET code_sha256 = repeat('b', 64) WHERE id = $1`, [id])).toMatch(/may only count attempts/);
+    expect(await failure(db(), `UPDATE signup_verifications SET expires_at = expires_at + interval '1 minute' WHERE id = $1`, [id])).toMatch(/may only count attempts/);
+    await db().query('UPDATE signup_verifications SET attempts = 2 WHERE id = $1', [id]);
+    expect(await failure(db(), `UPDATE signup_verifications SET attempts = 1 WHERE id = $1`, [id])).toMatch(/may only count attempts/);
+    expect(await failure(db(), `UPDATE signup_verifications SET attempts = 6 WHERE id = $1`, [id])).toMatch(/check/);
+    expect(await failure(db(), `INSERT INTO signup_verifications (email, code_sha256, expires_at) VALUES ('X@x.test', repeat('a', 64), now() + interval '1 minute')`)).toMatch(/check/);
+    expect(await failure(db(), `INSERT INTO signup_verifications (email, code_sha256, expires_at) VALUES ('y@x.test', repeat('a', 64), now() + interval '2 hours')`)).toMatch(/check/);
+    await db().query('UPDATE signup_verifications SET used_at = now() WHERE id = $1', [id]);
+    expect(await failure(db(), `UPDATE signup_verifications SET attempts = 3 WHERE id = $1`, [id])).toMatch(/is used/);
+    await db().query(`SET LOCAL ROLE ${inject('appRole')}`);
+    try {
+      expect((await db().query('SELECT count(*)::int AS n FROM signup_verifications')).rows[0].n).toBe(0);
+    } finally { await db().query('RESET ROLE'); }
+  });
+});
+
+describe('A53: the Resend mailer', () => {
+  it('posts one plain-text message with the key in a header, and turns any failure into MailUnavailable', async () => {
+    const calls: { url: string; init: any }[] = [];
+    const m = resendMailer('re_testkey_123456', 'Scopely <codes@mail.example>', async (url, init) => { calls.push({ url, init }); return { ok: true, status: 200 }; });
+    await m.send({ to: 'a@x.test', subject: 'S', text: 'T' });
+    expect(calls[0]!.url).toBe('https://api.resend.com/emails');
+    expect(calls[0]!.init.headers.authorization).toBe('Bearer re_testkey_123456');
+    expect(JSON.parse(calls[0]!.init.body)).toEqual({ from: 'Scopely <codes@mail.example>', to: ['a@x.test'], subject: 'S', text: 'T' });
+    await expect(resendMailer('re_testkey_123456', 'c@mail.example', async () => ({ ok: false, status: 422 })).send({ to: 'a@x.test', subject: 'S', text: 'T' }))
+      .rejects.toBeInstanceOf(MailUnavailable);
+    await expect(resendMailer('re_testkey_123456', 'c@mail.example', async () => { throw new Error('ECONNRESET a@x.test'); }).send({ to: 'a@x.test', subject: 'S', text: 'T' }))
+      .rejects.toThrow(/^mail service unreachable$/);
+  });
+
+  it('is configured with both settings or neither', () => {
+    expect(mailerFromEnv({})).toBeNull();
+    expect(() => mailerFromEnv({ SCOPELY_MAIL_API_KEY: 're_testkey_123456' })).toThrow(/both/);
+    expect(() => mailerFromEnv({ SCOPELY_MAIL_API_KEY: 'sk_nope', SCOPELY_MAIL_FROM: 'c@mail.example' })).toThrow(/re_/);
+    expect(() => mailerFromEnv({ SCOPELY_MAIL_API_KEY: 're_testkey_123456', SCOPELY_MAIL_FROM: 'not an address' })).toThrow(/address/);
+    expect(mailerFromEnv({ SCOPELY_MAIL_API_KEY: 're_testkey_123456', SCOPELY_MAIL_FROM: 'c@mail.example' })?.name).toBe('resend');
   });
 });

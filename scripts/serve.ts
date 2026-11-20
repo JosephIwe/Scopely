@@ -5,7 +5,8 @@
 //   SCOPELY_ENV=production DATABASE_URL=... pnpm start          # production (see docs/RELEASE.md)
 //
 // Sign-in is the default. People join with an invite link (pnpm auth:invite issues the first one);
-// SCOPELY_SIGNUP=open lets anyone create an account and a new workspace instead.
+// SCOPELY_SIGNUP=open lets anyone create an account and a new workspace instead, after proving their
+// email address with a 6-digit code (A53): it needs SCOPELY_MAIL_API_KEY (Resend) and SCOPELY_MAIL_FROM.
 // The development preview (SCOPELY_WORKSPACE_ID) acts in one workspace for whoever can reach the
 // server, so it is refused in production and when HOST is not a loopback address.
 //
@@ -40,6 +41,7 @@
 // Analysis (Slice 11): analysing a selected business requests its own website with the SSRF-safe
 // probe (src/analysis/fetch.ts); reserved .example hosts are answered from fixtures/demo-pages.
 import { postcodesIoGeocoder } from '../src/geo/postcodes.js';
+import { type Mailer, mailerFromEnv } from '../src/auth/verify.js';
 import { randomBytes } from 'node:crypto';
 import { assistProviderFromEnv } from '../src/ai/anthropic.js';
 import type { ModelProvider } from '../src/build/agents.js';
@@ -116,9 +118,14 @@ const prospects = { providers: new ProspectProviderRegistry().register(new ClayP
 // Bounded AI assistance (A49) is off unless SCOPELY_AI_PROVIDER and SCOPELY_AI_API_KEY are set.
 let assist: ModelProvider | null = null;
 try { assist = assistProviderFromEnv(process.env); } catch (err) { refuse((err as Error).message); }
+// A53: open sign-up proves the email address with a code, sent through Resend. It never runs without it.
+const openSignup = !workspaceId && process.env.SCOPELY_SIGNUP === 'open';
+let mailer: Mailer | null = null;
+try { mailer = mailerFromEnv(process.env); } catch (err) { refuse((err as Error).message); }
+if (openSignup && !mailer) refuse('SCOPELY_SIGNUP=open needs SCOPELY_MAIL_API_KEY and SCOPELY_MAIL_FROM: open sign-up never runs without email verification.');
 const handler = createHandler({
   pool, signingKey, dbRole, assist,
-  ...(workspaceId ? { workspaceId } : { auth: { secureCookies: production || process.env.SCOPELY_SECURE_COOKIES === '1', openSignup: process.env.SCOPELY_SIGNUP === 'open',
+  ...(workspaceId ? { workspaceId } : { auth: { secureCookies: production || process.env.SCOPELY_SECURE_COOKIES === '1', openSignup, mailer,
     trustProxy: process.env.SCOPELY_TRUST_PROXY === '1' } }),
   store: new FileObjectStore(process.env.SCOPELY_STORAGE_DIR ?? '.scopely/storage'),
   editLinkTtlSeconds: 15 * 60,
@@ -135,6 +142,6 @@ const handler = createHandler({
 });
 const port = Number(process.env.PORT ?? 4310);
 createServer((req, res) => { void handler(req, res); }).listen(port, host, () => {
-  console.log(`Scopely on http://${host}:${port} (${workspaceId ? `development preview, workspace ${workspaceId}, no sign-in` : `sign-in, ${process.env.SCOPELY_SIGNUP === 'open' ? 'open sign-up' : 'invite-only'}`}`
+  console.log(`Scopely on http://${host}:${port} (${workspaceId ? `development preview, workspace ${workspaceId}, no sign-in` : `sign-in, ${openSignup ? `open sign-up, codes by ${mailer!.name}` : 'invite-only'}`}`
     + `${production ? ', production' : ''}); Clay: ${live ? 'live' : 'recorded responses'}; error reporting: ${reporter ? 'on' : 'off (SCOPELY_ERROR_DSN unset)'}; AI assistance: ${assist ? `${assist.provider}` : 'off'}`);
 });

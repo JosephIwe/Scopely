@@ -55,7 +55,7 @@ import { DiscoveryProviderRegistry, DiscoveryRefused, ProspectProviderRegistry, 
 import { FindRejected, searchInputFromBody, selectionFromBody, selectionRefusal } from './discovery-api.js';
 import { withWorkspace } from '../tenancy/index.js';
 import {
-  AttemptLimiter, AuthRejected, SESSION_TTL_SECONDS, type SessionView, acceptInvite, clearCookie, cookieName, createMemberInvite, describeInvite, listMembers,
+  AttemptLimiter, AuthRejected, MailUnavailable, type Mailer, SIGNUP_CODE_TTL_SECONDS, checkSignupCode, consumeSignupCode, existingAccountEmail, signupCodeEmail, startSignupVerification, SESSION_TTL_SECONDS, type SessionView, acceptInvite, clearCookie, cookieName, createMemberInvite, describeInvite, listMembers,
   normalEmail, readCookie, resolveSession, sessionCookie, signIn, signOut, switchWorkspace,
 } from '../auth/index.js';
 import { recordBootstrapRefusal } from '../ops/bootstrap.js';
@@ -70,8 +70,13 @@ export interface ServerConfig {
   auth?: {
     /** Production: Secure + __Host- cookies and HSTS. Needs HTTPS in front of the server. */
     secureCookies: boolean;
-    /** Anyone may create an account and a new workspace. Off by default: invite-only. */
+    /**
+     * Anyone may create an account and a new workspace, after proving the email address with a code
+     * (A53). Off by default: invite-only. Needs `mailer`: open sign-up never runs unverified.
+     */
     openSignup?: boolean;
+    /** Sends the sign-up code to the address a person typed (src/auth/verify.ts). Only used for open sign-up. */
+    mailer?: Mailer | null;
     /** Read the client address from X-Forwarded-For (behind the host's own proxy). */
     trustProxy?: boolean;
   };
@@ -284,6 +289,10 @@ export function createHandler(cfg: ServerConfig) {
   const fetcher = cfg.fetcher ?? new SafePageFetcher();
   const probe = cfg.probe ?? new DemoAwareProbe();
   const limiter = new AttemptLimiter();
+  if (cfg.auth?.openSignup && !cfg.auth.mailer) throw new Error('Open sign-up needs a mailer to verify email addresses (A53). Set SCOPELY_MAIL_API_KEY and SCOPELY_MAIL_FROM, or keep sign-up invite-only.');
+  const mailer = cfg.auth?.openSignup ? cfg.auth.mailer! : null;
+  /** Code requests per client address: 10 an hour, on top of the per-address and daily caps in the database. */
+  const codeLimiter = new AttemptLimiter(10, 60 * 60_000);
   const secure = Boolean(cfg.auth?.secureCookies);
   const cookie = cookieName(secure);
 
@@ -984,7 +993,7 @@ export function createHandler(cfg: ServerConfig) {
       }
       json(res, 200, session
         ? { mode: 'session', signedIn: true, user: { name: session.user.displayName, email: session.user.email }, workspace: session.workspace, workspaces: session.workspaces }
-        : { mode: 'session', signedIn: false, openSignup: Boolean(cfg.auth.openSignup) });
+        : { mode: 'session', signedIn: false, openSignup: Boolean(mailer) });
       return true;
     }
     if (!cfg.auth) {
@@ -1030,12 +1039,39 @@ export function createHandler(cfg: ServerConfig) {
       } catch (err) { limiter.hit(clientAddress(req)); throw err; }
       return true;
     }
+    if (a === 'signup' && b === 'start' && !c && m === 'POST') {
+      // A53: send a sign-up code to the address typed. The answer is the same whether or not it has an account.
+      if (!mailer) throw new AuthRejected(403, 'Scopely is invite-only. Ask a workspace owner for an invite link.', 'invite_required');
+      const v = await jsonBody(req);
+      const ip = clientAddress(req);
+      if (codeLimiter.blocked(ip)) throw new AuthRejected(429, 'Too many codes asked for from here. Wait an hour, then try again.', 'rate_limited');
+      codeLimiter.hit(ip);
+      const r = await authTx((db) => startSignupVerification(db, v.email));
+      try {
+        await mailer.send(r.code ? signupCodeEmail(r.email, r.code) : existingAccountEmail(r.email));
+      } catch (err) {
+        if (err instanceof MailUnavailable) throw new HttpError(503, 'The sign-up email could not be sent just now. Try again in a few minutes.');
+        throw err;
+      }
+      json(res, 200, { sent: true, expiresInSeconds: SIGNUP_CODE_TTL_SECONDS });
+      return true;
+    }
     if (a === 'signup' && !b && m === 'POST') {
       const v = await jsonBody(req);
       if (limiter.blocked(clientAddress(req))) throw new AuthRejected(429, 'Too many attempts. Wait 15 minutes, then try again.', 'rate_limited');
       try {
-        const t = await authTx((db) => acceptInvite(db, { token: v.invite, email: v.email, password: v.password, displayName: v.name, workspaceName: v.workspaceName },
-          { openSignup: Boolean(cfg.auth!.openSignup) }));
+        // Without an invite, open sign-up needs the emailed code. A wrong guess is counted in its own
+        // transaction first, so it is kept; the code is used in the same transaction as the account.
+        const verify = !v.invite && mailer;
+        if (verify) {
+          const wrong = await authTx((db) => checkSignupCode(db, v.email, v.code));
+          if (wrong) throw wrong;
+        }
+        const t = await authTx(async (db) => {
+          if (verify) await consumeSignupCode(db, v.email, v.code);
+          return acceptInvite(db, { token: v.invite, email: v.email, password: v.password, displayName: v.name, workspaceName: v.workspaceName },
+            { openSignup: Boolean(mailer) });
+        });
         setCookie(t);
         json(res, 200, { signedIn: true });
       } catch (err) {
